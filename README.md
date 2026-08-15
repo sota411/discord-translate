@@ -144,6 +144,14 @@ docker compose logs --since=30m bot \
 
 同じ`trace_id`が1発話です。`stage:"playback_started"`の`total_ms`が、最後の音声packetからDiscordで再生を始めるまでの時間です。
 `stage_ms`は直前に観測したstageとの差であり、字幕POSTとTTSは並行するため、常に同じstage順にはなりません。
+音声再生は字幕POST完了を待たないため、`caption_posted`が`playback_started`より後に出る場合も正常です。
+音声のFIFO順は、Sonioxの`endpoint` eventをBotが受信した順です。後続発話のTTSは先読みしても、`playback_started`は先行音声の完了を待つため追い越しません。
+
+ミュート後の遅延を見分けるときは、次の順で確認します。
+
+- `stt_endpoint.total_ms`が大きい: Sonioxの発話終端確定待ちです。Discordのミュート自体はBotの明示的な終端シグナルには使っていません。
+- `queue_started.total_ms - stt_endpoint.total_ms`が大きい: 先行音声の再生中です。後から到着した発話のTTSは、再生完了を待たず1件だけ先読みします。
+- `tts_text_sent`から`tts_first_audio`が大きい: Sonioxが最初のTTS PCMを生成するまでの待ちです。
 
 起動後によく使うコマンドは次のとおりです。
 
