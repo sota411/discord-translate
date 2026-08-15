@@ -4,7 +4,9 @@ import { z } from "zod";
 
 const snowflakePattern = /^\d{17,20}$/;
 
-const positiveInteger = z.coerce.number().int().positive();
+const positiveInteger = z.coerce.number()
+  .int("整数を指定してください")
+  .positive("1以上の整数を指定してください");
 const requiredString = z.string().min(1, "値が必要です");
 
 const rawConfigSchema = z.object({
@@ -29,7 +31,9 @@ const rawConfigSchema = z.object({
   STT_COST_MICROUSD_PER_HOUR: positiveInteger,
   TTS_COST_MICROUSD_PER_HOUR: positiveInteger,
   TEXT_COST_MICROUSD_PER_MILLION_CHARACTERS_UPPER_BOUND: positiveInteger,
-  COST_ESTIMATE_SAFETY_PERCENT: z.coerce.number().int().min(100),
+  COST_ESTIMATE_SAFETY_PERCENT: z.coerce.number()
+    .int("整数を指定してください")
+    .min(100, "100以上の整数を指定してください"),
   PRICING_CONFIRMED_AT: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   PRICING_MAX_AGE_DAYS: positiveInteger,
   USAGE_RECONCILE_INTERVAL_SECONDS: positiveInteger,
@@ -42,7 +46,7 @@ const rawConfigSchema = z.object({
   SONIOX_VOICE_EN: requiredString,
   TRANSLATION_TERMS_PATH: z.string().optional(),
   SQLITE_PATH: requiredString,
-  LOG_ID_HMAC_KEY: z.string().min(32),
+  LOG_ID_HMAC_KEY: z.string().min(32, "32文字以上で指定してください"),
 });
 
 export type SonioxRegion = "us" | "eu" | "jp";

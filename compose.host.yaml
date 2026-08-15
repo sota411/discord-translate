@@ -1,0 +1,7 @@
+# Explicit workaround for hosts where Docker cannot create bridge veth pairs.
+# Use only with compose.yaml as documented in README.md.
+services:
+  bot:
+    build:
+      network: host
+    network_mode: host

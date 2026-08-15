@@ -1,13 +1,8 @@
 import { startApplication } from "./app.js";
+import { createFatalLogRecord } from "./observability/fatal-log.js";
 
 function fatal(event: string, error: unknown): void {
-  const errorName = error instanceof Error ? error.name : "UnknownError";
-  console.error(JSON.stringify({
-    timestamp: new Date().toISOString(),
-    level: "error",
-    event,
-    error_name: errorName,
-  }));
+  console.error(JSON.stringify(createFatalLogRecord(event, error)));
 }
 
 try {

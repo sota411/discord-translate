@@ -46,6 +46,20 @@ void test("不正な設定を一括報告し、秘密値はエラーへ含めな
   );
 });
 
+void test("設定診断は数値とHMAC Keyの修正方法を日本語で示す", () => {
+  assert.throws(
+    () => loadConfig(
+      validEnv({
+        SESSION_IDLE_TIMEOUT_SECONDS: "",
+        COST_ESTIMATE_SAFETY_PERCENT: "",
+        LOG_ID_HMAC_KEY: "short",
+      }),
+      new Date("2026-08-15T00:00:00Z"),
+    ),
+    /SESSION_IDLE_TIMEOUT_SECONDS: 1以上の整数を指定してください.*COST_ESTIMATE_SAFETY_PERCENT: 100以上の整数を指定してください.*LOG_ID_HMAC_KEY: 32文字以上で指定してください/su,
+  );
+});
+
 void test("料金確認日が期限切れなら起動設定を拒否する", () => {
   const env = validEnv({
     PRICING_CONFIRMED_AT: "2026-07-01",

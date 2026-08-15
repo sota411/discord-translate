@@ -17,8 +17,8 @@ Discordの音声受信はDiscord側で正式に文書化された安定APIでは
 - Discord ApplicationのBot TokenとApplication ID
 - Soniox Project専用API Key
 - 許可するDiscord Server IDとUser ID
-- ローカル実行の場合はNode.js 24.17.0以上とpnpm 11.3.0
-- Docker実行の場合はDocker EngineとCompose
+- セットアップ、設定確認、起動補助コマンド用のNode.js 24.17.0以上とpnpm 11.3.0
+- Docker実行の場合は、上記に加えてDocker EngineとCompose
 
 一人でも、VCへ参加して自分の発話が反対言語で返るところまでは確認できます。双方向会話と話者別処理の確認には、`ALLOWED_USER_IDS`へ追加したもう一人が必要です。
 
@@ -37,20 +37,15 @@ Discordの音声受信はDiscord側で正式に文書化された安定APIでは
 
 IDは、公開を防ぐruntime許可リストに必要です。自分一人のデバッグでもServer IDと自分のUser IDは設定します。
 
-## 2. Sonioxを設定する
+## 2. 環境変数を用意する
 
-1. Soniox ConsoleでこのBot専用Projectを作り、Project API Keyを発行します。
-2. Console上部が`Region: United States`なら、`.env.local`の`SONIOX_REGION=us`を使います。別途有効化するスイッチはありません。
-3. Organization月額上限を`$15`、Project月額上限を`$5`として設定済みなら、`.env.example`の初期値と一致しています。
-4. API Keyとregionだけを`.env.local`へ入力した後、利用可能なモデルとvoice IDを確認します。
+最初に依存関係をインストールします。
 
 ```bash
-pnpm soniox:inspect
+pnpm install --frozen-lockfile
 ```
 
-出力された`tts-rt-v2`のvoice IDから使用するものを選び、`SONIOX_VOICE_JA`、`SONIOX_VOICE_KO`、`SONIOX_VOICE_EN`へ設定します。同じ多言語voiceを3項目へ設定しても構いません。
-
-## 3. 環境変数を用意する
+続いて、設定ファイルを用意します。すでに`.env.local`がある場合は、秘密値を消さないよう、このコピー操作は実行しないでください。
 
 ```bash
 cp .env.example .env.local
@@ -58,7 +53,7 @@ chmod 600 .env.local
 openssl rand -hex 32
 ```
 
-最後のコマンドの出力を`LOG_ID_HMAC_KEY`へ設定します。続いて、空欄のToken、API Key、Application ID、Server ID、User ID、voice IDを入力します。
+最後のコマンドの出力を`LOG_ID_HMAC_KEY`へ設定します。続いて、DiscordのToken、Application ID、Server ID、User IDを入力します。SonioxのAPI Keyは次の手順で入力します。
 
 ローカルで直接起動する場合はSQLiteの絶対パスを作ります。
 
@@ -71,48 +66,135 @@ realpath .data/usage.sqlite
 
 用語設定を使う場合は、[translation-terms.example.json](./config/translation-terms.example.json)をコピーし、その絶対パスを`TRANSLATION_TERMS_PATH`へ設定します。未使用なら空欄のままで構いません。
 
+## 3. Sonioxを設定する
+
+1. Soniox ConsoleでこのBot専用Projectを作り、Project API Keyを発行します。
+2. API Keyを`.env.local`の`SONIOX_API_KEY`へ入力します。
+3. Console上部が`Region: United States`なら、`SONIOX_REGION=us`のままにします。別途有効化するスイッチはありません。
+4. Organization月額上限を`$15`、Project月額上限を`$5`として設定済みなら、`.env.example`の初期値と一致しています。
+5. 利用可能なモデルとvoice IDを実APIで確認します。
+
+```bash
+pnpm soniox:inspect
+```
+
+`tts-rt-v2`とvoice IDが表示されれば、Sonioxの準備は完了です。voiceは確認済みの初期値`Kenji`、`Mina`、`Emma`をそのまま使用できます。変更したい場合だけ、`SONIOX_VOICE_JA`、`SONIOX_VOICE_KO`、`SONIOX_VOICE_EN`を書き換えてください。
+
+最後に、値そのものを表示せず、不足している設定名と理由だけを確認します。
+
+```bash
+pnpm config:check
+```
+
+`設定は有効です。Botを起動できます。`と表示されるまで、指摘された項目を修正してください。既存の`.env.local`に初期値が足りない場合は、ファイルを上書きせず、`.env.example`の同名項目だけをコピーしてください。
+
 ## 4. Slash Commandを登録する
 
 ```bash
-pnpm install --frozen-lockfile
 pnpm register-commands
 ```
 
 コマンドは`ALLOWED_GUILD_IDS`のGuildだけへ登録されます。`default_member_permissions`は`0`なので、最初は管理者だけが利用できます。一般メンバーにも許可する場合は、Discordの`サーバー設定 > 連携サービス（Integrations） > 対象Bot > /translate`で対象ロールまたはメンバーを明示的に許可してください。runtimeのGuild/User許可リストは、この設定とは別に必ず検証されます。
 
-## 5. 起動する
+## 5. Botを起動する
 
-ローカル開発:
+SQLiteはDocker管理の永続volumeへ保存します。通常のPCでは、次のコマンドで起動します。
+
+```bash
+pnpm docker:down
+pnpm docker:up
+pnpm docker:status
+```
+
+今回のように`failed to add the host ... veth ... operation not supported`が出るPCでは、Dockerのbridgeネットワークを作れません。そのPCだけ、明示的なhost network用設定を使って次の3行を実行します。
+
+```bash
+pnpm docker:host:down
+pnpm docker:host:up
+pnpm docker:host:status
+```
+
+このBotはポートを待ち受けませんが、host networkはDockerのネットワーク分離を弱めます。そのため、標準設定にはせず、上記のエラーが出るPCでだけ使用します。
+
+最後の出力で`discord-translate-bot-1`の状態が`Up`になれば、コンテナは動いています。続いて起動ログを確認します。
+
+```bash
+# 通常のPC
+pnpm docker:logs
+
+# 今回のvethエラーが出るPC
+pnpm docker:host:logs
+```
+
+ログに`"event":"application_ready"`があれば、DiscordとSonioxへの接続準備は完了です。
+エラーがある場合は、省略せずこのコマンドの出力を共有してください。TokenやAPI Keyそのものはログへ出ません。
+
+起動後によく使うコマンドは次のとおりです。
+
+```bash
+# 通常のPCで現在の状態を確認
+pnpm docker:status
+
+# 通常のPCでBotを停止してコンテナを削除
+pnpm docker:down
+
+# vethエラーが出るPCで停止してコンテナを削除
+pnpm docker:host:down
+```
+
+停止しても、永続volumeのSQLiteは残ります。
+
+SQLiteを含む永続volumeまで削除する`docker compose down -v`は、データを初期化するとき以外は実行しないでください。
+
+`SIGINT`または`SIGTERM`を受けると、新規コマンドを拒否し、音声・Soniox接続・Discord接続・SQLiteを順に閉じます。
+
+ローカル開発としてDockerを使わず起動する場合は、次を実行します。
 
 ```bash
 pnpm dev
 ```
 
-Docker Compose:
+## 6. Discordで一人テストする
 
-```bash
-install -d -m 700 .data
-docker compose up --build -d
-docker compose logs -f bot
-```
+`pair:ja-ko`は日本語から韓国語だけではなく、日本語と韓国語の双方向翻訳です。話した言語を自動判定して、もう片方の言語で読み上げます。
 
-停止:
+1. Discordのメンバー一覧でBotがオンラインになったことを確認します。
+2. `ALLOWED_USER_IDS`へ登録した自分が、通常のボイスチャンネルへ参加します。
+3. 音声の回り込みを避けるため、イヤホンまたはヘッドホンを使用します。
+4. 字幕を表示したいテキストチャンネルで`/translate start`と入力します。
+5. `pair`で`ja-ko`を選択して送信します。
+6. Botが同じボイスチャンネルへ参加し、テキストチャンネルへ開始通知を投稿したことを確認します。
+7. 日本語で短く話します。韓国語の字幕と音声が返れば成功です。
+8. `/translate stop`を実行します。Botがボイスチャンネルから退出すれば終了です。
 
-```bash
-docker compose down
-```
+参加者に関する注意点:
 
-`SIGINT`または`SIGTERM`を受けると、新規コマンドを拒否し、音声・Soniox接続・Discord接続・SQLiteを順に閉じます。
-
-## 6. Discordで確認する
-
-1. 許可済みUserがテストVCへ参加します。
-2. 字幕を残すテキストチャンネルで`/translate start pair:ja-ko`などを実行します。
-3. 通常メッセージで開始通知が出たことを確認してから話します。
-4. 字幕が`再生待ち`から`再生済み`へ更新され、同じVCで翻訳音声が聞こえることを確認します。
-5. `/translate stop`を実行し、BotがVCから退出することを確認します。
+- 自分一人のテストでも、自分のUser IDを`ALLOWED_USER_IDS`へ設定します。
+- 同じボイスチャンネルに別の人間がいる場合、その人も`ALLOWED_USER_IDS`へ登録されていないと開始を拒否します。
+- 実行中に未許可の人間が参加した場合は、APIの不正利用を防ぐためセッションを自動停止します。
+- 2人で双方向会話を試す場合は、2人とも`ALLOWED_USER_IDS`へ登録します。
 
 自動停止条件は、最大30分、120秒無音、参加者不在、未許可Userの参加、3人目の参加、再生待ち10秒超過、利用上限、外部接続障害です。
+
+### `/translate`が表示されない場合
+
+まずGuild Commandを登録し直します。
+
+```bash
+pnpm register-commands
+```
+
+それでも表示されない場合は、Discordの`サーバー設定 > 連携サービス（Integrations） > 対象Bot > /translate`で、自分または自分のロールが許可されているか確認します。
+
+### Dockerで同じvethエラーが出る場合
+
+標準の[compose.yaml](./compose.yaml)へ、明示的な[compose.host.yaml](./compose.host.yaml)を重ねます。次の3行をそのまま実行してください。
+
+```bash
+pnpm docker:host:down
+pnpm docker:host:up
+pnpm docker:host:logs
+```
 
 ## 開発時の確認
 
