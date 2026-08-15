@@ -12,6 +12,7 @@ import { loadTranslationTerms } from "./config/translation-terms.js";
 import { DiscordBotController } from "./discord/bot-controller.js";
 import { DiscordTranslationDriver } from "./discord/translation-driver.js";
 import { createSafeLogger, type SafeLogger } from "./observability/logger.js";
+import { createTranslationLatencyRecorder } from "./observability/translation-latency.js";
 import { SessionManager } from "./session/session-manager.js";
 import {
   SonioxCapacityGate,
@@ -33,6 +34,9 @@ export async function startApplication(
 ): Promise<RunningApplication> {
   const config = loadConfig(env);
   const logger = createSafeLogger(config.logIdHmacKey);
+  const latency = createTranslationLatencyRecorder((fields) => {
+    logger.info("translation_latency", fields);
+  });
   const terms = loadTranslationTerms(config.storage.translationTermsPath);
   const ledger = UsageLedger.open({
     databasePath: config.storage.sqlitePath,
@@ -104,6 +108,7 @@ export async function startApplication(
       voices: config.soniox.voices,
       terminationTimeoutMs: config.soniox.terminationTimeoutMs,
       ledger,
+      latency,
     });
     const controllerReference: { current?: DiscordBotController } = {};
     const driver = new DiscordTranslationDriver({
@@ -112,6 +117,7 @@ export async function startApplication(
       ledger,
       sttFactory,
       tts,
+      latency,
       onFailure: (guildId, reason, publicMessage, cause) => {
         void controllerReference.current?.handleRuntimeFailure(
           guildId,
@@ -175,6 +181,7 @@ export async function startApplication(
           controller,
           sessions,
           client: discordClient,
+          tts,
           ledger,
           reconciliationTimer: timer,
           waitForReconciliation: () => reconciliationQueue.wait(),
@@ -202,6 +209,7 @@ async function shutdownApplication(input: {
   controller: DiscordBotController;
   sessions: SessionManager;
   client: Client;
+  tts: RawSonioxTtsGateway;
   ledger: UsageLedger;
   reconciliationTimer: NodeJS.Timeout;
   waitForReconciliation: () => Promise<void>;
@@ -215,6 +223,7 @@ async function shutdownApplication(input: {
     await input.waitForReconciliation();
     input.controller.detach();
     await input.client.destroy();
+    input.tts.close();
     input.ledger.close();
   }
   input.logger.info("application_shutdown_complete", { reason: input.reason });

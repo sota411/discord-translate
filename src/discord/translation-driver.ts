@@ -30,6 +30,7 @@ import type { AppConfig } from "../config.js";
 import { downmixStereoS16leToMono } from "../audio/pcm.js";
 import { ApplicationError } from "../domain/application-error.js";
 import { languagesForPair } from "../domain/language-pair.js";
+import type { TranslationLatencyRecorder } from "../observability/translation-latency.js";
 import type {
   SessionDescriptor,
   SessionRuntime,
@@ -58,6 +59,7 @@ type DiscordTranslationDriverOptions = {
   ledger: UsageLedger;
   sttFactory: SonioxSttFactory;
   tts: TtsGateway;
+  latency: TranslationLatencyRecorder;
   onFailure: RuntimeFailureHandler;
 };
 
@@ -69,6 +71,7 @@ type SpeakerStream = {
   stt: RealtimeSttSession;
   assembler: TranslationTokenAssembler;
   lastUsageAtMonotonic?: number;
+  lastAudioAtMonotonic?: number;
   pendingTextCharacters: number;
   keepaliveTimer?: NodeJS.Timeout;
   usageTimer?: NodeJS.Timeout;
@@ -110,6 +113,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
   readonly #ledger: UsageLedger;
   readonly #sttFactory: SonioxSttFactory;
   readonly #tts: TtsGateway;
+  readonly #latency: TranslationLatencyRecorder;
   readonly #onFailure: RuntimeFailureHandler;
 
   public constructor(options: DiscordTranslationDriverOptions) {
@@ -118,6 +122,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
     this.#ledger = options.ledger;
     this.#sttFactory = options.sttFactory;
     this.#tts = options.tts;
+    this.#latency = options.latency;
     this.#onFailure = (guildId, reason, publicMessage, cause) => {
       options.onFailure(guildId, reason, publicMessage, cause);
     };
@@ -173,6 +178,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
         ledger: this.#ledger,
         sttFactory: this.#sttFactory,
         tts: this.#tts,
+        latency: this.#latency,
         onFailure: this.#onFailure,
       });
     } catch (error) {
@@ -214,6 +220,7 @@ type TranslationRuntimeOptions = {
   ledger: UsageLedger;
   sttFactory: SonioxSttFactory;
   tts: TtsGateway;
+  latency: TranslationLatencyRecorder;
   onFailure: RuntimeFailureHandler;
 };
 
@@ -226,6 +233,7 @@ class DiscordTranslationRuntime implements SessionRuntime {
   readonly #config: AppConfig;
   readonly #ledger: UsageLedger;
   readonly #sttFactory: SonioxSttFactory;
+  readonly #latency: TranslationLatencyRecorder;
   readonly #onFailure: RuntimeFailureHandler;
   readonly #player: AudioPlayer;
   readonly #processor: UtteranceProcessor;
@@ -248,6 +256,7 @@ class DiscordTranslationRuntime implements SessionRuntime {
     this.#config = options.config;
     this.#ledger = options.ledger;
     this.#sttFactory = options.sttFactory;
+    this.#latency = options.latency;
     this.#onFailure = (guildId, reason, publicMessage, cause) => {
       options.onFailure(guildId, reason, publicMessage, cause);
     };
@@ -255,7 +264,7 @@ class DiscordTranslationRuntime implements SessionRuntime {
     this.#player = createAudioPlayer();
     this.#connection.subscribe(this.#player);
     const captions = new DiscordCaptionGateway(this.#textChannel);
-    const playback = new DiscordPlaybackGateway(this.#player);
+    const playback = new DiscordPlaybackGateway(this.#player, options.latency);
     this.#processor = new UtteranceProcessor({
       captions,
       playback,
@@ -263,6 +272,7 @@ class DiscordTranslationRuntime implements SessionRuntime {
       maxQueueWaitMs: options.config.limits.playbackQueueMaxMs,
       maxSourceDurationMs: options.config.limits.utteranceMaxSourceSeconds * 1000,
       maxInputCharacters: options.config.limits.ttsMaxInputCharacters,
+      latency: options.latency,
       onFatal: (error) => this.#fail(error.code, error.publicMessage),
     });
 
@@ -408,7 +418,9 @@ class DiscordTranslationRuntime implements SessionRuntime {
         const stereoPcm = speaker.decoder.decode(packet);
         const monoPcm = downmixStereoS16leToMono(stereoPcm);
         speaker.stt.sendAudio(monoPcm);
-        this.#lastHumanAudioAt = performance.now();
+        const receivedAt = performance.now();
+        speaker.lastAudioAtMonotonic = receivedAt;
+        this.#lastHumanAudioAt = receivedAt;
       } catch (error) {
         this.#fail("SONIOX_STREAM_FAILED", "音声の変換または送信に失敗しました。", error);
       }
@@ -476,9 +488,14 @@ class DiscordTranslationRuntime implements SessionRuntime {
         this.#fail("VOICE_CONNECTION_LOST", "発話者のDiscord情報を確認できませんでした。");
         return;
       }
+      const utteranceId = randomUUID();
+      this.#latency.start(
+        utteranceId,
+        speaker.lastAudioAtMonotonic ?? performance.now(),
+      );
       this.#processor.enqueue({
         ...finalized,
-        utteranceId: randomUUID(),
+        utteranceId,
         sessionId: this.#session.sessionId,
         speakerUserId: speaker.userId,
         speakerDisplayName: displayName,

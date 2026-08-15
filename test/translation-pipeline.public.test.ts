@@ -166,6 +166,24 @@ class RecordingTts implements TtsGateway {
   }
 }
 
+class SecondSynthesisFailsTts implements TtsGateway {
+  #calls = 0;
+
+  public synthesize(): Promise<SynthesizedSpeech> {
+    this.#calls += 1;
+    return Promise.resolve({
+      audio: Readable.from([Buffer.from([1, 0, 2, 0])]),
+      completed: this.#calls === 1
+        ? Promise.resolve()
+        : Promise.reject(new ApplicationError(
+            "SONIOX_STREAM_FAILED",
+            "後続発話のTTS生成に失敗しました。",
+          )),
+      cancel: () => undefined,
+    });
+  }
+}
+
 class BlockingPlayback implements PlaybackGateway {
   public readonly played: number[] = [];
   public readonly releases: (() => void)[] = [];
@@ -180,6 +198,21 @@ class BlockingPlayback implements PlaybackGateway {
 
   public stop(): void {
     this.stops += 1;
+  }
+}
+
+class BlockingCaptions extends RecordingCaptions {
+  public releasePost: (() => void) | undefined;
+
+  public override async post(input: {
+    originalText: string;
+    translatedText: string;
+    state: CaptionState;
+  }): Promise<number> {
+    await new Promise<void>((resolve) => {
+      this.releasePost = resolve;
+    });
+    return super.post(input);
   }
 }
 
@@ -280,13 +313,13 @@ void test("確定発話をFIFOでTTS・再生し、同じ字幕を再生待ち�
   });
 
   await new Promise<void>((resolve) => setImmediate(resolve));
-  assert.deepEqual(tts.started, ["첫 번째"]);
+  assert.deepEqual(tts.started, ["첫 번째", "二つ目"]);
+  assert.equal(playback.releases.length, 1);
   const firstCaption = captions.records[0];
   assert.ok(firstCaption);
   assert.equal(firstCaption.state, "pending");
   playback.releases.shift()?.();
   await new Promise<void>((resolve) => setImmediate(resolve));
-  assert.deepEqual(tts.started, ["첫 번째", "二つ目"]);
   assert.equal(firstCaption.state, "played");
   playback.releases.shift()?.();
   await processor.whenIdle();
@@ -295,6 +328,201 @@ void test("確定発話をFIFOでTTS・再生し、同じ字幕を再生待ち�
   assert.ok(secondCaption);
   assert.equal(secondCaption.state, "played");
   assert.deepEqual(failures, []);
+});
+
+void test("字幕投稿を待たずTTSを開始し、両方の完了後にFIFO再生する", async () => {
+  const captions = new BlockingCaptions();
+  const tts = new RecordingTts();
+  const playback = new BlockingPlayback();
+  const processor = new UtteranceProcessor({
+    captions,
+    tts,
+    playback,
+    maxQueueWaitMs: 10_000,
+    maxSourceDurationMs: 30_000,
+    maxInputCharacters: 300,
+    onFatal: (error) => assert.fail(error.message),
+  });
+
+  processor.enqueue({
+    utteranceId: "u-parallel",
+    sessionId: "s1",
+    speakerUserId: "user1",
+    speakerDisplayName: "sota",
+    sourceLanguage: "ja",
+    targetLanguage: "ko",
+    originalText: "並列",
+    translatedText: "병렬",
+    sourceDurationMs: 500,
+  });
+
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(tts.started, ["병렬"]);
+  assert.deepEqual(playback.played, []);
+
+  captions.releasePost?.();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  playback.releases.shift()?.();
+  await processor.whenIdle();
+  assert.equal(captions.records[0]?.state, "played");
+});
+
+void test("先行音声の再生中に次のTTSを生成し、再生順序だけをFIFOに保つ", async () => {
+  const captions = new RecordingCaptions();
+  const tts = new RecordingTts();
+  const playback = new BlockingPlayback();
+  const processor = new UtteranceProcessor({
+    captions,
+    tts,
+    playback,
+    maxQueueWaitMs: 10_000,
+    maxSourceDurationMs: 30_000,
+    maxInputCharacters: 300,
+    onFatal: (error) => assert.fail(error.message),
+  });
+
+  processor.enqueue({
+    utteranceId: "u-prefetch-1",
+    sessionId: "s1",
+    speakerUserId: "user1",
+    speakerDisplayName: "sota",
+    sourceLanguage: "ja",
+    targetLanguage: "ko",
+    originalText: "一つ目",
+    translatedText: "첫 번째",
+    sourceDurationMs: 500,
+  });
+  processor.enqueue({
+    utteranceId: "u-prefetch-2",
+    sessionId: "s1",
+    speakerUserId: "user1",
+    speakerDisplayName: "sota",
+    sourceLanguage: "ja",
+    targetLanguage: "ko",
+    originalText: "二つ目",
+    translatedText: "두 번째",
+    sourceDurationMs: 500,
+  });
+
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(tts.started, ["첫 번째", "두 번째"]);
+  assert.equal(playback.releases.length, 1);
+
+  playback.releases.shift()?.();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(playback.releases.length, 1);
+  playback.releases.shift()?.();
+  await processor.whenIdle();
+
+  assert.deepEqual(captions.records.map((record) => record.state), ["played", "played"]);
+});
+
+void test("先読み中の後続TTSが失敗しても、再生中の先行発話を中断しない", async () => {
+  const captions = new RecordingCaptions();
+  const playback = new BlockingPlayback();
+  const failures: ApplicationError[] = [];
+  const processor = new UtteranceProcessor({
+    captions,
+    tts: new SecondSynthesisFailsTts(),
+    playback,
+    maxQueueWaitMs: 10_000,
+    maxSourceDurationMs: 30_000,
+    maxInputCharacters: 300,
+    onFatal: (error) => failures.push(error),
+  });
+
+  processor.enqueue({
+    utteranceId: "u-prefetch-failure-1",
+    sessionId: "s1",
+    speakerUserId: "user1",
+    speakerDisplayName: "sota",
+    sourceLanguage: "ja",
+    targetLanguage: "ko",
+    originalText: "一つ目",
+    translatedText: "첫 번째",
+    sourceDurationMs: 500,
+  });
+  processor.enqueue({
+    utteranceId: "u-prefetch-failure-2",
+    sessionId: "s1",
+    speakerUserId: "user1",
+    speakerDisplayName: "sota",
+    sourceLanguage: "ja",
+    targetLanguage: "ko",
+    originalText: "二つ目",
+    translatedText: "두 번째",
+    sourceDurationMs: 500,
+  });
+
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const stopsBeforeFirstPlaybackCompleted = playback.stops;
+  playback.releases.shift()?.();
+  await processor.whenIdle();
+
+  assert.equal(stopsBeforeFirstPlaybackCompleted, 0);
+  assert.deepEqual(captions.records.map((record) => record.state), [
+    "played",
+    "not_played",
+  ]);
+  assert.equal(failures[0]?.code, "SONIOX_STREAM_FAILED");
+});
+
+void test("先読み後の再生待ちが上限を超えた発話は再生しない", async () => {
+  const captions = new RecordingCaptions();
+  const playback = new BlockingPlayback();
+  const failures: ApplicationError[] = [];
+  let now = 0;
+  const processor = new UtteranceProcessor({
+    captions,
+    tts: new RecordingTts(),
+    playback,
+    maxQueueWaitMs: 5,
+    maxSourceDurationMs: 30_000,
+    maxInputCharacters: 300,
+    now: () => now,
+    onFatal: (error) => failures.push(error),
+  });
+
+  processor.enqueue({
+    utteranceId: "u-backlog-1",
+    sessionId: "s1",
+    speakerUserId: "user1",
+    speakerDisplayName: "sota",
+    sourceLanguage: "ja",
+    targetLanguage: "ko",
+    originalText: "一つ目",
+    translatedText: "첫 번째",
+    sourceDurationMs: 500,
+  });
+  processor.enqueue({
+    utteranceId: "u-backlog-2",
+    sessionId: "s1",
+    speakerUserId: "user1",
+    speakerDisplayName: "sota",
+    sourceLanguage: "ja",
+    targetLanguage: "ko",
+    originalText: "二つ目",
+    translatedText: "두 번째",
+    sourceDurationMs: 500,
+  });
+
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  now = 10;
+  playback.releases.shift()?.();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const secondPlaybackStarted = playback.releases.length > 0;
+  playback.releases.shift()?.();
+  await processor.whenIdle();
+
+  assert.equal(secondPlaybackStarted, false);
+  assert.deepEqual(captions.records.map((record) => record.state), [
+    "played",
+    "not_played",
+  ]);
+  assert.equal(failures[0]?.code, "PLAYBACK_BACKLOG");
 });
 
 void test("長すぎる発話は字幕・TTSへ渡さず明示的に失敗する", async () => {

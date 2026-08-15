@@ -9,20 +9,24 @@ import {
 } from "@discordjs/voice";
 
 import { MonoToStereoTransform } from "../audio/pcm.js";
+import type { TranslationLatencyRecorder } from "../observability/translation-latency.js";
 import type { PlaybackGateway } from "../translation/utterance-processor.js";
 
 export class DiscordPlaybackGateway implements PlaybackGateway {
   readonly #player: AudioPlayer;
+  readonly #latency: TranslationLatencyRecorder | undefined;
 
-  public constructor(player: AudioPlayer) {
+  public constructor(player: AudioPlayer, latency?: TranslationLatencyRecorder) {
     this.#player = player;
+    this.#latency = latency;
   }
 
-  public play(audio: Readable): Promise<void> {
+  public play(audio: Readable, traceId?: string): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const stereo = new MonoToStereoTransform();
       const cleanup = (): void => {
         this.#player.off(AudioPlayerStatus.Idle, onIdle);
+        this.#player.off(AudioPlayerStatus.Playing, onPlaying);
         this.#player.off("error", onPlayerError);
         audio.off("error", onStreamError);
         stereo.off("error", onStreamError);
@@ -30,6 +34,9 @@ export class DiscordPlaybackGateway implements PlaybackGateway {
       const onIdle = (): void => {
         cleanup();
         resolve();
+      };
+      const onPlaying = (): void => {
+        if (traceId) this.#latency?.mark(traceId, "playback_started");
       };
       const onPlayerError = (error: AudioPlayerError): void => {
         cleanup();
@@ -42,6 +49,7 @@ export class DiscordPlaybackGateway implements PlaybackGateway {
       };
 
       this.#player.once(AudioPlayerStatus.Idle, onIdle);
+      this.#player.once(AudioPlayerStatus.Playing, onPlaying);
       this.#player.once("error", onPlayerError);
       audio.once("error", onStreamError);
       stereo.once("error", onStreamError);

@@ -63,6 +63,7 @@ async function withServer(
   try {
     await run(`ws://127.0.0.1:${String(address.port)}`);
   } finally {
+    for (const socket of server.clients) socket.terminate();
     await new Promise<void>((resolve, reject) => {
       server.close((error) => error ? reject(error) : resolve());
     });
@@ -129,7 +130,225 @@ void test("TTS wireへ不透明request refを送り、PCMと正常終端を公�
   });
 });
 
+void test("連続するTTS streamが同じWebSocket接続を再利用する", async () => {
+  let connectionCount = 0;
+  await withServer((socket) => {
+    connectionCount += 1;
+    socket.on("message", (data) => {
+      const message = JSON.parse(rawDataToUtf8(data)) as Record<string, unknown>;
+      if (message.text_end === true) {
+        socket.send(JSON.stringify({
+          stream_id: message.stream_id,
+          audio: Buffer.from([1, 0, 2, 0]).toString("base64"),
+          audio_end: true,
+        }));
+        socket.send(JSON.stringify({ stream_id: message.stream_id, terminated: true }));
+      }
+    });
+  }, async (url) => {
+    const gateway = new RawSonioxTtsGateway({
+      url,
+      apiKey: "test-api-key",
+      model: "tts-rt-v2",
+      voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
+      terminationTimeoutMs: 1_000,
+      ledger: new RecordingLedger(),
+    });
+
+    for (const utteranceId of ["stream-1", "stream-2"]) {
+      const speech = await gateway.synthesize({
+        utteranceId,
+        sessionId: "session-1",
+        speakerUserId: "323456789012345678",
+        language: "ko",
+        text: "연속",
+      });
+      for await (const chunk of speech.audio) void chunk;
+      await speech.completed;
+    }
+
+    assert.equal(connectionCount, 1);
+  });
+});
+
+void test("最初のstream後は同じTTS接続へkeepaliveを送る", async () => {
+  let resolveKeepalive = (): void => undefined;
+  const keepalive = new Promise<void>((resolve) => {
+    resolveKeepalive = resolve;
+  });
+  await withServer((socket) => {
+    socket.on("message", (data) => {
+      const message = JSON.parse(rawDataToUtf8(data)) as Record<string, unknown>;
+      if (message.text_end === true) {
+        socket.send(JSON.stringify({
+          stream_id: message.stream_id,
+          audio_end: true,
+        }));
+        socket.send(JSON.stringify({ stream_id: message.stream_id, terminated: true }));
+      } else if (message.keep_alive === true) {
+        resolveKeepalive();
+      }
+    });
+  }, async (url) => {
+    const gateway = new RawSonioxTtsGateway({
+      url,
+      apiKey: "test-api-key",
+      model: "tts-rt-v2",
+      voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
+      terminationTimeoutMs: 1_000,
+      keepaliveIntervalMs: 5,
+      ledger: new RecordingLedger(),
+    });
+    const speech = await gateway.synthesize({
+      utteranceId: "keepalive-1",
+      sessionId: "session-1",
+      speakerUserId: "323456789012345678",
+      language: "ko",
+      text: "연결 유지",
+    });
+    for await (const chunk of speech.audio) void chunk;
+    await speech.completed;
+    await keepalive;
+    gateway.close();
+  });
+});
+
+void test("待機中に閉じたTTS接続は次のstream開始時に再接続する", async () => {
+  let connectionCount = 0;
+  let resolveFirstClosed = (): void => undefined;
+  const firstClosed = new Promise<void>((resolve) => {
+    resolveFirstClosed = resolve;
+  });
+  await withServer((socket) => {
+    connectionCount += 1;
+    const currentConnection = connectionCount;
+    socket.on("close", () => {
+      if (currentConnection === 1) resolveFirstClosed();
+    });
+    socket.on("message", (data) => {
+      const message = JSON.parse(rawDataToUtf8(data)) as Record<string, unknown>;
+      if (message.text_end === true) {
+        socket.send(JSON.stringify({
+          stream_id: message.stream_id,
+          audio: Buffer.from([1, 0, 2, 0]).toString("base64"),
+          audio_end: true,
+        }));
+        socket.send(
+          JSON.stringify({ stream_id: message.stream_id, terminated: true }),
+          () => {
+            if (currentConnection === 1) socket.close();
+          },
+        );
+      }
+    });
+  }, async (url) => {
+    const gateway = new RawSonioxTtsGateway({
+      url,
+      apiKey: "test-api-key",
+      model: "tts-rt-v2",
+      voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
+      terminationTimeoutMs: 1_000,
+      ledger: new RecordingLedger(),
+    });
+
+    const first = await gateway.synthesize({
+      utteranceId: "reconnect-1",
+      sessionId: "session-1",
+      speakerUserId: "323456789012345678",
+      language: "ko",
+      text: "첫 번째",
+    });
+    for await (const chunk of first.audio) void chunk;
+    await first.completed;
+    await firstClosed;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    const second = await gateway.synthesize({
+      utteranceId: "reconnect-2",
+      sessionId: "session-1",
+      speakerUserId: "323456789012345678",
+      language: "ko",
+      text: "두 번째",
+    });
+    for await (const chunk of second.audio) void chunk;
+    await second.completed;
+
+    assert.equal(connectionCount, 2);
+  });
+});
+
+void test("stream応答timeoutでは接続を破棄し、次のstreamで再接続する", async () => {
+  let connectionCount = 0;
+  let resolveFirstClosed = (): void => undefined;
+  const firstClosed = new Promise<void>((resolve) => {
+    resolveFirstClosed = resolve;
+  });
+  await withServer((socket) => {
+    connectionCount += 1;
+    const currentConnection = connectionCount;
+    socket.on("close", () => {
+      if (currentConnection === 1) resolveFirstClosed();
+    });
+    socket.on("message", (data) => {
+      const message = JSON.parse(rawDataToUtf8(data)) as Record<string, unknown>;
+      if (message.text_end === true && currentConnection === 2) {
+        socket.send(JSON.stringify({
+          stream_id: message.stream_id,
+          audio_end: true,
+        }));
+        socket.send(JSON.stringify({ stream_id: message.stream_id, terminated: true }));
+      }
+    });
+  }, async (url) => {
+    const ledger = new RecordingLedger();
+    const gateway = new RawSonioxTtsGateway({
+      url,
+      apiKey: "test-api-key",
+      model: "tts-rt-v2",
+      voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
+      terminationTimeoutMs: 10,
+      ledger,
+    });
+
+    const timedOut = await gateway.synthesize({
+      utteranceId: "timeout-1",
+      sessionId: "session-1",
+      speakerUserId: "323456789012345678",
+      language: "ko",
+      text: "응답 없음",
+    });
+    timedOut.audio.resume();
+    await assert.rejects(
+      timedOut.completed,
+      (error: unknown) =>
+        error instanceof ApplicationError && error.code === "SONIOX_STREAM_FAILED",
+    );
+    await firstClosed;
+
+    const recovered = await gateway.synthesize({
+      utteranceId: "timeout-2",
+      sessionId: "session-1",
+      speakerUserId: "323456789012345678",
+      language: "ko",
+      text: "재연결",
+    });
+    for await (const chunk of recovered.audio) void chunk;
+    await recovered.completed;
+
+    assert.equal(connectionCount, 2);
+    assert.deepEqual(ledger.requests.map((request) => request.status), [
+      "failed",
+      "completed",
+    ]);
+  });
+});
+
 void test("max_audio_duration_reachedを安定したエラーコードへ変換する", async () => {
+  let terminateFailedStream = (): void => undefined;
+  let resolveErrorReceived = (): void => undefined;
+  const errorReceived = new Promise<void>((resolve) => {
+    resolveErrorReceived = resolve;
+  });
   await withServer((socket) => {
     socket.on("message", (data) => {
       const message = JSON.parse(rawDataToUtf8(data)) as Record<string, unknown>;
@@ -140,7 +359,10 @@ void test("max_audio_duration_reachedを安定したエラーコードへ変換�
           error_type: "max_audio_duration_reached",
           error_message: "output too long",
         }));
-        socket.send(JSON.stringify({ stream_id: message.stream_id, terminated: true }));
+        terminateFailedStream = () => {
+          socket.send(JSON.stringify({ stream_id: message.stream_id, terminated: true }));
+        };
+        resolveErrorReceived();
       }
     });
   }, async (url) => {
@@ -161,6 +383,11 @@ void test("max_audio_duration_reachedを安定したエラーコードへ変換�
       language: "ko",
       text: "긴 문장",
     });
+
+    await errorReceived;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(ledger.requests[0]?.status, undefined);
+    terminateFailedStream();
 
     await assert.rejects(
       speech.completed,
@@ -212,11 +439,26 @@ void test("stream IDのない認証エラーも待機せず安定したエラー
   });
 });
 
-void test("cancelはTTS接続を直ちに閉じて要求をfailedへ確定する", async () => {
+void test("cancelはterminatedを受信してから要求をfailedへ確定する", async () => {
   const received: Record<string, unknown>[] = [];
+  let terminateCanceledStream = (): void => undefined;
+  let resolveCancelReceived = (): void => undefined;
+  const cancelReceived = new Promise<void>((resolve) => {
+    resolveCancelReceived = resolve;
+  });
   await withServer((socket) => {
     socket.on("message", (data) => {
-      received.push(JSON.parse(rawDataToUtf8(data)) as Record<string, unknown>);
+      const message = JSON.parse(rawDataToUtf8(data)) as Record<string, unknown>;
+      received.push(message);
+      if (message.cancel === true) {
+        terminateCanceledStream = () => {
+          socket.send(JSON.stringify({
+            stream_id: message.stream_id,
+            terminated: true,
+          }));
+        };
+        resolveCancelReceived();
+      }
     });
   }, async (url) => {
     const ledger = new RecordingLedger();
@@ -238,8 +480,12 @@ void test("cancelはTTS接続を直ちに閉じて要求をfailedへ確定する
     });
 
     speech.cancel();
+    await cancelReceived;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(ledger.requests[0]?.status, undefined);
+
+    terminateCanceledStream();
     await speech.completed;
-    await new Promise<void>((resolve) => setTimeout(resolve, 20));
 
     assert.equal(ledger.requests[0]?.status, "failed");
     assert.ok(received.some((message) => message.cancel === true));
@@ -254,6 +500,11 @@ void test("音声受信後のcancelで利用台帳へ書き込めなければ失
         socket.send(JSON.stringify({
           stream_id: message.stream_id,
           audio: Buffer.from([1, 0, 2, 0]).toString("base64"),
+        }));
+      } else if (message.cancel === true) {
+        socket.send(JSON.stringify({
+          stream_id: message.stream_id,
+          terminated: true,
         }));
       }
     });
