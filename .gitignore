@@ -1,0 +1,14 @@
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+
+# Local runtime data
+.data/
+*.sqlite
+*.sqlite-*
