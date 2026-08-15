@@ -131,7 +131,7 @@ void test("TTS wireへ不透明request refを送り、PCMと正常終端を公�
   });
 });
 
-void test("確定原文の時点でTTS configだけを送り、翻訳本文を後から渡せる", async () => {
+void test("翻訳本文の受信前にTTS configだけを送り、本文を後から渡せる", async () => {
   const received: Record<string, unknown>[] = [];
   let resolveConfigReceived = (): void => undefined;
   const configReceived = new Promise<void>((resolve) => {

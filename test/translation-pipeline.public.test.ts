@@ -75,7 +75,7 @@ void test("確定した正しい方向の翻訳だけをendpointで1発話にす
   assert.equal(assembler.flush(), undefined);
 });
 
-void test("最初の確定原文tokenで翻訳先TTSの先読み枠を作る", () => {
+void test("確定原文の言語判定が揺れても最初の確定翻訳で正しいTTS先読み枠を作る", async () => {
   let createdLanguage: string | undefined;
   const streaming = new StreamingUtterance({
     pair: "ja-ko",
@@ -96,12 +96,35 @@ void test("最初の確定原文tokenで翻訳先TTSの先読み枠を作る", (
   assert.equal(streaming.accept([{
     text: "こんにちは",
     is_final: true,
-    language: "ja",
+    language: "en",
     translation_status: "original",
     start_ms: 0,
     end_ms: 500,
+  }]), false);
+  assert.equal(createdLanguage, undefined);
+
+  assert.equal(streaming.accept([{
+    text: "안녕하세요",
+    is_final: true,
+    language: "ko",
+    source_language: "ja",
+    translation_status: "translation",
   }]), true);
   assert.equal(createdLanguage, "ko");
+  const endpoint = streaming.takeAtEndpoint();
+  assert.deepEqual(endpoint.finalized, {
+    sourceLanguage: "ja",
+    targetLanguage: "ko",
+    originalText: "こんにちは",
+    translatedText: "안녕하세요",
+    sourceDurationMs: 500,
+  });
+  assert.ok(endpoint.prefetch);
+  const speech = endpoint.prefetch.finish();
+  const audio: Buffer[] = [];
+  for await (const chunk of speech.audio) audio.push(chunk as Buffer);
+  await speech.completed;
+  assert.deepEqual(Buffer.concat(audio), Buffer.from([1, 0, 2, 0]));
 });
 
 void test("同じ発話で確定翻訳の方向が反転したら黙って破棄しない", async () => {
@@ -519,9 +542,9 @@ void test("確定翻訳batchをendpoint前にTTSへ渡し、準備済みPCMを�
     translation_status: "original",
     start_ms: 100,
     end_ms: 900,
-  }]), true);
+  }]), false);
   await new Promise<void>((resolve) => setImmediate(resolve));
-  assert.equal(tts.prepareCalls, 1);
+  assert.equal(tts.prepareCalls, 0);
   assert.deepEqual(tts.sentTexts, []);
 
   assert.equal(streaming.accept([{
@@ -530,8 +553,9 @@ void test("確定翻訳batchをendpoint前にTTSへ渡し、準備済みPCMを�
     language: "ko",
     source_language: "ja",
     translation_status: "translation",
-  }]), false);
+  }]), true);
   await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(tts.prepareCalls, 1);
   assert.deepEqual(tts.sentTexts, ["안녕하세요"]);
 
   const endpoint = streaming.takeAtEndpoint();

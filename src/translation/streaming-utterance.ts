@@ -1,8 +1,4 @@
-import {
-  languagesForPair,
-  type Language,
-  type LanguagePair,
-} from "../domain/language-pair.js";
+import type { Language, LanguagePair } from "../domain/language-pair.js";
 import type { TtsBatchPrefetch } from "./tts-batch-prefetch.js";
 import {
   TranslationTokenAssembler,
@@ -25,9 +21,7 @@ export type StreamingUtteranceEndpoint = {
 export class StreamingUtterance {
   readonly #assembler: TranslationTokenAssembler;
   readonly #createPrefetch: (targetLanguage: Language) => TtsBatchPrefetch;
-  readonly #languages: readonly [Language, Language];
   #prefetch: TtsBatchPrefetch | undefined;
-  #prefetchLanguage: Language | undefined;
 
   public constructor(options: StreamingUtteranceOptions) {
     this.#assembler = new TranslationTokenAssembler(options.pair, {
@@ -37,39 +31,22 @@ export class StreamingUtterance {
     this.#createPrefetch = (targetLanguage) => {
       return options.createPrefetch(targetLanguage);
     };
-    this.#languages = languagesForPair(options.pair);
   }
 
   public accept(tokens: readonly TranslationToken[]): boolean {
     let translatedBatch = "";
     let targetLanguage: Language | undefined;
-    let prewarmLanguage: Language | undefined;
     for (const token of tokens) {
-      if (
-        token.is_final &&
-        token.translation_status === "original" &&
-        this.#isPairLanguage(token.language)
-      ) {
-        prewarmLanguage ??= this.#otherLanguage(token.language);
-      }
       const accepted = this.#assembler.accept(token);
       if (!accepted) continue;
       translatedBatch += accepted.text;
       targetLanguage ??= accepted.targetLanguage;
     }
-    const requestedLanguage = targetLanguage ?? prewarmLanguage;
-    if (!requestedLanguage) return false;
-    if (
-      this.#prefetchLanguage !== undefined &&
-      this.#prefetchLanguage !== requestedLanguage
-    ) {
-      throw new Error("同じ発話内で翻訳方向が変化したためTTSを先読みできません");
-    }
+    if (!targetLanguage) return false;
 
     const prefetchStarted = this.#prefetch === undefined;
     if (!this.#prefetch) {
-      this.#prefetch = this.#createPrefetch(requestedLanguage);
-      this.#prefetchLanguage = requestedLanguage;
+      this.#prefetch = this.#createPrefetch(targetLanguage);
     }
     if (translatedBatch.length > 0) this.#prefetch.append(translatedBatch);
     return prefetchStarted;
@@ -81,7 +58,6 @@ export class StreamingUtterance {
       prefetch: this.#prefetch,
     };
     this.#prefetch = undefined;
-    this.#prefetchLanguage = undefined;
     return endpoint;
   }
 
@@ -89,17 +65,7 @@ export class StreamingUtterance {
     this.#assembler.flush();
     const prefetch = this.#prefetch;
     this.#prefetch = undefined;
-    this.#prefetchLanguage = undefined;
     return prefetch;
   }
 
-  #isPairLanguage(language: string | undefined): language is Language {
-    return language !== undefined && this.#languages.includes(language as Language);
-  }
-
-  #otherLanguage(language: Language): Language {
-    return this.#languages[0] === language
-      ? this.#languages[1]
-      : this.#languages[0];
-  }
 }

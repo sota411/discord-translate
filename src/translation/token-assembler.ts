@@ -44,7 +44,7 @@ export class TranslationTokenAssembler {
   readonly #languages: ReadonlySet<Language>;
   readonly #maxSourceDurationMs: number;
   readonly #maxInputCharacters: number;
-  readonly #originals = new Map<Language, OriginalBuffer>();
+  #original: OriginalBuffer = { text: [] };
   #sourceLanguage: Language | undefined;
   #targetLanguage: Language | undefined;
   #translation: string[] = [];
@@ -58,8 +58,8 @@ export class TranslationTokenAssembler {
 
   public accept(token: TranslationToken): AcceptedTranslationToken | undefined {
     if (!token.is_final) return undefined;
-    if (token.translation_status === "original" && this.#isPairLanguage(token.language)) {
-      const original = this.#originals.get(token.language) ?? { text: [] };
+    if (token.translation_status === "original") {
+      const original = this.#original;
       original.text.push(token.text);
       if (token.start_ms !== undefined) {
         original.startMs = original.startMs === undefined
@@ -78,7 +78,6 @@ export class TranslationTokenAssembler {
       ) {
         this.#throwTooLong();
       }
-      this.#originals.set(token.language, original);
       return undefined;
     }
 
@@ -128,10 +127,10 @@ export class TranslationTokenAssembler {
   public flush(): FinalizedUtterance | undefined {
     const sourceLanguage = this.#sourceLanguage;
     const targetLanguage = this.#targetLanguage;
-    const original = sourceLanguage ? this.#originals.get(sourceLanguage) : undefined;
-    const originalText = original?.text.join("") ?? "";
+    const original = this.#original;
+    const originalText = original.text.join("");
     const translatedText = this.#translation.join("");
-    const sourceDurationMs = original?.startMs !== undefined && original.endMs !== undefined
+    const sourceDurationMs = original.startMs !== undefined && original.endMs !== undefined
       ? Math.max(0, original.endMs - original.startMs)
       : 0;
     this.#reset();
@@ -153,7 +152,7 @@ export class TranslationTokenAssembler {
   }
 
   #reset(): void {
-    this.#originals.clear();
+    this.#original = { text: [] };
     this.#sourceLanguage = undefined;
     this.#targetLanguage = undefined;
     this.#translation = [];
