@@ -1,0 +1,38 @@
+{
+  "name": "discord-realtime-translation-bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Private Discord voice translation bot backed by Soniox",
+  "engines": {
+    "node": ">=24.17.0"
+  },
+  "packageManager": "pnpm@11.3.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "dev": "node --env-file-if-exists=.env.local --import tsx src/index.ts",
+    "lint": "eslint .",
+    "register-commands": "node --env-file-if-exists=.env.local --import tsx src/register-commands.ts",
+    "start": "node --env-file-if-exists=.env.local dist/index.js",
+    "test": "tsx --test test/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@discordjs/opus": "^0.10.0",
+    "@discordjs/voice": "0.19.2",
+    "@soniox/node": "^2.3.0",
+    "better-sqlite3": "^13.0.3",
+    "discord.js": "^14.27.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.10.13",
+    "eslint": "^10.0.0",
+    "tsx": "^4.23.12",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.67.0"
+  }
+}
