@@ -65,6 +65,7 @@ type SessionManagerDependencies = {
   driver: TranslationSessionDriver;
   usageGate: UsageGate;
   capacityGate: CapacityGate;
+  onSessionStopped?: () => Promise<void>;
   now?: () => Date;
   createId?: () => string;
 };
@@ -74,6 +75,7 @@ export class SessionManager {
   readonly #driver: TranslationSessionDriver;
   readonly #usageGate: UsageGate;
   readonly #capacityGate: CapacityGate;
+  readonly #onSessionStopped: () => Promise<void>;
   readonly #now: () => Date;
   readonly #createId: () => string;
 
@@ -81,6 +83,7 @@ export class SessionManager {
     this.#driver = dependencies.driver;
     this.#usageGate = dependencies.usageGate;
     this.#capacityGate = dependencies.capacityGate;
+    this.#onSessionStopped = dependencies.onSessionStopped ?? (() => Promise.resolve());
     this.#now = dependencies.now ?? (() => new Date());
     this.#createId = dependencies.createId ?? randomUUID;
   }
@@ -126,17 +129,34 @@ export class SessionManager {
       session.state = "ACTIVE";
       return session;
     } catch (error) {
+      const cleanupErrors: unknown[] = [];
+      if (session.runtime) {
+        try {
+          await session.runtime.stop("START_ABORTED");
+        } catch (caught) {
+          cleanupErrors.push(caught);
+        }
+        try {
+          await this.#onSessionStopped();
+        } catch (caught) {
+          cleanupErrors.push(caught);
+        }
+      }
       session.state = "FAILED";
       if (this.#sessions.get(session.guildId) === session) {
         this.#sessions.delete(session.guildId);
       }
-      if (error instanceof ApplicationError) {
+      if (error instanceof ApplicationError && cleanupErrors.length === 0) {
         throw error;
       }
       throw new ApplicationError(
         "SESSION_START_FAILED",
         "翻訳セッションを開始できませんでした。時間を置いて再実行してください。",
-        { cause: error },
+        {
+          cause: cleanupErrors.length > 0
+            ? new AggregateError(cleanupErrors, "開始失敗後の停止処理に失敗しました")
+            : error,
+        },
       );
     }
   }
@@ -159,19 +179,40 @@ export class SessionManager {
       return false;
     }
     session.state = "STOPPING";
+    const errors: unknown[] = [];
     try {
       await session.runtime?.stop(reason);
+    } catch (error) {
+      errors.push(error);
     } finally {
       if (this.#sessions.get(guildId) === session) {
         this.#sessions.delete(guildId);
       }
+    }
+    if (session.runtime) {
+      try {
+        await this.#onSessionStopped();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length > 0) {
+      throw new AggregateError(errors, "翻訳セッションの停止処理に失敗しました");
     }
     return true;
   }
 
   public async stopAll(reason: string): Promise<void> {
     const guildIds = [...this.#sessions.keys()];
-    await Promise.allSettled(guildIds.map(async (guildId) => this.stop(guildId, reason)));
+    const results = await Promise.allSettled(
+      guildIds.map(async (guildId) => this.stop(guildId, reason)),
+    );
+    const errors = results
+      .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+      .map((result): unknown => result.reason);
+    if (errors.length > 0) {
+      throw new AggregateError(errors, "一部の翻訳セッションを正常に停止できませんでした");
+    }
   }
 
   #assertCurrent(session: ManagedSession): void {

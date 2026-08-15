@@ -17,6 +17,22 @@ import {
 import type { CapacityGate } from "../session/session-manager.js";
 import { usdDecimalToMicrousd } from "../usage/usage-ledger.js";
 
+type RequestDeadline = {
+  signal: AbortSignal;
+  clear(): void;
+};
+
+function createRequestDeadline(timeoutMs: number): RequestDeadline {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(new DOMException("Soniox API request timed out", "TimeoutError"));
+  }, timeoutMs);
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timer),
+  };
+}
+
 type ConcurrencyClient = {
   concurrencyLimits: {
     get(signal?: AbortSignal): Promise<ConcurrencyLimitsResponse>;
@@ -46,9 +62,11 @@ export function hasSonioxCapacity(
 
 export class SonioxCapacityGate implements CapacityGate {
   readonly #client: ConcurrencyClient;
+  readonly #timeoutMs: number;
 
-  public constructor(client: ConcurrencyClient) {
+  public constructor(client: ConcurrencyClient, timeoutMs = 30_000) {
     this.#client = client;
+    this.#timeoutMs = timeoutMs;
   }
 
   public async assertCanStart(input: {
@@ -56,8 +74,12 @@ export class SonioxCapacityGate implements CapacityGate {
     ttsStreams: number;
     at: Date;
   }): Promise<void> {
+    const deadline = createRequestDeadline(this.#timeoutMs);
     try {
-      const limits = await this.#client.concurrencyLimits.get();
+      const limits = await awaitWithAbort(
+        this.#client.concurrencyLimits.get(deadline.signal),
+        deadline.signal,
+      );
       if (!hasSonioxCapacity(limits, input.sttStreams, input.ttsStreams)) {
         throw new ApplicationError(
           "SONIOX_CAPACITY_UNAVAILABLE",
@@ -71,6 +93,8 @@ export class SonioxCapacityGate implements CapacityGate {
         "Sonioxの同時実行枠を確認できないため、翻訳を開始しません。",
         { cause: error },
       );
+    } finally {
+      deadline.clear();
     }
   }
 }
@@ -103,35 +127,48 @@ function supportsPair(model: SonioxModel, pair: LanguagePair): boolean {
 export async function verifySonioxConfiguration(
   client: PreflightClient,
   config: Pick<AppConfig["soniox"], "sttModel" | "ttsModel" | "voices">,
+  timeoutMs = 30_000,
 ): Promise<void> {
-  const [sttModels, ttsModels] = await Promise.all([
-    client.models.list(),
-    client.tts.listModels(),
-  ]);
-  const sttModel = sttModels.find((model) => model.id === config.sttModel);
-  const ttsModel = ttsModels.find((model) => model.id === config.ttsModel);
-  const issues: string[] = [];
-  if (!sttModel) {
-    issues.push(`STT model「${config.sttModel}」を利用できません`);
-  } else {
-    const supportedLanguages = new Set(sttModel.languages.map((language) => language.code));
-    for (const language of ["ja", "ko", "en"] as const) {
-      if (!supportedLanguages.has(language)) issues.push(`STT modelが${language}に未対応です`);
+  const deadline = createRequestDeadline(timeoutMs);
+  try {
+    const [sttModels, ttsModels] = await awaitWithAbort(
+      Promise.all([
+        client.models.list(deadline.signal),
+        client.tts.listModels(deadline.signal),
+      ]),
+      deadline.signal,
+    );
+    const sttModel = sttModels.find((model) => model.id === config.sttModel);
+    const ttsModel = ttsModels.find((model) => model.id === config.ttsModel);
+    const issues: string[] = [];
+    if (!sttModel) {
+      issues.push(`STT model「${config.sttModel}」を利用できません`);
+    } else {
+      const supportedLanguages = new Set(sttModel.languages.map((language) => language.code));
+      for (const language of ["ja", "ko", "en"] as const) {
+        if (!supportedLanguages.has(language)) issues.push(`STT modelが${language}に未対応です`);
+      }
+      for (const pair of languagePairs) {
+        if (!supportsPair(sttModel, pair)) issues.push(`STT modelが${pair}の双方向翻訳に未対応です`);
+      }
     }
-    for (const pair of languagePairs) {
-      if (!supportsPair(sttModel, pair)) issues.push(`STT modelが${pair}の双方向翻訳に未対応です`);
+    if (!ttsModel) {
+      issues.push(`TTS model「${config.ttsModel}」を利用できません`);
+    } else {
+      const supportedLanguages = new Set(ttsModel.languages.map((language) => language.code));
+      for (const language of ["ja", "ko", "en"] as const) {
+        if (!supportedLanguages.has(language)) issues.push(`TTS modelが${language}に未対応です`);
+      }
+      const voices = new Set(ttsModel.voices.map((voice) => voice.id));
+      for (const [language, voice] of Object.entries(config.voices)) {
+        if (!voices.has(voice)) issues.push(`SONIOX_VOICE_${language.toUpperCase()}「${voice}」を利用できません`);
+      }
     }
-  }
-  if (!ttsModel) {
-    issues.push(`TTS model「${config.ttsModel}」を利用できません`);
-  } else {
-    const voices = new Set(ttsModel.voices.map((voice) => voice.id));
-    for (const [language, voice] of Object.entries(config.voices)) {
-      if (!voices.has(voice)) issues.push(`SONIOX_VOICE_${language.toUpperCase()}「${voice}」を利用できません`);
+    if (issues.length > 0) {
+      throw new Error(`Soniox設定の事前確認に失敗しました:\n- ${issues.join("\n- ")}`);
     }
-  }
-  if (issues.length > 0) {
-    throw new Error(`Soniox設定の事前確認に失敗しました:\n- ${issues.join("\n- ")}`);
+  } finally {
+    deadline.clear();
   }
 }
 
@@ -187,6 +224,7 @@ type UsageLogClient = {
       end_time: string;
       sort: "end_time_asc";
       limit: number;
+      signal?: AbortSignal;
     }): Promise<AsyncIterable<{
       client_reference_id?: string | null | undefined;
       cost_usd: string;
@@ -204,13 +242,45 @@ type ReconciliationLedger = {
 const reconciliationOverlapMs = 5 * 60 * 1000;
 const initialReconciliationWindowMs = 30 * 24 * 60 * 60 * 1000;
 
+function abortReason(signal: AbortSignal): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new Error("Soniox API request aborted", { cause: signal.reason });
+}
+
+function awaitWithAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(abortReason(signal));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(abortReason(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+    void operation.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error instanceof Error
+          ? error
+          : new Error("Soniox API request failed", { cause: error }));
+      },
+    );
+  });
+}
+
 export class SonioxUsageReconciler {
   readonly #client: UsageLogClient;
   readonly #ledger: ReconciliationLedger;
+  readonly #timeoutMs: number;
 
-  public constructor(client: UsageLogClient, ledger: ReconciliationLedger) {
+  public constructor(
+    client: UsageLogClient,
+    ledger: ReconciliationLedger,
+    timeoutMs = 30_000,
+  ) {
     this.#client = client;
     this.#ledger = ledger;
+    this.#timeoutMs = timeoutMs;
   }
 
   public async reconcile(at: Date): Promise<void> {
@@ -221,21 +291,135 @@ export class SonioxUsageReconciler {
           at.getTime() - initialReconciliationWindowMs,
         )
       : at.getTime() - initialReconciliationWindowMs;
-    const result = await this.#client.usageLogs.list({
-      start_time: new Date(startMs).toISOString(),
-      end_time: at.toISOString(),
-      sort: "end_time_asc",
-      limit: 1_000,
-    });
-    for await (const log of result) {
-      const requestRef = log.client_reference_id;
-      if (!requestRef || !this.#ledger.hasProviderRequest(requestRef)) continue;
-      this.#ledger.reconcileProviderRequest(
-        requestRef,
-        usdDecimalToMicrousd(log.cost_usd),
-        at,
+    const deadline = createRequestDeadline(this.#timeoutMs);
+    try {
+      const result = await awaitWithAbort(
+        this.#client.usageLogs.list({
+          start_time: new Date(startMs).toISOString(),
+          end_time: at.toISOString(),
+          sort: "end_time_asc",
+          limit: 1_000,
+          signal: deadline.signal,
+        }),
+        deadline.signal,
       );
+      const iterator = result[Symbol.asyncIterator]();
+      let next = await awaitWithAbort(iterator.next(), deadline.signal);
+      while (!next.done) {
+        const log = next.value;
+        const requestRef = log.client_reference_id;
+        if (requestRef && this.#ledger.hasProviderRequest(requestRef)) {
+          this.#ledger.reconcileProviderRequest(
+            requestRef,
+            usdDecimalToMicrousd(log.cost_usd),
+            at,
+          );
+        }
+        next = await awaitWithAbort(iterator.next(), deadline.signal);
+      }
+      this.#ledger.markReconciled(at);
+    } finally {
+      deadline.clear();
     }
-    this.#ledger.markReconciled(at);
+  }
+}
+
+type UsageReconciler = {
+  reconcile(at: Date): Promise<void>;
+};
+
+type ReconciliationJob = {
+  at: Date;
+  promise: Promise<void>;
+  resolve: () => void;
+};
+
+function createReconciliationJob(at: Date): ReconciliationJob {
+  let resolve = (): void => undefined;
+  const promise = new Promise<void>((jobResolved) => {
+    resolve = jobResolved;
+  });
+  return { at, promise, resolve };
+}
+
+export class SonioxUsageReconciliationQueue {
+  readonly #reconciler: UsageReconciler;
+  readonly #onError: (error: unknown) => void;
+  readonly #requiredJobs: ReconciliationJob[] = [];
+  readonly #idleWaiters: (() => void)[] = [];
+  #periodicJob: ReconciliationJob | undefined;
+  #running = false;
+
+  public constructor(
+    reconciler: UsageReconciler,
+    onError: (error: unknown) => void,
+  ) {
+    this.#reconciler = reconciler;
+    this.#onError = onError;
+  }
+
+  public schedule(at: Date): Promise<void> {
+    const job = createReconciliationJob(at);
+    this.#requiredJobs.push(job);
+    this.#start();
+    return job.promise;
+  }
+
+  public schedulePeriodic(at: Date): Promise<void> {
+    if (this.#periodicJob) {
+      this.#periodicJob.at = at;
+      return this.#periodicJob.promise;
+    }
+
+    const job = createReconciliationJob(at);
+    this.#periodicJob = job;
+    this.#start();
+    return job.promise;
+  }
+
+  public wait(): Promise<void> {
+    if (!this.#running) {
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+      this.#idleWaiters.push(resolve);
+    });
+  }
+
+  #start(): void {
+    if (this.#running) {
+      return;
+    }
+    this.#running = true;
+    void this.#drain();
+  }
+
+  async #drain(): Promise<void> {
+    let job = this.#nextJob();
+    while (job) {
+      try {
+        await this.#reconciler.reconcile(job.at);
+      } catch (error) {
+        this.#onError(error);
+      } finally {
+        job.resolve();
+      }
+      job = this.#nextJob();
+    }
+
+    this.#running = false;
+    for (const resolve of this.#idleWaiters.splice(0)) {
+      resolve();
+    }
+  }
+
+  #nextJob(): ReconciliationJob | undefined {
+    const required = this.#requiredJobs.shift();
+    if (required) {
+      return required;
+    }
+    const periodic = this.#periodicJob;
+    this.#periodicJob = undefined;
+    return periodic;
   }
 }

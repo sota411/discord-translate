@@ -16,6 +16,7 @@ import { SessionManager } from "./session/session-manager.js";
 import {
   SonioxCapacityGate,
   SonioxSttFactory,
+  SonioxUsageReconciliationQueue,
   SonioxUsageReconciler,
   createSonioxClient,
   verifySonioxConfiguration,
@@ -51,17 +52,39 @@ export async function startApplication(
       sessions: recovered.sessions,
       provider_requests: recovered.providerRequests,
     });
+    const pruned = ledger.pruneExpiredUsage(new Date());
+    logger.info("usage_retention_complete", {
+      sessions: pruned.sessions,
+      monthly_usage_rows: pruned.monthlyUsageRows,
+    });
 
     const soniox = createSonioxClient(config.soniox);
-    await verifySonioxConfiguration(soniox, config.soniox);
-    const capacityGate = new SonioxCapacityGate(soniox);
+    const sonioxControlTimeoutMs =
+      config.soniox.limitCheckMaxStalenessSeconds * 1_000;
+    await verifySonioxConfiguration(soniox, config.soniox, sonioxControlTimeoutMs);
+    const capacityGate = new SonioxCapacityGate(
+      soniox,
+      sonioxControlTimeoutMs,
+    );
     await capacityGate.assertCanStart({
       sttStreams: 0,
       ttsStreams: 0,
       at: new Date(),
     });
-    const reconciler = new SonioxUsageReconciler(soniox, ledger);
+    const reconciler = new SonioxUsageReconciler(
+      soniox,
+      ledger,
+      sonioxControlTimeoutMs,
+    );
     await reconciler.reconcile(new Date());
+    const reconciliationQueue = new SonioxUsageReconciliationQueue(
+      reconciler,
+      (error) => logger.error("usage_reconciliation_failed", error),
+    );
+    const reconcileSessionEnd = (): Promise<void> =>
+      reconciliationQueue.schedule(new Date());
+    const reconcilePeriodically = (): Promise<void> =>
+      reconciliationQueue.schedulePeriodic(new Date());
     logger.info("soniox_preflight_complete", { region: config.soniox.region });
 
     const discordClient = new Client({
@@ -107,6 +130,7 @@ export async function startApplication(
       driver,
       usageGate: ledger,
       capacityGate,
+      onSessionStopped: reconcileSessionEnd,
     });
     const commands = new TranslationCommandService({
       allowedGuildIds: config.discord.allowedGuildIds,
@@ -136,17 +160,8 @@ export async function startApplication(
       allowed_user_count: config.discord.allowedUserIds.size,
     });
 
-    let reconciliationRunning = false;
     const timer = setInterval(() => {
-      if (reconciliationRunning) return;
-      reconciliationRunning = true;
-      void reconciler.reconcile(new Date())
-        .catch((error: unknown) => {
-          logger.error("usage_reconciliation_failed", error);
-        })
-        .finally(() => {
-          reconciliationRunning = false;
-        });
+      void reconcilePeriodically();
     }, config.usage.reconcileIntervalSeconds * 1_000);
     reconciliationTimer = timer;
     timer.unref();
@@ -162,6 +177,7 @@ export async function startApplication(
           client: discordClient,
           ledger,
           reconciliationTimer: timer,
+          waitForReconciliation: () => reconciliationQueue.wait(),
         });
         return shutdownPromise;
       },
@@ -188,6 +204,7 @@ async function shutdownApplication(input: {
   client: Client;
   ledger: UsageLedger;
   reconciliationTimer: NodeJS.Timeout;
+  waitForReconciliation: () => Promise<void>;
 }): Promise<void> {
   input.logger.info("application_shutdown_started", { reason: input.reason });
   input.controller.stopAcceptingCommands();
@@ -195,6 +212,7 @@ async function shutdownApplication(input: {
   try {
     await input.sessions.stopAll(input.reason);
   } finally {
+    await input.waitForReconciliation();
     input.controller.detach();
     await input.client.destroy();
     input.ledger.close();

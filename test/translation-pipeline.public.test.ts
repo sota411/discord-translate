@@ -6,6 +6,7 @@ import {
   MonoToStereoTransform,
   downmixStereoS16leToMono,
 } from "../src/audio/pcm.js";
+import { ApplicationError } from "../src/domain/application-error.js";
 import { TranslationTokenAssembler } from "../src/translation/token-assembler.js";
 import {
   UtteranceProcessor,
@@ -17,7 +18,10 @@ import {
 } from "../src/translation/utterance-processor.js";
 
 void test("確定した正しい方向の翻訳だけをendpointで1発話にする", () => {
-  const assembler = new TranslationTokenAssembler("ja-ko");
+  const assembler = new TranslationTokenAssembler("ja-ko", {
+    maxSourceDurationMs: 30_000,
+    maxInputCharacters: 300,
+  });
   assembler.accept({
     text: "こん",
     is_final: false,
@@ -62,6 +66,41 @@ void test("確定した正しい方向の翻訳だけをendpointで1発話にす
     sourceDurationMs: 800,
   });
   assert.equal(assembler.flush(), undefined);
+});
+
+void test("endpointが来なくても確定トークン時点で発話上限を拒否する", () => {
+  const durationAssembler = new TranslationTokenAssembler("ja-ko", {
+    maxSourceDurationMs: 1_000,
+    maxInputCharacters: 3,
+  });
+  assert.throws(
+    () => durationAssembler.accept({
+      text: "長い発話",
+      is_final: true,
+      language: "ja",
+      translation_status: "original",
+      start_ms: 0,
+      end_ms: 1_001,
+    }),
+    (error: unknown) =>
+      error instanceof ApplicationError && error.code === "UTTERANCE_TOO_LONG",
+  );
+
+  const textAssembler = new TranslationTokenAssembler("ja-ko", {
+    maxSourceDurationMs: 1_000,
+    maxInputCharacters: 3,
+  });
+  assert.throws(
+    () => textAssembler.accept({
+      text: "너무 길어요",
+      is_final: true,
+      language: "ko",
+      source_language: "ja",
+      translation_status: "translation",
+    }),
+    (error: unknown) =>
+      error instanceof ApplicationError && error.code === "UTTERANCE_TOO_LONG",
+  );
 });
 
 void test("Discord stereo PCMをmonoへ平均し、TTS mono PCMをstereoへ複製する", async () => {
@@ -141,6 +180,63 @@ class BlockingPlayback implements PlaybackGateway {
 
   public stop(): void {
     this.stops += 1;
+  }
+}
+
+class CancellableTts implements TtsGateway {
+  public canceled = 0;
+  public resolveCompletion: (() => void) | undefined;
+
+  public synthesize(): Promise<SynthesizedSpeech> {
+    return Promise.resolve({
+      audio: Readable.from([Buffer.from([1, 0, 2, 0])]),
+      completed: new Promise<void>((resolve) => {
+        this.resolveCompletion = resolve;
+      }),
+      cancel: () => {
+        this.canceled += 1;
+        this.resolveCompletion?.();
+      },
+      hasReceivedAudio: () => true,
+    });
+  }
+}
+
+class LedgerFailingCancellableTts implements TtsGateway {
+  public rejectCompletion: ((error: Error) => void) | undefined;
+
+  public synthesize(): Promise<SynthesizedSpeech> {
+    return Promise.resolve({
+      audio: Readable.from([Buffer.from([1, 0, 2, 0])]),
+      completed: new Promise<void>((_resolve, reject) => {
+        this.rejectCompletion = reject;
+      }),
+      cancel: () => {
+        this.rejectCompletion?.(new ApplicationError(
+          "USAGE_LEDGER_UNAVAILABLE",
+          "利用量台帳へ書き込めないため、翻訳を停止します。",
+        ));
+      },
+      hasReceivedAudio: () => true,
+    });
+  }
+}
+
+class StopAwarePlayback implements PlaybackGateway {
+  public resolvePlayback: (() => void) | undefined;
+
+  public async play(audio: Readable): Promise<void> {
+    for await (const chunk of audio) {
+      // Consume the public audio stream before waiting for Discord playback completion.
+      void chunk;
+    }
+    await new Promise<void>((resolve) => {
+      this.resolvePlayback = resolve;
+    });
+  }
+
+  public stop(): void {
+    this.resolvePlayback?.();
   }
 }
 
@@ -233,4 +329,75 @@ void test("長すぎる発話は字幕・TTSへ渡さず明示的に失敗する
   assert.equal(tts.started.length, 0);
   assert.equal(captions.records.length, 0);
   assert.match(failures[0]?.message ?? "", /UTTERANCE_TOO_LONG/);
+});
+
+void test("再生中の停止は字幕を再生済みに戻さず、一部再生後の終了として確定する", async () => {
+  const captions = new RecordingCaptions();
+  const tts = new CancellableTts();
+  const playback = new StopAwarePlayback();
+  const processor = new UtteranceProcessor({
+    captions,
+    tts,
+    playback,
+    maxQueueWaitMs: 10_000,
+    maxSourceDurationMs: 30_000,
+    maxInputCharacters: 300,
+    onFatal: () => assert.fail("利用者停止をfatal errorとして扱ってはいけません"),
+  });
+
+  processor.enqueue({
+    utteranceId: "u-stop",
+    sessionId: "s1",
+    speakerUserId: "user1",
+    speakerDisplayName: "sota",
+    sourceLanguage: "ja",
+    targetLanguage: "ko",
+    originalText: "停止します",
+    translatedText: "중지합니다",
+    sourceDurationMs: 500,
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const caption = captions.records[0];
+  assert.ok(caption);
+  assert.equal(caption.state, "pending");
+
+  await processor.stop();
+  await processor.whenIdle();
+
+  assert.equal(tts.canceled, 1);
+  assert.equal(caption.state, "partial_failure");
+});
+
+void test("停止中のTTS利用台帳エラーは正常停止として隠さない", async () => {
+  const captions = new RecordingCaptions();
+  const processor = new UtteranceProcessor({
+    captions,
+    tts: new LedgerFailingCancellableTts(),
+    playback: new StopAwarePlayback(),
+    maxQueueWaitMs: 10_000,
+    maxSourceDurationMs: 30_000,
+    maxInputCharacters: 300,
+    onFatal: () => assert.fail("停止処理の台帳エラーを通常実行時エラーにしてはいけません"),
+  });
+
+  processor.enqueue({
+    utteranceId: "u-ledger-stop",
+    sessionId: "s1",
+    speakerUserId: "user1",
+    speakerDisplayName: "sota",
+    sourceLanguage: "ja",
+    targetLanguage: "ko",
+    originalText: "停止します",
+    translatedText: "중지합니다",
+    sourceDurationMs: 500,
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  await assert.rejects(
+    processor.stop(),
+    (error: unknown) =>
+      error instanceof ApplicationError &&
+      error.code === "USAGE_LEDGER_UNAVAILABLE",
+  );
+  assert.equal(captions.records[0]?.state, "partial_failure");
 });

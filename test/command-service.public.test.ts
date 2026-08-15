@@ -18,6 +18,7 @@ type Harness = {
   driver: RecordingDriver;
   usageGate: RecordingUsageGate;
   capacityGate: RecordingCapacityGate;
+  reconciliation: { calls: number };
 };
 
 class RecordingUsageGate implements UsageGate {
@@ -42,6 +43,7 @@ class RecordingCapacityGate implements CapacityGate {
 class RecordingRuntime implements SessionRuntime {
   public readonly updates: string[][] = [];
   public readonly stopReasons: string[] = [];
+  public stopError: Error | undefined;
 
   public updateParticipants(participantIds: readonly string[]): Promise<void> {
     this.updates.push([...participantIds]);
@@ -50,22 +52,24 @@ class RecordingRuntime implements SessionRuntime {
 
   public stop(reason: string): Promise<void> {
     this.stopReasons.push(reason);
-    return Promise.resolve();
+    return this.stopError ? Promise.reject(this.stopError) : Promise.resolve();
   }
 }
 
 class RecordingDriver implements TranslationSessionDriver {
   public readonly starts: { guildId: string; participantIds: readonly string[] }[] = [];
   public readonly runtimes: RecordingRuntime[] = [];
+  public wait: Promise<void> = Promise.resolve();
 
-  public start(
+  public async start(
     session: { guildId: string },
     participantIds: readonly string[],
   ): Promise<SessionRuntime> {
     this.starts.push({ guildId: session.guildId, participantIds: [...participantIds] });
+    await this.wait;
     const runtime = new RecordingRuntime();
     this.runtimes.push(runtime);
-    return Promise.resolve(runtime);
+    return runtime;
   }
 }
 
@@ -73,10 +77,15 @@ function createHarness(): Harness {
   const driver = new RecordingDriver();
   const usageGate = new RecordingUsageGate();
   const capacityGate = new RecordingCapacityGate();
+  const reconciliation = { calls: 0 };
   const sessions = new SessionManager({
     driver,
     usageGate,
     capacityGate,
+    onSessionStopped: () => {
+      reconciliation.calls += 1;
+      return Promise.resolve();
+    },
     now: () => new Date("2026-08-15T03:00:00Z"),
     createId: () => "00000000-0000-4000-8000-000000000001",
   });
@@ -89,7 +98,7 @@ function createHarness(): Harness {
     maxSpeakersPerSession: 2,
     sessions,
   });
-  return { service, driver, usageGate, capacityGate };
+  return { service, driver, usageGate, capacityGate, reconciliation };
 }
 
 function validStart(overrides: Partial<StartCommandInput> = {}): StartCommandInput {
@@ -199,6 +208,33 @@ void test("同じGuildへの同時startはAUTHORIZING中から排他する", asy
   assert.equal(harness.driver.starts.length, 1);
 });
 
+void test("CONNECTING中に停止されたstartは、遅れて作成されたruntimeも必ず破棄する", async () => {
+  const harness = createHarness();
+  let releaseDriver: (() => void) | undefined;
+  harness.driver.wait = new Promise<void>((resolve) => {
+    releaseDriver = resolve;
+  });
+
+  const starting = harness.service.execute(validStart());
+  while (harness.driver.starts.length === 0) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  const stopped = await harness.service.execute({
+    kind: "stop",
+    guildId: "223456789012345678",
+    actorId: "323456789012345678",
+    actorCanManageGuild: false,
+    actorVoiceChannelId: "523456789012345678",
+  });
+  assert.equal(stopped.ok, true);
+
+  releaseDriver?.();
+  const startResult = await starting;
+  assert.equal(startResult.ok, false);
+  assert.equal(startResult.code, "SESSION_START_FAILED");
+  assert.deepEqual(harness.driver.runtimes[0]?.stopReasons, ["START_ABORTED"]);
+});
+
 void test("未許可Userの途中参加時はruntimeへ追加せずセッションを停止する", async () => {
   const harness = createHarness();
   assert.equal((await harness.service.execute(validStart())).ok, true);
@@ -239,4 +275,20 @@ void test("開始者、対象VC参加者、ManageGuild保持者だけが停止�
   });
   assert.equal(stopped.ok, true);
   assert.deepEqual(harness.driver.runtimes[0]?.stopReasons, ["USER_REQUEST"]);
+  assert.equal(harness.reconciliation.calls, 1);
+});
+
+void test("runtimeの停止処理が失敗しても停止後の利用ログ照合を実行する", async () => {
+  const harness = createHarness();
+  assert.equal((await harness.service.execute(validStart())).ok, true);
+  const runtime = harness.driver.runtimes[0];
+  assert.ok(runtime);
+  runtime.stopError = new Error("cleanup failed");
+
+  await assert.rejects(
+    harness.service.stopForFailure("223456789012345678", "VOICE_CONNECTION_LOST"),
+    AggregateError,
+  );
+
+  assert.equal(harness.reconciliation.calls, 1);
 });

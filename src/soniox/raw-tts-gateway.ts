@@ -145,7 +145,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
     let audioEnded = false;
     let settled = false;
     let canceled = false;
-    let providerError: ApplicationError | undefined;
+    let sentTextCharacterCount = 0;
     const timers: { inactivity?: NodeJS.Timeout } = {};
     let resolveCompletion: (() => void) | undefined;
     let rejectCompletion: ((error: Error) => void) | undefined;
@@ -165,7 +165,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
         this.#ledger.recordProviderUsage({
           requestRef,
           audioMs: pcmDurationMs(receivedAudioBytes),
-          textCharacterCount: Array.from(input.text).length,
+          textCharacterCount: sentTextCharacterCount,
           at: endedAt,
         });
       } catch (ledgerError) {
@@ -191,7 +191,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
       } catch {
         // The completion result is already fixed; close is best effort.
       }
-      if (completionError && !canceled) {
+      if (completionError) {
         rejectCompletion?.(completionError);
       } else {
         resolveCompletion?.();
@@ -218,16 +218,25 @@ export class RawSonioxTtsGateway implements TtsGateway {
       try {
         event = JSON.parse(rawDataToUtf8(data)) as TtsWireEvent;
       } catch {
-        providerError = new ApplicationError(
-          "SONIOX_STREAM_FAILED",
-          "Sonioxから不正なTTS応答を受信しました。",
+        finish(
+          "failed",
+          new ApplicationError(
+            "SONIOX_STREAM_FAILED",
+            "Sonioxから不正なTTS応答を受信しました。",
+          ),
         );
+        return;
+      }
+      if (
+        event.error_code !== undefined &&
+        (event.stream_id === undefined || event.stream_id === input.utteranceId)
+      ) {
+        finish("failed", mapTtsError(event));
         return;
       }
       if (event.stream_id !== input.utteranceId) return;
       resetInactivityTimeout();
-      if (event.error_code !== undefined) providerError = mapTtsError(event);
-      if (event.audio !== undefined && !providerError) {
+      if (event.audio !== undefined) {
         const chunk = Buffer.from(event.audio, "base64");
         receivedAudioBytes += chunk.length;
         audio.write(chunk);
@@ -237,9 +246,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
         audio.end();
       }
       if (event.terminated) {
-        if (providerError) {
-          finish("failed", providerError);
-        } else if (!audioEnded && !canceled) {
+        if (!audioEnded && !canceled) {
           finish(
             "failed",
             new ApplicationError(
@@ -303,21 +310,42 @@ export class RawSonioxTtsGateway implements TtsGateway {
       throw error;
     }
 
-    socket.send(JSON.stringify({
-      api_key: this.#apiKey,
-      model: this.#model,
-      language: input.language,
-      voice: this.#voices[input.language],
-      audio_format: "pcm_s16le",
-      sample_rate: 48_000,
-      stream_id: input.utteranceId,
-      client_reference_id: requestRef,
-    }));
-    socket.send(JSON.stringify({
-      stream_id: input.utteranceId,
-      text: input.text,
-      text_end: true,
-    }));
+    const send = (payload: Record<string, unknown>): Promise<void> =>
+      new Promise((resolve, reject) => {
+        socket.send(JSON.stringify(payload), (error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      });
+    try {
+      await send({
+        api_key: this.#apiKey,
+        model: this.#model,
+        language: input.language,
+        voice: this.#voices[input.language],
+        audio_format: "pcm_s16le",
+        sample_rate: 48_000,
+        stream_id: input.utteranceId,
+        client_reference_id: requestRef,
+      });
+      await send({
+        stream_id: input.utteranceId,
+        text: input.text,
+        text_end: true,
+      });
+      sentTextCharacterCount = Array.from(input.text).length;
+    } catch (error) {
+      finish(
+        "failed",
+        new ApplicationError(
+          "SONIOX_STREAM_FAILED",
+          "Soniox TTSへ本文を送信できませんでした。",
+          { cause: error },
+        ),
+      );
+      await completed;
+      throw error;
+    }
     resetInactivityTimeout();
 
     return {

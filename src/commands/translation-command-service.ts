@@ -209,7 +209,7 @@ export class TranslationCommandService {
     return {
       ok: true,
       ephemeral: true,
-      interactionMessage: "翻訳を開始しました。音声チャンネルへ開始通知を投稿しました。",
+      interactionMessage: "翻訳を開始しました。字幕チャンネルへ開始通知を投稿しました。",
       publicMessage: {
         channelId: input.textChannel.id,
         content: this.#startMessage(

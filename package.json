@@ -12,21 +12,23 @@
     "build": "tsc -p tsconfig.build.json",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
     "dev": "node --env-file-if-exists=.env.local --import tsx src/index.ts",
+    "diagrams:sync": "node scripts/sync-diagram-svg.mjs",
     "lint": "eslint .",
     "register-commands": "node --env-file-if-exists=.env.local --import tsx src/register-commands.ts",
     "soniox:inspect": "node --env-file-if-exists=.env.local --import tsx src/inspect-soniox.ts",
+    "smoke:runtime": "node scripts/smoke-runtime.mjs",
     "start": "node --env-file-if-exists=.env.local dist/index.js",
     "test": "tsx --test test/**/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@discordjs/opus": "^0.10.0",
+    "@discordjs/opus": "0.10.0",
     "@discordjs/voice": "0.19.2",
-    "@soniox/node": "^2.3.0",
-    "better-sqlite3": "^13.0.3",
-    "discord.js": "^14.27.0",
-    "ws": "^8.21.3",
-    "zod": "^4.3.6"
+    "@soniox/node": "2.3.0",
+    "better-sqlite3": "13.0.3",
+    "discord.js": "14.27.0",
+    "ws": "8.21.3",
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",

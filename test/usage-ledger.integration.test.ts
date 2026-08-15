@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -123,6 +123,13 @@ void test("利用量は本文なしでUser・Guild・globalへ永続化される
   });
 });
 
+void test("SQLite利用量台帳は所有者だけが読み書きできる", async () => {
+  await withLedger(async (_ledger, databasePath) => {
+    const mode = (await stat(databasePath)).mode & 0o777;
+    assert.equal(mode, 0o600);
+  });
+});
+
 void test("照合が古い場合と月額上限到達時は新規開始をFail Closedで拒否する", async () => {
   await withLedger(async (ledger) => {
     const at = new Date("2026-08-15T03:00:00Z");
@@ -216,6 +223,69 @@ void test("再起動時に未終了セッションとprovider requestを失敗�
     assert.equal(
       ledger.getProviderRequest("00000000-0000-4000-8000-000000000021")?.status,
       "failed",
+    );
+  });
+});
+
+void test("User・Guildは2か月、globalは12か月を残し、古いセッションを関連要求ごと削除する", async () => {
+  await withLedger((ledger) => {
+    const createCompletedUsage = (
+      suffix: string,
+      startedAt: Date,
+    ): { sessionId: string; requestRef: string } => {
+      const sessionId = `00000000-0000-4000-8000-0000000000${suffix}`;
+      const requestRef = `10000000-0000-4000-8000-0000000000${suffix}`;
+      ledger.createSession({
+        sessionId,
+        guildId: "223456789012345678",
+        voiceChannelId: "523456789012345678",
+        textChannelId: "623456789012345678",
+        startedByUserId: "323456789012345678",
+        pair: "ja-ko",
+        startedAt,
+      });
+      ledger.openProviderRequest({
+        requestRef,
+        sessionId,
+        userId: "323456789012345678",
+        kind: "stt",
+        startedAt,
+      });
+      ledger.recordProviderUsage({
+        requestRef,
+        audioMs: 1_000,
+        textCharacterCount: 0,
+        at: startedAt,
+      });
+      ledger.finishProviderRequest(requestRef, "completed", startedAt);
+      ledger.finishSession(sessionId, "USER_REQUEST", startedAt);
+      return { sessionId, requestRef };
+    };
+
+    const augustLastYear = createCompletedUsage("29", new Date("2025-08-15T03:00:00Z"));
+    const june = createCompletedUsage("30", new Date("2026-06-15T03:00:00Z"));
+    const july = createCompletedUsage("31", new Date("2026-07-15T03:00:00Z"));
+    const removed = ledger.pruneExpiredUsage(new Date("2026-08-15T03:00:00Z"));
+
+    assert.deepEqual(removed, { sessions: 2, monthlyUsageRows: 5 });
+    assert.equal(ledger.getSession(augustLastYear.sessionId), undefined);
+    assert.equal(ledger.getProviderRequest(augustLastYear.requestRef), undefined);
+    assert.equal(ledger.getSession(june.sessionId), undefined);
+    assert.equal(ledger.getProviderRequest(june.requestRef), undefined);
+    assert.ok(ledger.getSession(july.sessionId));
+    assert.ok(ledger.getProviderRequest(july.requestRef));
+    assert.ok(
+      ledger.getMonthlyUsage("global", "global", new Date("2026-06-15T03:00:00Z"))
+        .estimatedCostMicrousd > 0,
+    );
+    assert.equal(
+      ledger.getMonthlyUsage("global", "global", new Date("2025-08-15T03:00:00Z"))
+        .estimatedCostMicrousd,
+      0,
+    );
+    assert.ok(
+      ledger.getMonthlyUsage("global", "global", new Date("2026-07-15T03:00:00Z"))
+        .estimatedCostMicrousd > 0,
     );
   });
 });

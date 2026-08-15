@@ -172,6 +172,46 @@ void test("max_audio_duration_reachedを安定したエラーコードへ変換�
   });
 });
 
+void test("stream IDのない認証エラーも待機せず安定したエラーコードへ変換する", async () => {
+  await withServer((socket) => {
+    socket.on("message", (data) => {
+      const message = JSON.parse(rawDataToUtf8(data)) as Record<string, unknown>;
+      if (message.text_end === true) {
+        socket.send(JSON.stringify({
+          error_code: 401,
+          error_type: "authentication_error",
+          error_message: "invalid key",
+        }), () => socket.close());
+      }
+    });
+  }, async (url) => {
+    const ledger = new RecordingLedger();
+    const gateway = new RawSonioxTtsGateway({
+      url,
+      apiKey: "invalid-test-api-key",
+      model: "tts-rt-v2",
+      voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
+      terminationTimeoutMs: 1_000,
+      ledger,
+      createRequestRef: () => "00000000-0000-4000-8000-000000000115",
+    });
+    const speech = await gateway.synthesize({
+      utteranceId: "00000000-0000-4000-8000-000000000116",
+      sessionId: "00000000-0000-4000-8000-000000000001",
+      speakerUserId: "323456789012345678",
+      language: "ko",
+      text: "인증 오류",
+    });
+
+    await assert.rejects(
+      speech.completed,
+      (error: unknown) =>
+        error instanceof ApplicationError && error.code === "SONIOX_AUTH_FAILED",
+    );
+    assert.equal(ledger.requests[0]?.status, "failed");
+  });
+});
+
 void test("cancelはTTS接続を直ちに閉じて要求をfailedへ確定する", async () => {
   const received: Record<string, unknown>[] = [];
   await withServer((socket) => {
@@ -203,6 +243,50 @@ void test("cancelはTTS接続を直ちに閉じて要求をfailedへ確定する
 
     assert.equal(ledger.requests[0]?.status, "failed");
     assert.ok(received.some((message) => message.cancel === true));
+  });
+});
+
+void test("音声受信後のcancelで利用台帳へ書き込めなければ失敗を返す", async () => {
+  await withServer((socket) => {
+    socket.on("message", (data) => {
+      const message = JSON.parse(rawDataToUtf8(data)) as Record<string, unknown>;
+      if (message.text_end === true) {
+        socket.send(JSON.stringify({
+          stream_id: message.stream_id,
+          audio: Buffer.from([1, 0, 2, 0]).toString("base64"),
+        }));
+      }
+    });
+  }, async (url) => {
+    const ledger = new RecordingLedger();
+    ledger.recordProviderUsage = () => {
+      throw new Error("sqlite write failed");
+    };
+    const gateway = new RawSonioxTtsGateway({
+      url,
+      apiKey: "test-api-key",
+      model: "tts-rt-v2",
+      voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
+      terminationTimeoutMs: 1_000,
+      ledger,
+      createRequestRef: () => "00000000-0000-4000-8000-000000000125",
+    });
+    const speech = await gateway.synthesize({
+      utteranceId: "00000000-0000-4000-8000-000000000126",
+      sessionId: "00000000-0000-4000-8000-000000000001",
+      speakerUserId: "323456789012345678",
+      language: "ko",
+      text: "취소 중 오류",
+    });
+    await new Promise<void>((resolve) => speech.audio.once("data", () => resolve()));
+
+    speech.cancel();
+    await assert.rejects(
+      speech.completed,
+      (error: unknown) =>
+        error instanceof ApplicationError &&
+        error.code === "USAGE_LEDGER_UNAVAILABLE",
+    );
   });
 });
 
@@ -250,4 +334,35 @@ void test("利用上限エラーでもprovider requestをopenのまま残さな�
     );
     assert.equal(ledger.requests[0]?.status, "completed");
   });
+});
+
+void test("TTS接続前に失敗した本文は送信済み利用量へ加算しない", async () => {
+  const ledger = new RecordingLedger();
+  const gateway = new RawSonioxTtsGateway({
+    url: "ws://127.0.0.1:1",
+    apiKey: "test-api-key",
+    model: "tts-rt-v2",
+    voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
+    terminationTimeoutMs: 1_000,
+    connectTimeoutMs: 100,
+    ledger,
+    createRequestRef: () => "00000000-0000-4000-8000-000000000140",
+  });
+
+  await assert.rejects(
+    gateway.synthesize({
+      utteranceId: "00000000-0000-4000-8000-000000000141",
+      sessionId: "00000000-0000-4000-8000-000000000001",
+      speakerUserId: "323456789012345678",
+      language: "ko",
+      text: "未送信本文",
+    }),
+    (error: unknown) =>
+      error instanceof ApplicationError && error.code === "SONIOX_STREAM_FAILED",
+  );
+
+  const request = ledger.requests[0];
+  assert.ok(request);
+  assert.equal(request.status, "failed");
+  assert.equal(request.textCharacterCount, 0);
 });

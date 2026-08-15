@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
 import Database from "better-sqlite3";
@@ -177,6 +177,30 @@ function periodInTokyo(at: Date): string {
   return `${year}-${month}`;
 }
 
+function subtractMonths(period: string, months: number): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(period);
+  if (!match?.[1] || !match[2]) {
+    throw new Error(`利用月の形式が不正です: ${period}`);
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (month < 1 || month > 12 || !Number.isSafeInteger(months) || months < 0) {
+    throw new Error(`利用月の計算条件が不正です: ${period}`);
+  }
+  const shifted = year * 12 + month - 1 - months;
+  const shiftedYear = Math.floor(shifted / 12);
+  const shiftedMonth = shifted % 12 + 1;
+  return `${String(shiftedYear).padStart(4, "0")}-${String(shiftedMonth).padStart(2, "0")}`;
+}
+
+function periodStartUtc(period: string): string {
+  const start = new Date(`${period}-01T00:00:00+09:00`);
+  if (Number.isNaN(start.getTime())) {
+    throw new Error(`利用月の開始日時を計算できません: ${period}`);
+  }
+  return start.toISOString();
+}
+
 function migrate(database: Database.Database): void {
   const currentVersion = database.pragma("user_version", { simple: true }) as number;
   if (currentVersion > schemaVersion) {
@@ -252,6 +276,7 @@ export class UsageLedger implements UsageGate {
   private constructor(options: UsageLedgerOptions) {
     mkdirSync(path.dirname(options.databasePath), { recursive: true, mode: 0o700 });
     this.#database = new Database(options.databasePath);
+    chmodSync(options.databasePath, 0o600);
     this.#pricing = options.pricing;
     this.#limits = options.limits;
     this.#reconcileMaxStalenessSeconds = options.reconcileMaxStalenessSeconds;
@@ -607,6 +632,28 @@ export class UsageLedger implements UsageGate {
         WHERE ended_at IS NULL
       `).run(at.toISOString()).changes;
       return { sessions, providerRequests };
+    })();
+  }
+
+  public pruneExpiredUsage(at: Date): {
+    sessions: number;
+    monthlyUsageRows: number;
+  } {
+    const currentPeriod = periodInTokyo(at);
+    const oldestIndividualPeriod = subtractMonths(currentPeriod, 1);
+    const oldestGlobalPeriod = subtractMonths(currentPeriod, 11);
+    const oldestRetainedAt = periodStartUtc(oldestIndividualPeriod);
+    return this.#database.transaction(() => {
+      const sessions = this.#database.prepare(`
+        DELETE FROM session_usage
+        WHERE ended_at IS NOT NULL AND started_at < ?
+      `).run(oldestRetainedAt).changes;
+      const monthlyUsageRows = this.#database.prepare(`
+        DELETE FROM monthly_usage
+        WHERE (scope_type IN ('user', 'guild') AND period < ?)
+           OR (scope_type = 'global' AND period < ?)
+      `).run(oldestIndividualPeriod, oldestGlobalPeriod).changes;
+      return { sessions, monthlyUsageRows };
     })();
   }
 

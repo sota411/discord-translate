@@ -49,6 +49,10 @@ type QueuedUtterance = {
   enqueuedAt: number;
 };
 
+function isUsageAccountingError(error: unknown): error is ApplicationError {
+  return error instanceof ApplicationError && error.code.startsWith("USAGE_");
+}
+
 type UtteranceProcessorOptions = {
   captions: CaptionGateway;
   tts: TtsGateway;
@@ -72,7 +76,6 @@ export class UtteranceProcessor {
   readonly #queue: QueuedUtterance[] = [];
   #drainPromise: Promise<void> | undefined;
   #activeSpeech: SynthesizedSpeech | undefined;
-  #activeCaption: number | undefined;
   #stopped = false;
 
   public constructor(options: UtteranceProcessorOptions) {
@@ -105,9 +108,7 @@ export class UtteranceProcessor {
     this.#queue.length = 0;
     this.#activeSpeech?.cancel();
     this.#playback.stop();
-    if (this.#activeCaption !== undefined) {
-      await this.#captions.update(this.#activeCaption, "not_played");
-    }
+    await this.#drainPromise;
   }
 
   async #drain(): Promise<void> {
@@ -117,6 +118,9 @@ export class UtteranceProcessor {
       try {
         await this.#process(queued);
       } catch (error) {
+        if (this.#hasStopped() && isUsageAccountingError(error)) {
+          throw error;
+        }
         const applicationError = error instanceof ApplicationError
           ? error
           : new ApplicationError(
@@ -153,9 +157,18 @@ export class UtteranceProcessor {
       ...queued.utterance,
       state: "pending",
     });
-    this.#activeCaption = caption;
     let speech: SynthesizedSpeech | undefined;
+    const markStopped = async (): Promise<void> => {
+      await this.#captions.update(
+        caption,
+        speech?.hasReceivedAudio?.() ? "partial_failure" : "not_played",
+      );
+    };
     try {
+      if (this.#hasStopped()) {
+        await markStopped();
+        return;
+      }
       speech = await this.#tts.synthesize({
         utteranceId: queued.utterance.utteranceId,
         sessionId: queued.utterance.sessionId,
@@ -164,11 +177,34 @@ export class UtteranceProcessor {
         text: queued.utterance.translatedText,
       });
       this.#activeSpeech = speech;
+      if (this.#hasStopped()) {
+        speech.cancel();
+        const [completion] = await Promise.allSettled([speech.completed]);
+        await markStopped();
+        if (
+          completion.status === "rejected" &&
+          isUsageAccountingError(completion.reason)
+        ) {
+          throw completion.reason;
+        }
+        return;
+      }
       await Promise.all([this.#playback.play(speech.audio), speech.completed]);
-      await this.#captions.update(caption, "played");
+      if (this.#hasStopped()) {
+        await markStopped();
+      } else {
+        await this.#captions.update(caption, "played");
+      }
     } catch (error) {
       speech?.cancel();
       this.#playback.stop();
+      if (this.#hasStopped()) {
+        await markStopped();
+        if (isUsageAccountingError(error)) {
+          throw error;
+        }
+        return;
+      }
       await this.#captions.update(
         caption,
         speech?.hasReceivedAudio?.() ? "partial_failure" : "not_played",
@@ -176,7 +212,10 @@ export class UtteranceProcessor {
       throw error;
     } finally {
       this.#activeSpeech = undefined;
-      this.#activeCaption = undefined;
     }
+  }
+
+  #hasStopped(): boolean {
+    return this.#stopped;
   }
 }

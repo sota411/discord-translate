@@ -3,6 +3,7 @@ import {
   type Language,
   type LanguagePair,
 } from "../domain/language-pair.js";
+import { ApplicationError } from "../domain/application-error.js";
 
 export type TranslationToken = {
   text: string;
@@ -28,15 +29,25 @@ type OriginalBuffer = {
   endMs?: number;
 };
 
+type TranslationTokenAssemblerLimits = {
+  maxSourceDurationMs: number;
+  maxInputCharacters: number;
+};
+
 export class TranslationTokenAssembler {
   readonly #languages: ReadonlySet<Language>;
+  readonly #maxSourceDurationMs: number;
+  readonly #maxInputCharacters: number;
   readonly #originals = new Map<Language, OriginalBuffer>();
   #sourceLanguage: Language | undefined;
   #targetLanguage: Language | undefined;
   #translation: string[] = [];
+  #translationCharacters = 0;
 
-  public constructor(pair: LanguagePair) {
+  public constructor(pair: LanguagePair, limits: TranslationTokenAssemblerLimits) {
     this.#languages = new Set(languagesForPair(pair));
+    this.#maxSourceDurationMs = limits.maxSourceDurationMs;
+    this.#maxInputCharacters = limits.maxInputCharacters;
   }
 
   public accept(token: TranslationToken): void {
@@ -53,6 +64,13 @@ export class TranslationTokenAssembler {
         original.endMs = original.endMs === undefined
           ? token.end_ms
           : Math.max(original.endMs, token.end_ms);
+      }
+      if (
+        original.startMs !== undefined &&
+        original.endMs !== undefined &&
+        original.endMs - original.startMs > this.#maxSourceDurationMs
+      ) {
+        this.#throwTooLong();
       }
       this.#originals.set(token.language, original);
       return;
@@ -74,6 +92,10 @@ export class TranslationTokenAssembler {
       token.source_language === this.#sourceLanguage &&
       token.language === this.#targetLanguage
     ) {
+      this.#translationCharacters += Array.from(token.text).length;
+      if (this.#translationCharacters > this.#maxInputCharacters) {
+        this.#throwTooLong();
+      }
       this.#translation.push(token.text);
     }
   }
@@ -110,5 +132,13 @@ export class TranslationTokenAssembler {
     this.#sourceLanguage = undefined;
     this.#targetLanguage = undefined;
     this.#translation = [];
+    this.#translationCharacters = 0;
+  }
+
+  #throwTooLong(): never {
+    throw new ApplicationError(
+      "UTTERANCE_TOO_LONG",
+      "UTTERANCE_TOO_LONG: 発話を短く区切って再実行してください。",
+    );
   }
 }

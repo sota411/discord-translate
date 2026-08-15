@@ -58,6 +58,30 @@ void test("料金確認日が期限切れなら起動設定を拒否する", () 
   );
 });
 
+void test("費用上限を無効化する0単価は起動前に拒否する", () => {
+  assert.throws(
+    () => loadConfig(
+      validEnv({ STT_COST_MICROUSD_PER_HOUR: "0" }),
+      new Date("2026-08-15T00:00:00Z"),
+    ),
+    /STT_COST_MICROUSD_PER_HOUR/u,
+  );
+  assert.throws(
+    () => loadConfig(
+      validEnv({ TTS_COST_MICROUSD_PER_HOUR: "0" }),
+      new Date("2026-08-15T00:00:00Z"),
+    ),
+    /TTS_COST_MICROUSD_PER_HOUR/u,
+  );
+  assert.throws(
+    () => loadConfig(
+      validEnv({ TEXT_COST_MICROUSD_PER_MILLION_CHARACTERS_UPPER_BOUND: "0" }),
+      new Date("2026-08-15T00:00:00Z"),
+    ),
+    /TEXT_COST_MICROUSD_PER_MILLION_CHARACTERS_UPPER_BOUND/u,
+  );
+});
+
 void test("存在しない日付または未来の料金確認日を拒否する", () => {
   assert.throws(
     () => loadConfig(

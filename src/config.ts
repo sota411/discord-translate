@@ -5,7 +5,6 @@ import { z } from "zod";
 const snowflakePattern = /^\d{17,20}$/;
 
 const positiveInteger = z.coerce.number().int().positive();
-const nonNegativeInteger = z.coerce.number().int().nonnegative();
 const requiredString = z.string().min(1, "値が必要です");
 
 const rawConfigSchema = z.object({
@@ -27,9 +26,9 @@ const rawConfigSchema = z.object({
   GUILD_MONTHLY_COST_LIMIT_MICROUSD: positiveInteger,
   GLOBAL_MONTHLY_COST_LIMIT_MICROUSD: positiveInteger,
   SONIOX_PROJECT_MONTHLY_BUDGET_MICROUSD: positiveInteger,
-  STT_COST_MICROUSD_PER_HOUR: nonNegativeInteger,
-  TTS_COST_MICROUSD_PER_HOUR: nonNegativeInteger,
-  TEXT_COST_MICROUSD_PER_MILLION_CHARACTERS_UPPER_BOUND: nonNegativeInteger,
+  STT_COST_MICROUSD_PER_HOUR: positiveInteger,
+  TTS_COST_MICROUSD_PER_HOUR: positiveInteger,
+  TEXT_COST_MICROUSD_PER_MILLION_CHARACTERS_UPPER_BOUND: positiveInteger,
   COST_ESTIMATE_SAFETY_PERCENT: z.coerce.number().int().min(100),
   PRICING_CONFIRMED_AT: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   PRICING_MAX_AGE_DAYS: positiveInteger,
