@@ -27,7 +27,9 @@ export type SessionDescriptor = {
 export type StartSessionInput = Omit<
   SessionDescriptor,
   "sessionId" | "state" | "startedAt"
->;
+> & {
+  requiredSttStreams: number;
+};
 
 export type UsageGate = {
   assertCanStart(input: {
@@ -59,6 +61,7 @@ export type TranslationSessionDriver = {
 
 type ManagedSession = SessionDescriptor & {
   runtime?: SessionRuntime;
+  participantRevision: number;
 };
 
 type SessionManagerDependencies = {
@@ -100,13 +103,15 @@ export class SessionManager {
       );
     }
 
+    const { requiredSttStreams, ...descriptor } = input;
     const startedAt = this.#now();
     const session: ManagedSession = {
-      ...input,
-      participantIds: [...input.participantIds],
+      ...descriptor,
+      participantIds: [...descriptor.participantIds],
       sessionId: this.#createId(),
       state: "AUTHORIZING",
       startedAt,
+      participantRevision: 0,
     };
     this.#sessions.set(input.guildId, session);
 
@@ -118,7 +123,7 @@ export class SessionManager {
       });
       this.#assertCurrent(session);
       await this.#capacityGate.assertCanStart({
-        sttStreams: 2,
+        sttStreams: requiredSttStreams,
         ttsStreams: 1,
         at: this.#now(),
       });
@@ -169,8 +174,30 @@ export class SessionManager {
     if (session?.state !== "ACTIVE" || !session.runtime) {
       return;
     }
+    const revision = ++session.participantRevision;
+    const currentParticipantIds = new Set(session.participantIds);
+    const addedUserIds = participantIds.filter(
+      (participantId) => !currentParticipantIds.has(participantId),
+    );
+    if (addedUserIds.length > 0) {
+      await this.#usageGate.assertCanStart({
+        guildId,
+        userIds: addedUserIds,
+        at: this.#now(),
+      });
+    }
+    const activeSession = this.#sessions.get(guildId);
+    if (
+      activeSession?.state !== "ACTIVE" ||
+      activeSession !== session ||
+      activeSession.participantRevision !== revision
+    ) {
+      return;
+    }
     await session.runtime.updateParticipants(participantIds);
-    session.participantIds = [...participantIds];
+    if (session.participantRevision === revision) {
+      session.participantIds = [...participantIds];
+    }
   }
 
   public async stop(guildId: string, reason: string): Promise<boolean> {

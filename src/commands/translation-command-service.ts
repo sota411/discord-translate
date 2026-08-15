@@ -74,7 +74,13 @@ type TranslationCommandServiceDependencies = {
 
 export type VoiceParticipantsChangeResult = {
   stopped: boolean;
-  reason?: "SPEAKER_NOT_ALLOWED" | "TOO_MANY_SPEAKERS" | "VOICE_EMPTY";
+  reason?:
+    | "SPEAKER_NOT_ALLOWED"
+    | "TOO_MANY_SPEAKERS"
+    | "VOICE_EMPTY"
+    | "USAGE_LIMIT_REACHED"
+    | "USAGE_LEDGER_UNAVAILABLE"
+    | "USAGE_RECONCILIATION_STALE";
 };
 
 export class TranslationCommandService {
@@ -140,7 +146,22 @@ export class TranslationCommandService {
       return { stopped: true, reason: "VOICE_EMPTY" };
     }
 
-    await this.#sessions.updateParticipants(guildId, participantIds);
+    try {
+      await this.#sessions.updateParticipants(guildId, participantIds);
+    } catch (error) {
+      if (
+        !(error instanceof ApplicationError) ||
+        (
+          error.code !== "USAGE_LIMIT_REACHED" &&
+          error.code !== "USAGE_LEDGER_UNAVAILABLE" &&
+          error.code !== "USAGE_RECONCILIATION_STALE"
+        )
+      ) {
+        throw error;
+      }
+      await this.#sessions.stop(guildId, error.code);
+      return { stopped: true, reason: error.code };
+    }
     return { stopped: false };
   }
 
@@ -204,6 +225,7 @@ export class TranslationCommandService {
       startedByUserId: input.actorId,
       pair: input.pair,
       participantIds: input.voiceChannel.humanParticipantIds,
+      requiredSttStreams: this.#maxSpeakersPerSession,
     });
 
     return {

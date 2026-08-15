@@ -21,7 +21,7 @@ Discord側では参加者別の音声受信、OpusとPCMの変換、翻訳結果
 
 ## 目的
 
-Discordの音声チャンネルで、異なる言語を話す2人が、元の話し方を変えずに双方向の会話を続けられる状態をつくる。
+Discordの音声チャンネルで、2つの言語を話す最大3人が、元の話し方を変えずに双方向の会話を続けられる状態をつくる。
 
 ### ゴール
 
@@ -36,7 +36,7 @@ Discordの音声チャンネルで、異なる言語を話す2人が、元の話
 ### MVP完了条件
 
 - 3つの対応言語ペアについて、両方向の音声翻訳が実機のDiscord音声チャンネルで動作する
-- 30分の1対1通話で、Discord音声受信、Soniox接続、字幕投稿、読み上げ再生が途中停止しない
+- `MAX_SPEAKERS_PER_SESSION=3`の30分通話で、3人分のDiscord音声受信、Soniox接続、字幕投稿、読み上げ再生が途中停止しない
 - 暫定トークンがTTSへ送られないことを、イベントログと字幕で確認できる
 - 発話区切りから翻訳音声の再生開始までのp50とp95を計測し、PoC後に本書へ記録した目標値以内である
 - Bot自身の読み上げ音声を再入力せず、翻訳ループが発生しない
@@ -50,7 +50,7 @@ PoCでp50、p95、最大値と会話時の体感を記録し、一体型APIと�
 ### 非ゴール（今回のスコープ外）
 
 - 3言語を同じセッションで同時に翻訳すること
-- 3人以上の発話をMVPの動作保証範囲に含めること
+- 4人以上の発話をMVPの動作保証範囲に含めること
 - 聞き手ごとに異なる翻訳音声を同じ音声チャンネル内で配信すること
 - 元の話者の声色、声の高さ、抑揚を再現すること
 - 字幕だけで完結する翻訳モード
@@ -202,13 +202,13 @@ Sonioxには`two_way`を指定し、実際の入力言語に応じて反対側�
 3. 実行者が`ALLOWED_USER_IDS`に含まれる
 4. 実行者が音声チャンネルへ参加している
 5. 対象音声チャンネルの人間の参加者が全員`ALLOWED_USER_IDS`に含まれる
-6. 対象音声チャンネルの人間の参加者が2人以下である
+6. 対象音声チャンネルの人間の参加者が`MAX_SPEAKERS_PER_SESSION`以下である
 7. Botが音声チャンネルの`ViewChannel`、`Connect`、`Speak`を持つ
 8. Botがコマンド実行チャンネルの`ViewChannel`、`SendMessages`を持つ
 9. 同じGuildに実行中または開始処理中のセッションがない
 10. User、Guild、サービス全体の利用上限に達していない
 11. SQLiteが書き込み可能で、Soniox利用ログとの照合が許容時間内に成功している
-12. Sonioxの並行数に、STT 2本とTTS 1 streamを開始できる空きがある
+12. Sonioxの並行数に、`MAX_SPEAKERS_PER_SESSION`本のSTTとTTS 1 streamを開始できる空きがある
 
 開始に成功した場合は、コマンドを実行したテキストチャンネルを字幕チャンネルとして固定する。
 途中で別チャンネルへ切り替えない。
@@ -272,7 +272,7 @@ Discord Interactionは3秒以内の応答が必要なため、最初にephemeral
 - `SESSION_IDLE_TIMEOUT_SECONDS`の間、人間の発話を検出しなかった
 - 対象音声チャンネルから人間の参加者がいなくなった
 - `ALLOWED_USER_IDS`に含まれない人間が対象音声チャンネルへ参加した
-- 対象音声チャンネルへ3人目の人間が参加した
+- 対象音声チャンネルの人間が`MAX_SPEAKERS_PER_SESSION`を超えた
 - User、Guild、サービス全体のいずれかの上限へ達した
 - 再生待ち時間が`PLAYBACK_QUEUE_MAX_MS`を超えた
 - SQLiteへの利用量記録を継続できない
@@ -294,11 +294,11 @@ Discord Interactionは3秒以内の応答が必要なため、最初にephemeral
 MVPはUserごとにSTT WebSocketを1本開く。
 同じ音声ストリームへ複数人の音声を混ぜないため、字幕の発話者をDiscord User IDへ確実に対応づけられる。
 一度発話したUserの接続はセッション終了まで維持し、無音時は音声を送らずkeepaliveを使用する。
-この方式は低遅延を優先する一方、発話していない時間もストリーミングセッションとして課金される可能性があるため、MVPの動作保証を2人までとする。
+この方式では、発話していない時間もストリーミングセッションとして課金される可能性があるため、`MAX_SPEAKERS_PER_SESSION`の上限を3人とする。
 
 対象音声チャンネルの人間の参加者は、DiscordのVoice State更新に追従する。
-途中参加者は`ALLOWED_USER_IDS`に含まれ、同時人数が2人以下の場合だけ入力対象へ追加し、退出者の音声購読とSTT接続は終了する。
-未許可Userまたは3人目が参加した場合は、その音声を購読せずにセッション全体を停止する。
+途中参加者は`ALLOWED_USER_IDS`に含まれ、同時人数が`MAX_SPEAKERS_PER_SESSION`以下の場合だけ入力対象へ追加し、退出者の音声購読とSTT接続は終了する。
+未許可Userまたは設定上限を超える人間が参加した場合は、その音声を購読せずにセッション全体を停止する。
 Voice State更新と音声購読の間に競合があっても音声を外部送信しないよう、購読作成の直前にもUser IDを再検証する。
 Discordの`selfMute`または`serverMute`は、発話開始後の音声packetを止めるが、BotがSonioxへ明示的な発話終了を送る契機には使用しない。
 発話境界は無音を受けたSonioxの`endpoint` eventで確定し、実測でこの区間が支配的でない限り、ミュートでSTT接続を閉じて再接続を増やさない。
@@ -412,7 +412,7 @@ TTS streamは、`text_end: true`の送信後に`audio_end: true`と`terminated: 
 ### 再生キュー
 
 Discord Botが同時に再生できる翻訳音声は1つとする。
-2人が同時に話した場合も、TTS音声を重ねて再生しない。
+複数人が同時に話した場合も、TTS音声を重ねて再生しない。
 
 - 発話終端を確定した時刻の早い順にFIFOへ入れる
 - 再生中の発話を後続発話で中断しない
@@ -605,6 +605,7 @@ TTS: 生成音声1時間 × $0.70 = 約$0.70
 ```
 
 この概算は会話ログの約`$0.95/通話時間`とほぼ一致するが、費用上限の判定にはSoniox利用ログの実額を使う。
+`MAX_SPEAKERS_PER_SESSION=3`ではSTT 3接続分を見込み、同じ60分条件のSTT概算は約`$0.36`となる。
 
 ### リアルタイム見積もり
 
@@ -654,8 +655,8 @@ Sonioxの利用ログには正常終了した要求だけが記録されるた�
 
 ### Soniox並行数の確認
 
-Botは起動時と`/translate start`前に、選択したregionの`GET /v1/concurrency-limits`を確認する。
-projectとorganizationの両方について、現在数にSTT 2本とTTS 1 streamを加えても上限以下である場合だけ開始する。
+Botは起動時に、選択したregionの`GET /v1/concurrency-limits`から現在数と上限を取得できることを確認する。
+`/translate start`前に同じAPIを再取得し、projectとorganizationの両方について、現在数に`MAX_SPEAKERS_PER_SESSION`本のSTTとTTS 1 streamを加えても上限以下である場合だけ開始する。
 確認結果が`SONIOX_LIMIT_CHECK_MAX_STALENESS_SECONDS`より古い、または取得に失敗した場合は、推測で開始せず`SONIOX_CAPACITY_UNAVAILABLE`を返す。
 
 この確認はSoniox側の枠を予約しないため、他のクライアントとの競合は残る。
@@ -666,7 +667,7 @@ projectとorganizationの両方について、現在数にSTT 2本とTTS 1 strea
 | 上限 | 判定単位 | 到達時の挙動 |
 | --- | --- | --- |
 | 同時セッション | Guildごとに1件 | 後続の`start`を拒否する |
-| 同時発話者 | セッションごとに2人 | 開始前は拒否し、実行中に3人目が参加した場合はセッションを停止する |
+| 同時発話者 | セッションごとに1〜3人で設定 | 開始前は拒否し、実行中に設定上限を超えた場合はセッションを停止する |
 | セッション時間 | 既定30分 | セッションを停止する |
 | User月間費用 | 発話者ごと | そのUserの新しい音声を受けず、セッションを停止する |
 | Guild月間費用 | Guildごと | セッションを停止し、当月の新規開始を拒否する |
@@ -694,7 +695,7 @@ Botは`SONIOX_PROJECT_MONTHLY_BUDGET_MICROUSD`へ同じ値を保持し、`GLOBAL
 | `ALLOWED_GUILD_IDS` | 必須 | 1件以上のDiscord Guild IDをカンマ区切りで指定する |
 | `ALLOWED_USER_IDS` | 必須 | セッションの開始および音声入力を許可するDiscord User IDをカンマ区切りで指定する。PoCでは運営者本人と通話相手を設定する |
 | `SESSION_MAX_MINUTES` | 必須 | 初期値`30`、1以上 |
-| `MAX_SPEAKERS_PER_SESSION` | 必須 | MVPは`2`固定 |
+| `MAX_SPEAKERS_PER_SESSION` | 必須 | 初期値`2`、1〜3 |
 | `SESSION_IDLE_TIMEOUT_SECONDS` | 必須 | 既定値なし。PoC後に決める |
 | `PLAYBACK_QUEUE_MAX_MS` | 必須 | 既定値なし。PoC後に決める |
 | `UTTERANCE_MAX_SOURCE_SECONDS` | 必須 | 既定値なし。PoCでTTS出力が2分未満になる値を決める |
@@ -734,13 +735,13 @@ Botは`SONIOX_PROJECT_MONTHLY_BUDGET_MICROUSD`へ同じ値を保持し、`GLOBAL
 | `USER_NOT_ALLOWED` | 実行者が開始許可リスト外 | private betaであることをephemeral表示 | 許可後のみ |
 | `SPEAKER_NOT_ALLOWED` | 開始時または実行中の音声チャンネルに未許可Userがいる | そのUserの音声を購読せず、セッションを開始しないか停止する | 未許可Userの退出または許可後のみ |
 | `VOICE_REQUIRED` | 実行者が音声チャンネル外 | 先に参加するよう表示 | 可 |
-| `TOO_MANY_SPEAKERS` | 人間が3人以上 | MVPは2人までであることを表示 | 人数減少後に可 |
+| `TOO_MANY_SPEAKERS` | 人間が`MAX_SPEAKERS_PER_SESSION`を超えた | 設定された人数上限を超えたことを表示 | 人数減少後に可 |
 | `BOT_PERMISSION_MISSING` | Discord権限不足 | 不足権限と対象チャンネルを表示 | 権限修正後に可 |
 | `SESSION_ALREADY_ACTIVE` | 同じGuildで開始済み | 対象VCと開始時刻を表示 | 停止後に可 |
 | `USAGE_LIMIT_REACHED` | User、Guild、全体上限 | 上限のscopeとリセット月を表示 | 翌月または設定変更後 |
 | `USAGE_LEDGER_UNAVAILABLE` | SQLite書き込み失敗 | 開始を拒否するか実行中セッションを停止 | DB復旧後のみ |
 | `USAGE_RECONCILIATION_STALE` | Sonioxとの照合が古い | 新しい開始を拒否する | 照合成功後 |
-| `SONIOX_CAPACITY_UNAVAILABLE` | STT 2本またはTTS 1 stream分の空きがない | Sonioxへ接続せず開始を拒否する | 空き確認後 |
+| `SONIOX_CAPACITY_UNAVAILABLE` | `MAX_SPEAKERS_PER_SESSION`本のSTTまたはTTS 1 stream分の空きがない | Sonioxへ接続せず開始を拒否する | 空き確認後 |
 | `VOICE_CONNECTION_LOST` | Discord Voice切断 | 組み込み再接続を待ち、期限超過で停止 | `/start`で再実行 |
 | `SONIOX_AUTH_FAILED` | APIキーが不正、失効、またはProject regionと不一致 | セッションを停止し、運営者へ通知 | 自動再試行しない |
 | `SONIOX_BUDGET_EXHAUSTED` | Sonioxが残高不足またはProject・Organization月額上限到達をHTTP 402で返す | 全セッションを停止し、新しい開始を拒否して運営者へ通知 | 入金、上限変更、または翌月まで自動再試行しない |
@@ -889,7 +890,7 @@ APIエラー率、p95遅延、再生キュー上限、月間費用の80%と100%�
 
 private betaの受入前に、次の順で公開境界を検証する。
 
-1. テストGuildで`@discordjs/voice`から2人分の音声を30分継続受信し、User IDとOpusパケットを対応づけられることを確認する
+1. テストGuildで`@discordjs/voice`から3人分の音声を30分継続受信し、User IDとOpusパケットを対応づけられることを確認する
 2. 保存済みの同じ10分音声をSonioxへ送り、日韓、日英、韓英の両方向で原文、翻訳、TTS、実料金を測る
 3. マイク入力からSoniox STT、確定トークン、Soniox TTS、スピーカー出力までを接続し、全体遅延を測る
 4. Discord Voiceの受信から同じVCへの再生までを接続し、翻訳ループ、同時発話、切断、停止を確認する
@@ -1004,7 +1005,7 @@ SQLiteのschema versionを管理し、起動時にtransaction内で前方migrati
 6. 3言語ペアと30分E2Eを行い、MVP完了条件を確認する
 
 実装コードと認証情報を使わない統合テストは作成済みである。
-実Discordと実Sonioxの日韓1人通話では音声往復と遅延区間を確認済みだが、2人通話、日英・韓英、30分継続、料金の受入確認は未実施である。
+実Discordと実Sonioxの日韓1人通話では音声往復と遅延区間を確認済みだが、複数人通話（3人を含む）、日英・韓英、30分継続、料金の受入確認は未実施である。
 残るPoCで音声受信が安定しない、または修正後のp95がMVP目標を満たさない場合はprivate betaを開始せず、代替案を比較して目標値を確定する。
 
 ## 参考

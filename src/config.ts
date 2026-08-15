@@ -74,7 +74,7 @@ export type AppConfig = {
   };
   limits: {
     sessionMaxMinutes: number;
-    maxSpeakersPerSession: 2;
+    maxSpeakersPerSession: number;
     sessionIdleTimeoutSeconds: number;
     playbackQueueMaxMs: number;
     utteranceMaxSourceSeconds: number;
@@ -182,8 +182,8 @@ export function loadConfig(
     issues.push("SONIOX_REGION: us、eu、jpのいずれかを指定してください");
   }
 
-  if (raw.MAX_SPEAKERS_PER_SESSION !== 2) {
-    issues.push("MAX_SPEAKERS_PER_SESSION: MVPでは2に固定してください");
+  if (raw.MAX_SPEAKERS_PER_SESSION > 3) {
+    issues.push("MAX_SPEAKERS_PER_SESSION: 3以下の整数を指定してください");
   }
   if (raw.USER_MONTHLY_COST_LIMIT_MICROUSD > raw.GUILD_MONTHLY_COST_LIMIT_MICROUSD) {
     issues.push("GUILD_MONTHLY_COST_LIMIT_MICROUSD: User上限以上にしてください");
@@ -248,7 +248,7 @@ export function loadConfig(
     },
     limits: {
       sessionMaxMinutes: raw.SESSION_MAX_MINUTES,
-      maxSpeakersPerSession: 2,
+      maxSpeakersPerSession: raw.MAX_SPEAKERS_PER_SESSION,
       sessionIdleTimeoutSeconds: raw.SESSION_IDLE_TIMEOUT_SECONDS,
       playbackQueueMaxMs: raw.PLAYBACK_QUEUE_MAX_MS,
       utteranceMaxSourceSeconds: raw.UTTERANCE_MAX_SOURCE_SECONDS,

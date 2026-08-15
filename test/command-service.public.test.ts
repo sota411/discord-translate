@@ -5,6 +5,7 @@ import {
   TranslationCommandService,
   type StartCommandInput,
 } from "../src/commands/translation-command-service.js";
+import { ApplicationError } from "../src/domain/application-error.js";
 import {
   SessionManager,
   type CapacityGate,
@@ -23,19 +24,30 @@ type Harness = {
 
 class RecordingUsageGate implements UsageGate {
   public calls = 0;
+  public readonly inputs: { guildId: string; userIds: readonly string[] }[] = [];
+  public error: ApplicationError | undefined;
+  public wait: Promise<void> = Promise.resolve();
 
-  public assertCanStart(): Promise<void> {
+  public async assertCanStart(
+    input: Parameters<UsageGate["assertCanStart"]>[0],
+  ): Promise<void> {
     this.calls += 1;
-    return Promise.resolve();
+    this.inputs.push({ guildId: input.guildId, userIds: [...input.userIds] });
+    await this.wait;
+    if (this.error) throw this.error;
   }
 }
 
 class RecordingCapacityGate implements CapacityGate {
   public calls = 0;
+  public readonly inputs: { sttStreams: number; ttsStreams: number }[] = [];
   public wait: Promise<void> = Promise.resolve();
 
-  public async assertCanStart(): Promise<void> {
+  public async assertCanStart(
+    input: Parameters<CapacityGate["assertCanStart"]>[0],
+  ): Promise<void> {
     this.calls += 1;
+    this.inputs.push({ sttStreams: input.sttStreams, ttsStreams: input.ttsStreams });
     await this.wait;
   }
 }
@@ -73,7 +85,10 @@ class RecordingDriver implements TranslationSessionDriver {
   }
 }
 
-function createHarness(): Harness {
+function createHarness(options: {
+  allowedUserIds?: readonly string[];
+  maxSpeakersPerSession?: number;
+} = {}): Harness {
   const driver = new RecordingDriver();
   const usageGate = new RecordingUsageGate();
   const capacityGate = new RecordingCapacityGate();
@@ -91,11 +106,11 @@ function createHarness(): Harness {
   });
   const service = new TranslationCommandService({
     allowedGuildIds: new Set(["223456789012345678"]),
-    allowedUserIds: new Set([
+    allowedUserIds: new Set(options.allowedUserIds ?? [
       "323456789012345678",
       "423456789012345678",
     ]),
-    maxSpeakersPerSession: 2,
+    maxSpeakersPerSession: options.maxSpeakersPerSession ?? 2,
     sessions,
   });
   return { service, driver, usageGate, capacityGate, reconciliation };
@@ -188,6 +203,122 @@ void test("許可条件を満たすと利用量・容量を確認して1セッ�
   assert.equal(harness.usageGate.calls, 1);
   assert.equal(harness.capacityGate.calls, 1);
   assert.equal(harness.driver.starts.length, 1);
+});
+
+void test("上限3人なら許可済み3人で開始し、STT 3本分の容量を確認する", async () => {
+  const participantIds = [
+    "323456789012345678",
+    "423456789012345678",
+    "523456789012345678",
+  ];
+  const fourthUserId = "623456789012345678";
+  const harness = createHarness({
+    allowedUserIds: [...participantIds, fourthUserId],
+    maxSpeakersPerSession: 3,
+  });
+
+  const result = await harness.service.execute(validStart({
+    voiceChannel: {
+      id: "623456789012345678",
+      name: "General",
+      humanParticipantIds: participantIds,
+    },
+  }));
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(harness.capacityGate.inputs, [{ sttStreams: 3, ttsStreams: 1 }]);
+  assert.deepEqual(harness.driver.starts[0]?.participantIds, participantIds);
+
+  const exceeded = await harness.service.handleVoiceParticipantsChanged(
+    "223456789012345678",
+    [...participantIds, fourthUserId],
+  );
+  assert.deepEqual(exceeded, { stopped: true, reason: "TOO_MANY_SPEAKERS" });
+  assert.deepEqual(harness.driver.runtimes[0]?.stopReasons, ["TOO_MANY_SPEAKERS"]);
+});
+
+void test("上限3人なら実行中に許可済みの3人目を追加する", async () => {
+  const participantIds = [
+    "323456789012345678",
+    "423456789012345678",
+    "523456789012345678",
+  ];
+  const harness = createHarness({
+    allowedUserIds: participantIds,
+    maxSpeakersPerSession: 3,
+  });
+  assert.equal((await harness.service.execute(validStart())).ok, true);
+
+  const result = await harness.service.handleVoiceParticipantsChanged(
+    "223456789012345678",
+    participantIds,
+  );
+
+  assert.deepEqual(result, { stopped: false });
+  assert.deepEqual(harness.driver.runtimes[0]?.updates, [participantIds]);
+  assert.deepEqual(harness.usageGate.inputs[1]?.userIds, ["523456789012345678"]);
+});
+
+void test("利用上限へ到達済みの3人目はruntimeへ追加せずセッションを停止する", async () => {
+  const participantIds = [
+    "323456789012345678",
+    "423456789012345678",
+    "523456789012345678",
+  ];
+  const harness = createHarness({
+    allowedUserIds: participantIds,
+    maxSpeakersPerSession: 3,
+  });
+  assert.equal((await harness.service.execute(validStart())).ok, true);
+  harness.usageGate.error = new ApplicationError(
+    "USAGE_LIMIT_REACHED",
+    "userの月間利用上限へ達しています。翌月または上限変更後に再実行してください。",
+  );
+
+  const result = await harness.service.handleVoiceParticipantsChanged(
+    "223456789012345678",
+    participantIds,
+  );
+  const runtime = harness.driver.runtimes[0];
+  assert.ok(runtime);
+
+  assert.deepEqual(result, { stopped: true, reason: "USAGE_LIMIT_REACHED" });
+  assert.deepEqual(runtime.updates, []);
+  assert.deepEqual(runtime.stopReasons, ["USAGE_LIMIT_REACHED"]);
+});
+
+void test("3人目の利用量確認中に退出しても古い参加者状態へ戻さない", async () => {
+  const participantIds = [
+    "323456789012345678",
+    "423456789012345678",
+    "523456789012345678",
+  ];
+  const harness = createHarness({
+    allowedUserIds: participantIds,
+    maxSpeakersPerSession: 3,
+  });
+  assert.equal((await harness.service.execute(validStart())).ok, true);
+  let releaseUsageCheck: (() => void) | undefined;
+  harness.usageGate.wait = new Promise<void>((resolve) => {
+    releaseUsageCheck = resolve;
+  });
+
+  const adding = harness.service.handleVoiceParticipantsChanged(
+    "223456789012345678",
+    participantIds,
+  );
+  while (harness.usageGate.inputs.length < 2) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  const removing = await harness.service.handleVoiceParticipantsChanged(
+    "223456789012345678",
+    participantIds.slice(0, 2),
+  );
+  releaseUsageCheck?.();
+
+  assert.deepEqual(removing, { stopped: false });
+  assert.deepEqual(await adding, { stopped: false });
+  assert.deepEqual(harness.driver.runtimes[0]?.updates, [participantIds.slice(0, 2)]);
 });
 
 void test("同じGuildへの同時startはAUTHORIZING中から排他する", async () => {

@@ -17,6 +17,15 @@ void test("有効な環境変数を型付き設定と固定リージョンURLへ
   assert.equal(config.pricing.safetyPercent, 125);
 });
 
+void test("同時話者数を3人に設定できる", () => {
+  const config = loadConfig(
+    validEnv({ MAX_SPEAKERS_PER_SESSION: "3" }),
+    new Date("2026-08-15T00:00:00Z"),
+  );
+
+  assert.equal(config.limits.maxSpeakersPerSession, 3);
+});
+
 void test("不正な設定を一括報告し、秘密値はエラーへ含めない", () => {
   const leakedToken = "do-not-leak-this-discord-token";
   const leakedKey = "do-not-leak-this-soniox-key";
@@ -24,7 +33,7 @@ void test("不正な設定を一括報告し、秘密値はエラーへ含めな
     DISCORD_TOKEN: leakedToken,
     SONIOX_API_KEY: leakedKey,
     ALLOWED_GUILD_IDS: "not-a-snowflake",
-    MAX_SPEAKERS_PER_SESSION: "3",
+    MAX_SPEAKERS_PER_SESSION: "4",
     GLOBAL_MONTHLY_COST_LIMIT_MICROUSD: "2000000",
     SQLITE_PATH: "relative.sqlite",
     SONIOX_REGION: "america",

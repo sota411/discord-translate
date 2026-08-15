@@ -30,8 +30,11 @@ type DiscordBotControllerOptions = {
 
 const automaticStopMessages: Readonly<Record<string, string>> = {
   SPEAKER_NOT_ALLOWED: "許可されていない利用者が参加したため、翻訳を停止しました。",
-  TOO_MANY_SPEAKERS: "参加者がMVPの上限を超えたため、翻訳を停止しました。",
+  TOO_MANY_SPEAKERS: "参加者が設定された上限を超えたため、翻訳を停止しました。",
   VOICE_EMPTY: "音声チャンネルから参加者がいなくなったため、翻訳を停止しました。",
+  USAGE_LIMIT_REACHED: "参加者が月間利用上限へ達しているため、翻訳を停止しました。",
+  USAGE_LEDGER_UNAVAILABLE: "利用量を確認できないため、翻訳を停止しました。",
+  USAGE_RECONCILIATION_STALE: "Sonioxの利用量照合が古いため、翻訳を停止しました。",
   BOT_VOICE_REMOVED: "Botが対象音声チャンネルから退出したため、翻訳を停止しました。",
 };
 
