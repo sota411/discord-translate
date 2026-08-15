@@ -7,11 +7,14 @@ import { ApplicationError } from "../domain/application-error.js";
 import type { Language } from "../domain/language-pair.js";
 import type { TranslationLatencyRecorder } from "../observability/translation-latency.js";
 import type {
-  PreparedSynthesizedSpeech,
   SynthesizedSpeech,
   TtsGateway,
   TtsSynthesisRequest,
 } from "../translation/utterance-processor.js";
+
+type WritableTtsStream = SynthesizedSpeech & {
+  sendText(text: string): Promise<void>;
+};
 
 export type TtsUsageLedger = {
   openProviderRequest(input: {
@@ -142,14 +145,14 @@ export class RawSonioxTtsGateway implements TtsGateway {
   public async synthesize(
     input: TtsSynthesisRequest & { text: string },
   ): Promise<SynthesizedSpeech> {
-    const prepared = await this.prepare(input);
-    await prepared.sendText(input.text);
-    return prepared;
+    const stream = await this.#openStream(input);
+    await stream.sendText(input.text);
+    return stream;
   }
 
-  public async prepare(
+  async #openStream(
     input: TtsSynthesisRequest,
-  ): Promise<PreparedSynthesizedSpeech> {
+  ): Promise<WritableTtsStream> {
     if (this.#closed) {
       throw new ApplicationError(
         "SONIOX_STREAM_FAILED",

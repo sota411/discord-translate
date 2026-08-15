@@ -27,7 +27,7 @@ import {
 } from "@soniox/node";
 
 import type { AppConfig } from "../config.js";
-import { downmixStereoS16leToMono } from "../audio/pcm.js";
+import { decodeDiscordOpusPacketToMono } from "../audio/pcm.js";
 import { ApplicationError } from "../domain/application-error.js";
 import { languagesForPair } from "../domain/language-pair.js";
 import type { TranslationLatencyRecorder } from "../observability/translation-latency.js";
@@ -39,10 +39,6 @@ import type {
 } from "../session/session-manager.js";
 import { SonioxSttFactory } from "../soniox/control.js";
 import type { TtsGateway } from "../translation/utterance-processor.js";
-import {
-  TtsBatchPrefetch,
-  TtsSerialScheduler,
-} from "../translation/tts-batch-prefetch.js";
 import { StreamingUtterance } from "../translation/streaming-utterance.js";
 import { UtteranceProcessor } from "../translation/utterance-processor.js";
 import type { UsageLedger } from "../usage/usage-ledger.js";
@@ -250,10 +246,8 @@ class DiscordTranslationRuntime implements SessionRuntime {
   readonly #onFailure: RuntimeFailureHandler;
   readonly #player: AudioPlayer;
   readonly #processor: UtteranceProcessor;
-  readonly #ttsScheduler = new TtsSerialScheduler();
   readonly #participants: Set<string>;
   readonly #speakers = new Map<string, SpeakerStream>();
-  readonly #prefetchCleanupTasks = new Set<Promise<void>>();
   readonly #warnedUnsupported = new Set<string>();
   readonly #speakingListener: (userId: string) => void;
   readonly #speakingEndListener: (userId: string) => void;
@@ -323,16 +317,27 @@ class DiscordTranslationRuntime implements SessionRuntime {
     const removed = [...this.#speakers.keys()].filter((userId) => !next.has(userId));
     this.#participants.clear();
     for (const participantId of participantIds) this.#participants.add(participantId);
-    await Promise.all(
-      removed.map((userId) => this.#closeSpeaker(userId, "completed")),
+    const cleanupResults = await Promise.allSettled(
+      removed.map((userId) => Promise.resolve().then(() => {
+        this.#closeSpeaker(userId, "completed");
+      })),
     );
+    const cleanupErrors: unknown[] = [];
+    for (const result of cleanupResults) {
+      if (result.status === "rejected") cleanupErrors.push(result.reason);
+    }
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(
+        cleanupErrors,
+        "退出した発話者の音声ストリームを正常に終了できませんでした",
+      );
+    }
   }
 
   public async stop(reason: string): Promise<void> {
     if (this.#stopping) return;
     this.#stopping = true;
     const cleanupErrors: unknown[] = [];
-    const pendingPrefetchCleanups = [...this.#prefetchCleanupTasks];
     clearTimeout(this.#maxSessionTimer);
     clearInterval(this.#idleTimer);
     this.#connection.receiver.speaking.off("start", this.#speakingListener);
@@ -343,16 +348,12 @@ class DiscordTranslationRuntime implements SessionRuntime {
       cleanupErrors.push(error);
     }
     const providerStatus = reason.startsWith("SONIOX_") ? "failed" : "completed";
-    const speakerCleanupResults = await Promise.allSettled(
-      [...this.#speakers.keys()].map((userId) =>
-        this.#closeSpeaker(userId, providerStatus)),
-    );
-    for (const result of speakerCleanupResults) {
-      if (result.status === "rejected") cleanupErrors.push(result.reason);
-    }
-    const prefetchCleanupResults = await Promise.allSettled(pendingPrefetchCleanups);
-    for (const result of prefetchCleanupResults) {
-      if (result.status === "rejected") cleanupErrors.push(result.reason);
+    for (const userId of [...this.#speakers.keys()]) {
+      try {
+        this.#closeSpeaker(userId, providerStatus);
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
     }
     try {
       this.#player.stop(true);
@@ -408,14 +409,6 @@ class DiscordTranslationRuntime implements SessionRuntime {
         pair: this.#session.pair,
         maxSourceDurationMs: this.#config.limits.utteranceMaxSourceSeconds * 1_000,
         maxInputCharacters: this.#config.limits.ttsMaxInputCharacters,
-        createPrefetch: (targetLanguage) => new TtsBatchPrefetch({
-          utteranceId: randomUUID(),
-          sessionId: this.#session.sessionId,
-          speakerUserId: userId,
-          language: targetLanguage,
-          tts: this.#tts,
-          scheduler: this.#ttsScheduler,
-        }),
       }),
       burstHasPacket: false,
       pendingTextCharacters: stt.initialTextCharacterCount,
@@ -438,7 +431,7 @@ class DiscordTranslationRuntime implements SessionRuntime {
     });
     speaker.stt.on("result", (result) => this.#handleSttResult(speaker, result));
     speaker.stt.on("endpoint", () => {
-      void this.#handleEndpoint(speaker);
+      this.#handleEndpoint(speaker);
     });
     speaker.stt.on("error", (error) => {
       const mapped = mapSttError(error);
@@ -460,8 +453,11 @@ class DiscordTranslationRuntime implements SessionRuntime {
         ) {
           return;
         }
-        const stereoPcm = speaker.decoder.decode(packet);
-        const monoPcm = downmixStereoS16leToMono(stereoPcm);
+        const monoPcm = decodeDiscordOpusPacketToMono(speaker.decoder, packet);
+        if (!monoPcm) {
+          this.#observeFlow("voice_packet_dropped");
+          return;
+        }
         speaker.stt.sendAudio(monoPcm);
         if (!speaker.burstHasPacket) {
           speaker.burstHasPacket = true;
@@ -524,63 +520,44 @@ class DiscordTranslationRuntime implements SessionRuntime {
           });
         }
       }
-      if (speaker.utterance.accept(result.tokens)) {
-        this.#observeFlow("tts_prefetch_started");
-      }
+      speaker.utterance.accept(result.tokens);
     } catch (error) {
       const mapped = mapSttError(error);
       this.#fail(mapped.code, mapped.publicMessage, error);
     }
   }
 
-  async #handleEndpoint(speaker: SpeakerStream): Promise<void> {
+  #handleEndpoint(speaker: SpeakerStream): void {
     try {
       if (this.#stopping) return;
       this.#flushSpeakerUsage(speaker);
-      const { finalized, prefetch: ttsPrefetch } = speaker.utterance.takeAtEndpoint();
+      const finalized = speaker.utterance.takeAtEndpoint();
       if (!finalized) {
         this.#observeFlow("stt_endpoint_empty");
-        if (ttsPrefetch) await this.#cancelPrefetchAndWait(ttsPrefetch);
         return;
       }
       this.#observeFlow("stt_endpoint_finalized");
-      this.#observeFlow(
-        ttsPrefetch?.hasReceivedAudio()
-          ? "tts_prefetch_ready"
-          : "tts_prefetch_pending",
-      );
       const displayName = this.#guild.members.cache.get(speaker.userId)?.displayName;
       if (!displayName) {
-        if (ttsPrefetch) await this.#cancelPrefetchAndWait(ttsPrefetch);
         this.#fail("VOICE_CONNECTION_LOST", "発話者のDiscord情報を確認できませんでした。");
         return;
       }
-      const utteranceId = ttsPrefetch?.utteranceId ?? randomUUID();
+      const utteranceId = randomUUID();
       this.#latency.start(
         utteranceId,
         speaker.lastAudioAtMonotonic ?? performance.now(),
       );
-      const preparedSpeech = ttsPrefetch?.finish();
       this.#processor.enqueue({
         ...finalized,
         utteranceId,
         sessionId: this.#session.sessionId,
         speakerUserId: speaker.userId,
         speakerDisplayName: displayName,
-      }, preparedSpeech);
+      });
     } catch (error) {
       const mapped = mapSttError(error);
       this.#fail(mapped.code, mapped.publicMessage, error);
     }
-  }
-
-  #cancelPrefetchAndWait(prefetch: TtsBatchPrefetch): Promise<void> {
-    const completion = Promise.resolve().then(() => prefetch.cancelAndWait());
-    this.#prefetchCleanupTasks.add(completion);
-    void completion.finally(() => {
-      this.#prefetchCleanupTasks.delete(completion);
-    }).catch(() => undefined);
-    return completion;
   }
 
   #flushSpeakerUsage(speaker: SpeakerStream): void {
@@ -599,22 +576,16 @@ class DiscordTranslationRuntime implements SessionRuntime {
     });
   }
 
-  async #closeSpeaker(
+  #closeSpeaker(
     userId: string,
     status: "completed" | "failed",
-  ): Promise<void> {
+  ): void {
     const speaker = this.#speakers.get(userId);
     if (!speaker || speaker.closed) return;
     speaker.closed = true;
     this.#speakers.delete(userId);
-    const ttsPrefetch = speaker.utterance.discard();
+    speaker.utterance.discard();
     const cleanupErrors: unknown[] = [];
-    let prefetchCompletion: Promise<void> | undefined;
-    try {
-      prefetchCompletion = ttsPrefetch?.cancelAndWait();
-    } catch (error) {
-      cleanupErrors.push(error);
-    }
     if (speaker.keepaliveTimer) clearInterval(speaker.keepaliveTimer);
     if (speaker.usageTimer) clearInterval(speaker.usageTimer);
     speaker.opus.destroy();
@@ -632,13 +603,6 @@ class DiscordTranslationRuntime implements SessionRuntime {
       this.#ledger.finishProviderRequest(speaker.requestRef, status, new Date());
     } catch (error) {
       cleanupErrors.push(error);
-    }
-    if (prefetchCompletion) {
-      try {
-        await prefetchCompletion;
-      } catch (error) {
-        cleanupErrors.push(error);
-      }
     }
     if (cleanupErrors.length > 0) {
       throw new AggregateError(cleanupErrors, "発話者の音声ストリームを正常に終了できませんでした");

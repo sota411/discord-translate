@@ -2,6 +2,32 @@ import { Transform, type TransformCallback } from "node:stream";
 
 export const pcmSampleRate = 48_000;
 
+type OpusPacketDecoder = {
+  decode(packet: Buffer): Buffer;
+};
+
+export function decodeDiscordOpusPacketToMono(
+  decoder: OpusPacketDecoder,
+  packet: Buffer,
+): Buffer | undefined {
+  if (!Buffer.isBuffer(packet)) {
+    throw new TypeError("Discord Opus packetはBufferで渡してください");
+  }
+  let stereo: Buffer;
+  try {
+    stereo = decoder.decode(packet);
+  } catch (error) {
+    if (
+      error instanceof TypeError &&
+      error.message === "The compressed data passed is corrupted"
+    ) {
+      return undefined;
+    }
+    throw error;
+  }
+  return downmixStereoS16leToMono(stereo);
+}
+
 export function downmixStereoS16leToMono(stereo: Buffer): Buffer {
   if (stereo.length % 4 !== 0) {
     throw new Error("stereo PCM s16leの長さが4バイト境界ではありません");

@@ -159,9 +159,9 @@ export async function verifySonioxConfiguration(
       }
       if (
         !sttModel.supports_endpoint_latency_adjustment ||
-        sttModel.endpoint_latency_adjustment_max_level < 3
+        sttModel.endpoint_latency_adjustment_max_level < 2
       ) {
-        issues.push("STT modelがendpoint低遅延level 3に未対応です");
+        issues.push("STT modelがendpoint低遅延level 2に未対応です");
       }
     }
     if (!ttsModel) {
@@ -212,9 +212,9 @@ export class SonioxSttFactory {
       language_hints: [languageA, languageB],
       enable_language_identification: true,
       enable_endpoint_detection: true,
-      max_endpoint_delay_ms: 500,
-      endpoint_latency_adjustment_level: 3,
-      endpoint_sensitivity: 0.5,
+      max_endpoint_delay_ms: 1_500,
+      endpoint_latency_adjustment_level: 2,
+      endpoint_sensitivity: 0.3,
       translation: {
         type: "two_way",
         language_a: languageA,

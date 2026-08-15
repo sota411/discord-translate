@@ -131,17 +131,12 @@ void test("TTS wireへ不透明request refを送り、PCMと正常終端を公�
   });
 });
 
-void test("翻訳本文の受信前にTTS configだけを送り、本文を後から渡せる", async () => {
+void test("確定した翻訳本文のTTS configとtextを同じstreamへ順に送る", async () => {
   const received: Record<string, unknown>[] = [];
-  let resolveConfigReceived = (): void => undefined;
-  const configReceived = new Promise<void>((resolve) => {
-    resolveConfigReceived = resolve;
-  });
   await withServer((socket) => {
     socket.on("message", (data) => {
       const message = JSON.parse(rawDataToUtf8(data)) as Record<string, unknown>;
       received.push(message);
-      if (message.api_key !== undefined) resolveConfigReceived();
       if (message.text_end === true) {
         socket.send(JSON.stringify({
           stream_id: message.stream_id,
@@ -162,24 +157,22 @@ void test("翻訳本文の受信前にTTS configだけを送り、本文を後�
       createRequestRef: () => "00000000-0000-4000-8000-000000000150",
     });
 
-    const prepared = await gateway.prepare({
+    const speech = await gateway.synthesize({
       utteranceId: "00000000-0000-4000-8000-000000000151",
       sessionId: "00000000-0000-4000-8000-000000000001",
       speakerUserId: "323456789012345678",
       language: "ko",
+      text: "안녕하세요",
     });
-    await configReceived;
-    assert.equal(received.length, 1);
+    const audio: Buffer[] = [];
+    for await (const chunk of speech.audio) audio.push(chunk as Buffer);
+    await speech.completed;
+
+    assert.equal(received.length, 2);
     const config = received[0];
     assert.ok(config);
     assert.equal(config.stream_id, "00000000-0000-4000-8000-000000000151");
     assert.equal(config.voice, "ko-voice");
-
-    await prepared.sendText("안녕하세요");
-    const audio: Buffer[] = [];
-    for await (const chunk of prepared.audio) audio.push(chunk as Buffer);
-    await prepared.completed;
-
     assert.deepEqual(Buffer.concat(audio), Buffer.from([1, 0, 2, 0]));
     assert.deepEqual(received[1], {
       stream_id: "00000000-0000-4000-8000-000000000151",
@@ -190,11 +183,18 @@ void test("翻訳本文の受信前にTTS configだけを送り、本文を後�
   });
 });
 
-void test("連続するTTS streamが同じWebSocket接続を再利用する", async () => {
+void test("本文を送らない接続ウォームアップ後も連続TTSが同じWebSocketを再利用する", async () => {
   let connectionCount = 0;
+  let messageCount = 0;
+  let resolveConnected = (): void => undefined;
+  const connected = new Promise<void>((resolve) => {
+    resolveConnected = resolve;
+  });
   await withServer((socket) => {
     connectionCount += 1;
+    resolveConnected();
     socket.on("message", (data) => {
+      messageCount += 1;
       const message = JSON.parse(rawDataToUtf8(data)) as Record<string, unknown>;
       if (message.text_end === true) {
         socket.send(JSON.stringify({
@@ -215,6 +215,9 @@ void test("連続するTTS streamが同じWebSocket接続を再利用する", as
       ledger: new RecordingLedger(),
     });
     gateway.warm();
+    await connected;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(messageCount, 0);
 
     for (const utteranceId of ["stream-1", "stream-2"]) {
       const speech = await gateway.synthesize({
