@@ -1,0 +1,241 @@
+import {
+  SonioxNodeClient,
+  type ConcurrencyLimitsResponse,
+  type RealtimeSttSession,
+  type SonioxModel,
+  type TtsModel,
+} from "@soniox/node";
+
+import type { AppConfig } from "../config.js";
+import type { TranslationTerms } from "../config/translation-terms.js";
+import { ApplicationError } from "../domain/application-error.js";
+import {
+  languagePairs,
+  languagesForPair,
+  type LanguagePair,
+} from "../domain/language-pair.js";
+import type { CapacityGate } from "../session/session-manager.js";
+import { usdDecimalToMicrousd } from "../usage/usage-ledger.js";
+
+type ConcurrencyClient = {
+  concurrencyLimits: {
+    get(signal?: AbortSignal): Promise<ConcurrencyLimitsResponse>;
+  };
+};
+
+function scopeHasCapacity(
+  scope: ConcurrencyLimitsResponse["project"],
+  sttStreams: number,
+  ttsStreams: number,
+): boolean {
+  const sttAvailable = scope.limits.transcribe_concurrent === null ||
+    scope.current.transcribe_concurrent + sttStreams <= scope.limits.transcribe_concurrent;
+  const ttsAvailable = scope.limits.tts_concurrent === null ||
+    scope.current.tts_concurrent + ttsStreams <= scope.limits.tts_concurrent;
+  return sttAvailable && ttsAvailable;
+}
+
+export function hasSonioxCapacity(
+  response: ConcurrencyLimitsResponse,
+  sttStreams: number,
+  ttsStreams: number,
+): boolean {
+  return scopeHasCapacity(response.project, sttStreams, ttsStreams) &&
+    scopeHasCapacity(response.organization, sttStreams, ttsStreams);
+}
+
+export class SonioxCapacityGate implements CapacityGate {
+  readonly #client: ConcurrencyClient;
+
+  public constructor(client: ConcurrencyClient) {
+    this.#client = client;
+  }
+
+  public async assertCanStart(input: {
+    sttStreams: number;
+    ttsStreams: number;
+    at: Date;
+  }): Promise<void> {
+    try {
+      const limits = await this.#client.concurrencyLimits.get();
+      if (!hasSonioxCapacity(limits, input.sttStreams, input.ttsStreams)) {
+        throw new ApplicationError(
+          "SONIOX_CAPACITY_UNAVAILABLE",
+          "Sonioxの同時実行枠に空きがありません。時間を置いて再実行してください。",
+        );
+      }
+    } catch (error) {
+      if (error instanceof ApplicationError) throw error;
+      throw new ApplicationError(
+        "SONIOX_CAPACITY_UNAVAILABLE",
+        "Sonioxの同時実行枠を確認できないため、翻訳を開始しません。",
+        { cause: error },
+      );
+    }
+  }
+}
+
+export function createSonioxClient(config: AppConfig["soniox"]): SonioxNodeClient {
+  return new SonioxNodeClient({
+    api_key: config.apiKey,
+    region: config.region,
+    base_url: config.restBaseUrl,
+    tts_api_url: config.ttsRestBaseUrl,
+    realtime: {
+      ws_base_url: config.sttWebSocketUrl,
+      tts_ws_url: config.ttsWebSocketUrl,
+    },
+  });
+}
+
+type PreflightClient = {
+  models: { list(signal?: AbortSignal): Promise<SonioxModel[]> };
+  tts: { listModels(signal?: AbortSignal): Promise<TtsModel[]> };
+};
+
+function supportsPair(model: SonioxModel, pair: LanguagePair): boolean {
+  if (model.two_way_translation === "all_languages") return true;
+  const [a, b] = languagesForPair(pair);
+  return model.two_way_translation_pairs.includes(pair) ||
+    model.two_way_translation_pairs.includes(`${b}-${a}`);
+}
+
+export async function verifySonioxConfiguration(
+  client: PreflightClient,
+  config: Pick<AppConfig["soniox"], "sttModel" | "ttsModel" | "voices">,
+): Promise<void> {
+  const [sttModels, ttsModels] = await Promise.all([
+    client.models.list(),
+    client.tts.listModels(),
+  ]);
+  const sttModel = sttModels.find((model) => model.id === config.sttModel);
+  const ttsModel = ttsModels.find((model) => model.id === config.ttsModel);
+  const issues: string[] = [];
+  if (!sttModel) {
+    issues.push(`STT model「${config.sttModel}」を利用できません`);
+  } else {
+    const supportedLanguages = new Set(sttModel.languages.map((language) => language.code));
+    for (const language of ["ja", "ko", "en"] as const) {
+      if (!supportedLanguages.has(language)) issues.push(`STT modelが${language}に未対応です`);
+    }
+    for (const pair of languagePairs) {
+      if (!supportsPair(sttModel, pair)) issues.push(`STT modelが${pair}の双方向翻訳に未対応です`);
+    }
+  }
+  if (!ttsModel) {
+    issues.push(`TTS model「${config.ttsModel}」を利用できません`);
+  } else {
+    const voices = new Set(ttsModel.voices.map((voice) => voice.id));
+    for (const [language, voice] of Object.entries(config.voices)) {
+      if (!voices.has(voice)) issues.push(`SONIOX_VOICE_${language.toUpperCase()}「${voice}」を利用できません`);
+    }
+  }
+  if (issues.length > 0) {
+    throw new Error(`Soniox設定の事前確認に失敗しました:\n- ${issues.join("\n- ")}`);
+  }
+}
+
+export class SonioxSttFactory {
+  readonly #client: SonioxNodeClient;
+  readonly #model: string;
+  readonly #terms: TranslationTerms;
+
+  public constructor(client: SonioxNodeClient, model: string, terms: TranslationTerms) {
+    this.#client = client;
+    this.#model = model;
+    this.#terms = terms;
+  }
+
+  public create(pair: LanguagePair, requestRef: string): {
+    session: RealtimeSttSession;
+    initialTextCharacterCount: number;
+  } {
+    const [languageA, languageB] = languagesForPair(pair);
+    const translationTerms = this.#terms[pair];
+    const session = this.#client.realtime.stt({
+      model: this.#model,
+      audio_format: "pcm_s16le",
+      sample_rate: 48_000,
+      num_channels: 1,
+      language_hints: [languageA, languageB],
+      enable_language_identification: true,
+      enable_endpoint_detection: true,
+      max_endpoint_delay_ms: 500,
+      translation: {
+        type: "two_way",
+        language_a: languageA,
+        language_b: languageB,
+      },
+      client_reference_id: requestRef,
+      ...(translationTerms.length > 0
+        ? { context: { translation_terms: [...translationTerms] } }
+        : {}),
+    });
+    return {
+      session,
+      initialTextCharacterCount: translationTerms.length > 0
+        ? Array.from(JSON.stringify(translationTerms)).length
+        : 0,
+    };
+  }
+}
+
+type UsageLogClient = {
+  usageLogs: {
+    list(options: {
+      start_time: string;
+      end_time: string;
+      sort: "end_time_asc";
+      limit: number;
+    }): Promise<AsyncIterable<{
+      client_reference_id?: string | null | undefined;
+      cost_usd: string;
+    }>>;
+  };
+};
+
+type ReconciliationLedger = {
+  getLastReconciledAt(): Date | undefined;
+  hasProviderRequest(requestRef: string): boolean;
+  reconcileProviderRequest(requestRef: string, costMicrousd: number, at: Date): void;
+  markReconciled(at: Date): void;
+};
+
+const reconciliationOverlapMs = 5 * 60 * 1000;
+const initialReconciliationWindowMs = 30 * 24 * 60 * 60 * 1000;
+
+export class SonioxUsageReconciler {
+  readonly #client: UsageLogClient;
+  readonly #ledger: ReconciliationLedger;
+
+  public constructor(client: UsageLogClient, ledger: ReconciliationLedger) {
+    this.#client = client;
+    this.#ledger = ledger;
+  }
+
+  public async reconcile(at: Date): Promise<void> {
+    const last = this.#ledger.getLastReconciledAt();
+    const startMs = last && last.getTime() <= at.getTime()
+      ? Math.max(
+          last.getTime() - reconciliationOverlapMs,
+          at.getTime() - initialReconciliationWindowMs,
+        )
+      : at.getTime() - initialReconciliationWindowMs;
+    const result = await this.#client.usageLogs.list({
+      start_time: new Date(startMs).toISOString(),
+      end_time: at.toISOString(),
+      sort: "end_time_asc",
+      limit: 1_000,
+    });
+    for await (const log of result) {
+      const requestRef = log.client_reference_id;
+      if (!requestRef || !this.#ledger.hasProviderRequest(requestRef)) continue;
+      this.#ledger.reconcileProviderRequest(
+        requestRef,
+        usdDecimalToMicrousd(log.cost_usd),
+        at,
+      );
+    }
+    this.#ledger.markReconciled(at);
+  }
+}

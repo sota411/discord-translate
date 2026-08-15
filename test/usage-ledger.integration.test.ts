@@ -160,12 +160,16 @@ void test("照合が古い場合と月額上限到達時は新規開始をFail C
       kind: "stt",
       startedAt: at,
     });
-    ledger.recordProviderUsage({
-      requestRef: "00000000-0000-4000-8000-000000000011",
-      audioMs: 24_000_000,
-      textCharacterCount: 0,
-      at,
-    });
+    assert.throws(
+      () => ledger.recordProviderUsage({
+        requestRef: "00000000-0000-4000-8000-000000000011",
+        audioMs: 24_000_000,
+        textCharacterCount: 0,
+        at,
+      }),
+      (error: unknown) =>
+        error instanceof ApplicationError && error.code === "USAGE_LIMIT_REACHED",
+    );
     ledger.markReconciled(at);
 
     await assert.rejects(

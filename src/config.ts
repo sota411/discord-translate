@@ -59,6 +59,7 @@ export type AppConfig = {
     apiKey: string;
     region: SonioxRegion;
     restBaseUrl: string;
+    ttsRestBaseUrl: string;
     sttWebSocketUrl: string;
     ttsWebSocketUrl: string;
     sttModel: string;
@@ -108,26 +109,33 @@ export class ConfigError extends Error {
 
 type RegionEndpoints = Pick<
   AppConfig["soniox"],
-  "restBaseUrl" | "sttWebSocketUrl" | "ttsWebSocketUrl"
+  "restBaseUrl" | "ttsRestBaseUrl" | "sttWebSocketUrl" | "ttsWebSocketUrl"
 >;
 
 const regionEndpoints: Readonly<Record<SonioxRegion, RegionEndpoints>> = {
   us: {
     restBaseUrl: "https://api.soniox.com",
+    ttsRestBaseUrl: "https://tts-rt.soniox.com",
     sttWebSocketUrl: "wss://stt-rt.soniox.com/transcribe-websocket",
-    ttsWebSocketUrl: "wss://tts-rt.soniox.com/text-to-speech-websocket",
+    ttsWebSocketUrl: "wss://tts-rt.soniox.com/tts-websocket",
   },
   eu: {
     restBaseUrl: "https://api.eu.soniox.com",
+    ttsRestBaseUrl: "https://tts-rt.eu.soniox.com",
     sttWebSocketUrl: "wss://stt-rt.eu.soniox.com/transcribe-websocket",
-    ttsWebSocketUrl: "wss://tts-rt.eu.soniox.com/text-to-speech-websocket",
+    ttsWebSocketUrl: "wss://tts-rt.eu.soniox.com/tts-websocket",
   },
   jp: {
     restBaseUrl: "https://api.jp.soniox.com",
+    ttsRestBaseUrl: "https://tts-rt.jp.soniox.com",
     sttWebSocketUrl: "wss://stt-rt.jp.soniox.com/transcribe-websocket",
-    ttsWebSocketUrl: "wss://tts-rt.jp.soniox.com/text-to-speech-websocket",
+    ttsWebSocketUrl: "wss://tts-rt.jp.soniox.com/tts-websocket",
   },
 };
+
+export function getSonioxRegionEndpoints(region: SonioxRegion): RegionEndpoints {
+  return regionEndpoints[region];
+}
 
 function parseSnowflakeList(name: string, value: string, issues: string[]): Set<string> {
   const entries = value.split(",").map((entry) => entry.trim()).filter(Boolean);
@@ -200,6 +208,8 @@ export function loadConfig(
   const pricingConfirmedAt = new Date(`${raw.PRICING_CONFIRMED_AT}T00:00:00Z`);
   if (
     Number.isNaN(pricingConfirmedAt.getTime()) ||
+    pricingConfirmedAt.toISOString().slice(0, 10) !== raw.PRICING_CONFIRMED_AT ||
+    pricingConfirmedAt.getTime() > now.getTime() ||
     daysBetween(pricingConfirmedAt, now) > raw.PRICING_MAX_AGE_DAYS
   ) {
     issues.push("PRICING_CONFIRMED_AT: 料金確認日が期限切れです");

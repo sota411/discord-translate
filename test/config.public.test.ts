@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { ConfigError, loadConfig } from "../src/config.js";
+import { parseTranslationTerms } from "../src/config/translation-terms.js";
 import { validEnv } from "./helpers/valid-env.js";
 
 void test("有効な環境変数を型付き設定と固定リージョンURLへ変換する", () => {
@@ -10,7 +11,7 @@ void test("有効な環境変数を型付き設定と固定リージョンURLへ
   assert.equal(config.soniox.region, "us");
   assert.equal(config.soniox.restBaseUrl, "https://api.soniox.com");
   assert.equal(config.soniox.sttWebSocketUrl, "wss://stt-rt.soniox.com/transcribe-websocket");
-  assert.equal(config.soniox.ttsWebSocketUrl, "wss://tts-rt.soniox.com/text-to-speech-websocket");
+  assert.equal(config.soniox.ttsWebSocketUrl, "wss://tts-rt.soniox.com/tts-websocket");
   assert.deepEqual([...config.discord.allowedGuildIds], ["223456789012345678"]);
   assert.equal(config.limits.maxSpeakersPerSession, 2);
   assert.equal(config.pricing.safetyPercent, 125);
@@ -54,5 +55,58 @@ void test("料金確認日が期限切れなら起動設定を拒否する", () 
   assert.throws(
     () => loadConfig(env, new Date("2026-08-15T00:00:00Z")),
     /PRICING_CONFIRMED_AT/,
+  );
+});
+
+void test("存在しない日付または未来の料金確認日を拒否する", () => {
+  assert.throws(
+    () => loadConfig(
+      validEnv({ PRICING_CONFIRMED_AT: "2026-02-30" }),
+      new Date("2026-08-15T00:00:00Z"),
+    ),
+    /PRICING_CONFIRMED_AT/u,
+  );
+  assert.throws(
+    () => loadConfig(
+      validEnv({ PRICING_CONFIRMED_AT: "2026-08-16" }),
+      new Date("2026-08-15T00:00:00Z"),
+    ),
+    /PRICING_CONFIRMED_AT/u,
+  );
+});
+
+void test("翻訳用語JSONは対応ペア、空文字、重複、context上限を起動前に検証する", () => {
+  assert.deepEqual(parseTranslationTerms(JSON.stringify({
+    "ja-ko": [{ source: "VALORANT", target: "발로란트" }],
+    "ja-en": [],
+    "ko-en": [],
+  }))["ja-ko"], [{ source: "VALORANT", target: "발로란트" }]);
+
+  assert.throws(
+    () => parseTranslationTerms(JSON.stringify({
+      "ja-ko": [
+        { source: "ult", target: "궁극기" },
+        { source: "ult", target: "필살기" },
+      ],
+      "ja-en": [],
+      "ko-en": [],
+    })),
+    /ja-ko.*重複/u,
+  );
+  assert.throws(
+    () => parseTranslationTerms(JSON.stringify({
+      "ja-ko": [{ source: "", target: "x" }],
+      "ja-en": [],
+      "ko-en": [],
+    })),
+    /source/u,
+  );
+  assert.throws(
+    () => parseTranslationTerms(JSON.stringify({
+      "ja-ko": [{ source: "x".repeat(10_001), target: "y" }],
+      "ja-en": [],
+      "ko-en": [],
+    })),
+    /10,000/u,
   );
 });

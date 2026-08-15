@@ -314,7 +314,7 @@ export class UsageLedger implements UsageGate {
     assertNonNegativeSafeInteger("audioMs", input.audioMs);
     assertNonNegativeSafeInteger("textCharacterCount", input.textCharacterCount);
 
-    this.#database.transaction(() => {
+    const scopes = this.#database.transaction(() => {
       const context = this.#providerContext(input.requestRef);
       if (context.status !== "open") {
         throw new Error(`provider request ${input.requestRef}はopenではありません`);
@@ -357,7 +357,26 @@ export class UsageLedger implements UsageGate {
       this.#addMonthlyUsage("user", context.user_id, period, delta, estimatedCostMicrousd, 0, input.at);
       this.#addMonthlyUsage("guild", context.guild_id, period, delta, estimatedCostMicrousd, 0, input.at);
       this.#addMonthlyUsage("global", "global", period, delta, estimatedCostMicrousd, 0, input.at);
+      return { userId: context.user_id, guildId: context.guild_id, period };
     })();
+    this.#assertBelowLimit(
+      "user",
+      scopes.userId,
+      scopes.period,
+      this.#limits.userMonthlyCostMicrousd,
+    );
+    this.#assertBelowLimit(
+      "guild",
+      scopes.guildId,
+      scopes.period,
+      this.#limits.guildMonthlyCostMicrousd,
+    );
+    this.#assertBelowLimit(
+      "global",
+      "global",
+      scopes.period,
+      this.#limits.globalMonthlyCostMicrousd,
+    );
   }
 
   public finishProviderRequest(
@@ -414,6 +433,24 @@ export class UsageLedger implements UsageGate {
       INSERT INTO app_meta (key, value) VALUES ('last_reconciled_at', ?)
       ON CONFLICT(key) DO UPDATE SET value = excluded.value
     `).run(at.toISOString());
+  }
+
+  public getLastReconciledAt(): Date | undefined {
+    const row = this.#database.prepare(
+      "SELECT value FROM app_meta WHERE key = 'last_reconciled_at'",
+    ).get() as { value: string } | undefined;
+    if (!row) return undefined;
+    const at = new Date(row.value);
+    if (Number.isNaN(at.getTime())) {
+      throw new Error("last_reconciled_atが不正です");
+    }
+    return at;
+  }
+
+  public hasProviderRequest(requestRef: string): boolean {
+    return this.#database.prepare(
+      "SELECT 1 FROM provider_request WHERE request_ref = ?",
+    ).get(requestRef) !== undefined;
   }
 
   public assertCanStart(input: {

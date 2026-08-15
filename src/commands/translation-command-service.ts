@@ -8,6 +8,7 @@ import {
   type LanguagePair,
 } from "../domain/language-pair.js";
 import type { SessionManager } from "../session/session-manager.js";
+import type { SessionDescriptor } from "../session/session-manager.js";
 
 type VoiceChannelInput = {
   id: string;
@@ -105,6 +106,14 @@ export class TranslationCommandService {
         interactionMessage: error.publicMessage,
       };
     }
+  }
+
+  public getSession(guildId: string): Readonly<SessionDescriptor> | undefined {
+    return this.#sessions.get(guildId);
+  }
+
+  public stopForFailure(guildId: string, reason: string): Promise<boolean> {
+    return this.#sessions.stop(guildId, reason);
   }
 
   public async handleVoiceParticipantsChanged(

@@ -1,0 +1,515 @@
+import { randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
+
+import { OpusEncoder } from "@discordjs/opus";
+import {
+  EndBehaviorType,
+  VoiceConnectionStatus,
+  createAudioPlayer,
+  entersState,
+  joinVoiceChannel,
+  type AudioPlayer,
+  type AudioReceiveStream,
+  type VoiceConnection,
+} from "@discordjs/voice";
+import {
+  ChannelType,
+  type Client,
+  type Guild,
+  type TextChannel,
+  type VoiceChannel,
+} from "discord.js";
+import {
+  AuthError,
+  QuotaError,
+  type RealtimeResult,
+  type RealtimeSttSession,
+} from "@soniox/node";
+
+import type { AppConfig } from "../config.js";
+import { downmixStereoS16leToMono } from "../audio/pcm.js";
+import { ApplicationError } from "../domain/application-error.js";
+import { languagesForPair } from "../domain/language-pair.js";
+import type {
+  SessionDescriptor,
+  SessionRuntime,
+  TranslationSessionDriver,
+} from "../session/session-manager.js";
+import { SonioxSttFactory } from "../soniox/control.js";
+import type { TtsGateway } from "../translation/utterance-processor.js";
+import { TranslationTokenAssembler } from "../translation/token-assembler.js";
+import { UtteranceProcessor } from "../translation/utterance-processor.js";
+import type { UsageLedger } from "../usage/usage-ledger.js";
+import { DiscordCaptionGateway } from "./caption-gateway.js";
+import { DiscordPlaybackGateway } from "./playback-gateway.js";
+
+export type RuntimeFailureHandler = (
+  guildId: string,
+  reason: string,
+  publicMessage: string,
+  cause?: unknown,
+) => void;
+
+type DiscordTranslationDriverOptions = {
+  client: Client;
+  config: AppConfig;
+  ledger: UsageLedger;
+  sttFactory: SonioxSttFactory;
+  tts: TtsGateway;
+  onFailure: RuntimeFailureHandler;
+};
+
+type SpeakerStream = {
+  userId: string;
+  requestRef: string;
+  opus: AudioReceiveStream;
+  decoder: OpusEncoder;
+  stt: RealtimeSttSession;
+  assembler: TranslationTokenAssembler;
+  lastUsageAtMonotonic?: number;
+  pendingTextCharacters: number;
+  keepaliveTimer?: NodeJS.Timeout;
+  usageTimer?: NodeJS.Timeout;
+  closed: boolean;
+};
+
+function mapSttError(error: unknown): ApplicationError {
+  if (error instanceof AuthError) {
+    return new ApplicationError(
+      "SONIOX_AUTH_FAILED",
+      "Sonioxの認証に失敗しました。運営者へ連絡してください。",
+      { cause: error },
+    );
+  }
+  if (error instanceof QuotaError) {
+    const code = error.statusCode === 402
+      ? "SONIOX_BUDGET_EXHAUSTED"
+      : "SONIOX_LIMIT_EXCEEDED";
+    return new ApplicationError(
+      code,
+      error.statusCode === 402
+        ? "Sonioxの残高または月額上限へ達しました。"
+        : "Sonioxの同時実行上限へ達しました。",
+      { cause: error },
+    );
+  }
+  return error instanceof ApplicationError
+    ? error
+    : new ApplicationError(
+        "SONIOX_STREAM_FAILED",
+        "Sonioxの音声認識ストリームに失敗しました。",
+        { cause: error },
+      );
+}
+
+export class DiscordTranslationDriver implements TranslationSessionDriver {
+  readonly #client: Client;
+  readonly #config: AppConfig;
+  readonly #ledger: UsageLedger;
+  readonly #sttFactory: SonioxSttFactory;
+  readonly #tts: TtsGateway;
+  readonly #onFailure: RuntimeFailureHandler;
+
+  public constructor(options: DiscordTranslationDriverOptions) {
+    this.#client = options.client;
+    this.#config = options.config;
+    this.#ledger = options.ledger;
+    this.#sttFactory = options.sttFactory;
+    this.#tts = options.tts;
+    this.#onFailure = (guildId, reason, publicMessage, cause) => {
+      options.onFailure(guildId, reason, publicMessage, cause);
+    };
+  }
+
+  public async start(
+    session: Readonly<SessionDescriptor>,
+    participantIds: readonly string[],
+  ): Promise<SessionRuntime> {
+    const guild = this.#client.guilds.cache.get(session.guildId);
+    if (!guild) throw new Error("Discord Guildがクライアントキャッシュにありません");
+    const [voiceChannel, textChannel] = await Promise.all([
+      guild.channels.fetch(session.voiceChannelId),
+      guild.channels.fetch(session.textChannelId),
+    ]);
+    if (voiceChannel?.type !== ChannelType.GuildVoice) {
+      throw new Error("対象チャンネルはGuild Voice Channelではありません");
+    }
+    if (textChannel?.type !== ChannelType.GuildText) {
+      throw new Error("字幕チャンネルはGuild Text Channelではありません");
+    }
+    this.#assertParticipantsUnchanged(voiceChannel, participantIds);
+
+    this.#ledger.createSession({
+      sessionId: session.sessionId,
+      guildId: session.guildId,
+      voiceChannelId: session.voiceChannelId,
+      textChannelId: session.textChannelId,
+      startedByUserId: session.startedByUserId,
+      pair: session.pair,
+      startedAt: session.startedAt,
+    });
+
+    let connection: VoiceConnection | undefined;
+    try {
+      connection = joinVoiceChannel({
+        channelId: voiceChannel.id,
+        guildId: guild.id,
+        adapterCreator: guild.voiceAdapterCreator,
+        selfDeaf: false,
+        selfMute: false,
+      });
+      await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
+      this.#assertParticipantsUnchanged(voiceChannel, participantIds);
+      return new DiscordTranslationRuntime({
+        session,
+        participantIds,
+        guild,
+        voiceChannel,
+        textChannel,
+        connection,
+        config: this.#config,
+        ledger: this.#ledger,
+        sttFactory: this.#sttFactory,
+        tts: this.#tts,
+        onFailure: this.#onFailure,
+      });
+    } catch (error) {
+      connection?.destroy();
+      this.#ledger.finishSession(session.sessionId, "START_FAILED", new Date());
+      throw error;
+    }
+  }
+
+  #assertParticipantsUnchanged(
+    voiceChannel: VoiceChannel,
+    participantIds: readonly string[],
+  ): void {
+    const current = [...voiceChannel.members.values()]
+      .filter((member) => !member.user.bot)
+      .map((member) => member.id)
+      .sort();
+    const authorized = [...participantIds].sort();
+    if (
+      current.length !== authorized.length ||
+      current.some((userId, index) => userId !== authorized[index])
+    ) {
+      throw new ApplicationError(
+        "SESSION_START_FAILED",
+        "開始処理中に音声チャンネルの参加者が変わりました。もう一度実行してください。",
+      );
+    }
+  }
+}
+
+type TranslationRuntimeOptions = {
+  session: Readonly<SessionDescriptor>;
+  participantIds: readonly string[];
+  guild: Guild;
+  voiceChannel: VoiceChannel;
+  textChannel: TextChannel;
+  connection: VoiceConnection;
+  config: AppConfig;
+  ledger: UsageLedger;
+  sttFactory: SonioxSttFactory;
+  tts: TtsGateway;
+  onFailure: RuntimeFailureHandler;
+};
+
+class DiscordTranslationRuntime implements SessionRuntime {
+  readonly #session: Readonly<SessionDescriptor>;
+  readonly #guild: Guild;
+  readonly #voiceChannel: VoiceChannel;
+  readonly #textChannel: TextChannel;
+  readonly #connection: VoiceConnection;
+  readonly #config: AppConfig;
+  readonly #ledger: UsageLedger;
+  readonly #sttFactory: SonioxSttFactory;
+  readonly #onFailure: RuntimeFailureHandler;
+  readonly #player: AudioPlayer;
+  readonly #processor: UtteranceProcessor;
+  readonly #participants: Set<string>;
+  readonly #speakers = new Map<string, SpeakerStream>();
+  readonly #warnedUnsupported = new Set<string>();
+  readonly #speakingListener: (userId: string) => void;
+  readonly #maxSessionTimer: NodeJS.Timeout;
+  readonly #idleTimer: NodeJS.Timeout;
+  #lastHumanAudioAt = performance.now();
+  #stopping = false;
+  #failureSent = false;
+
+  public constructor(options: TranslationRuntimeOptions) {
+    this.#session = options.session;
+    this.#guild = options.guild;
+    this.#voiceChannel = options.voiceChannel;
+    this.#textChannel = options.textChannel;
+    this.#connection = options.connection;
+    this.#config = options.config;
+    this.#ledger = options.ledger;
+    this.#sttFactory = options.sttFactory;
+    this.#onFailure = (guildId, reason, publicMessage, cause) => {
+      options.onFailure(guildId, reason, publicMessage, cause);
+    };
+    this.#participants = new Set(options.participantIds);
+    this.#player = createAudioPlayer();
+    this.#connection.subscribe(this.#player);
+    const captions = new DiscordCaptionGateway(this.#textChannel);
+    const playback = new DiscordPlaybackGateway(this.#player);
+    this.#processor = new UtteranceProcessor({
+      captions,
+      playback,
+      tts: options.tts,
+      maxQueueWaitMs: options.config.limits.playbackQueueMaxMs,
+      maxSourceDurationMs: options.config.limits.utteranceMaxSourceSeconds * 1000,
+      maxInputCharacters: options.config.limits.ttsMaxInputCharacters,
+      onFatal: (error) => this.#fail(error.code, error.publicMessage),
+    });
+
+    this.#speakingListener = (userId) => this.#handleSpeakingStart(userId);
+    this.#connection.receiver.speaking.on("start", this.#speakingListener);
+    this.#connection.on(VoiceConnectionStatus.Disconnected, () => {
+      void this.#recoverVoiceConnection();
+    });
+    this.#player.on("error", (error) => {
+      this.#fail("VOICE_CONNECTION_LOST", "Discordで翻訳音声を再生できませんでした。", error);
+    });
+
+    this.#maxSessionTimer = setTimeout(() => {
+      this.#fail("SESSION_TIME_LIMIT", "セッション時間の上限へ達したため翻訳を停止します。");
+    }, options.config.limits.sessionMaxMinutes * 60_000);
+    this.#maxSessionTimer.unref();
+    this.#idleTimer = setInterval(() => {
+      const idleMs = performance.now() - this.#lastHumanAudioAt;
+      if (idleMs >= options.config.limits.sessionIdleTimeoutSeconds * 1000) {
+        this.#fail("SESSION_IDLE", "無音時間の上限へ達したため翻訳を停止します。");
+      }
+    }, Math.min(1_000, options.config.limits.sessionIdleTimeoutSeconds * 1000));
+    this.#idleTimer.unref();
+  }
+
+  public updateParticipants(participantIds: readonly string[]): Promise<void> {
+    const next = new Set(participantIds);
+    const removed = [...this.#speakers.keys()].filter((userId) => !next.has(userId));
+    this.#participants.clear();
+    for (const participantId of participantIds) this.#participants.add(participantId);
+    for (const userId of removed) this.#closeSpeaker(userId);
+    return Promise.resolve();
+  }
+
+  public async stop(reason: string): Promise<void> {
+    if (this.#stopping) return;
+    this.#stopping = true;
+    clearTimeout(this.#maxSessionTimer);
+    clearInterval(this.#idleTimer);
+    this.#connection.receiver.speaking.off("start", this.#speakingListener);
+    await this.#processor.stop();
+    for (const userId of [...this.#speakers.keys()]) this.#closeSpeaker(userId);
+    this.#player.stop(true);
+    this.#connection.destroy();
+    this.#ledger.finishSession(this.#session.sessionId, reason, new Date());
+  }
+
+  #handleSpeakingStart(userId: string): void {
+    if (
+      this.#stopping ||
+      this.#speakers.has(userId) ||
+      !this.#participants.has(userId) ||
+      !this.#config.discord.allowedUserIds.has(userId)
+    ) {
+      return;
+    }
+    const member = this.#voiceChannel.members.get(userId);
+    if (!member || member.user.bot) return;
+
+    const opus = this.#connection.receiver.subscribe(userId, {
+      end: { behavior: EndBehaviorType.Manual },
+    });
+    opus.pause();
+    const requestRef = randomUUID();
+    const stt = this.#sttFactory.create(this.#session.pair, requestRef);
+    const speaker: SpeakerStream = {
+      userId,
+      requestRef,
+      opus,
+      decoder: new OpusEncoder(48_000, 2),
+      stt: stt.session,
+      assembler: new TranslationTokenAssembler(this.#session.pair),
+      pendingTextCharacters: stt.initialTextCharacterCount,
+      closed: false,
+    };
+    this.#speakers.set(userId, speaker);
+    void this.#connectSpeaker(speaker).catch((error: unknown) => {
+      this.#fail("SONIOX_STREAM_FAILED", mapSttError(error).publicMessage, error);
+    });
+  }
+
+  async #connectSpeaker(speaker: SpeakerStream): Promise<void> {
+    this.#ledger.openProviderRequest({
+      requestRef: speaker.requestRef,
+      sessionId: this.#session.sessionId,
+      userId: speaker.userId,
+      kind: "stt",
+      startedAt: new Date(),
+    });
+    speaker.stt.on("result", (result) => this.#handleSttResult(speaker, result));
+    speaker.stt.on("endpoint", () => this.#handleEndpoint(speaker));
+    speaker.stt.on("error", (error) => {
+      this.#fail("SONIOX_STREAM_FAILED", mapSttError(error).publicMessage, error);
+    });
+    await speaker.stt.connect();
+    if (this.#stopping || speaker.closed) {
+      speaker.stt.close();
+      return;
+    }
+
+    speaker.lastUsageAtMonotonic = performance.now();
+    speaker.opus.on("data", (packet: Buffer) => {
+      try {
+        if (
+          this.#stopping ||
+          !this.#participants.has(speaker.userId) ||
+          !this.#config.discord.allowedUserIds.has(speaker.userId)
+        ) {
+          return;
+        }
+        const stereoPcm = speaker.decoder.decode(packet);
+        const monoPcm = downmixStereoS16leToMono(stereoPcm);
+        speaker.stt.sendAudio(monoPcm);
+        this.#lastHumanAudioAt = performance.now();
+      } catch (error) {
+        this.#fail("SONIOX_STREAM_FAILED", "音声の変換または送信に失敗しました。", error);
+      }
+    });
+    speaker.opus.on("error", (error) => {
+      this.#fail("VOICE_CONNECTION_LOST", "Discordの音声受信に失敗しました。", error);
+    });
+    speaker.keepaliveTimer = setInterval(() => {
+      if (!speaker.closed) {
+        try {
+          speaker.stt.keepAlive();
+        } catch (error) {
+          this.#fail("SONIOX_STREAM_FAILED", "Soniox STTのkeepaliveに失敗しました。", error);
+        }
+      }
+    }, 10_000);
+    speaker.keepaliveTimer.unref();
+    speaker.usageTimer = setInterval(() => {
+      try {
+        this.#flushSpeakerUsage(speaker);
+      } catch (error) {
+        const mapped = mapSttError(error);
+        this.#fail(mapped.code, mapped.publicMessage, error);
+      }
+    }, 30_000);
+    speaker.usageTimer.unref();
+    speaker.opus.resume();
+  }
+
+  #handleSttResult(speaker: SpeakerStream, result: RealtimeResult): void {
+    const pairLanguages = new Set(languagesForPair(this.#session.pair));
+    for (const token of result.tokens) {
+      speaker.pendingTextCharacters += Array.from(token.text).length;
+      speaker.assembler.accept(token);
+      if (
+        token.is_final &&
+        token.translation_status === "none" &&
+        token.language !== undefined &&
+        !pairLanguages.has(token.language as "ja" | "ko" | "en") &&
+        !this.#warnedUnsupported.has(speaker.userId)
+      ) {
+        this.#warnedUnsupported.add(speaker.userId);
+        void this.#textChannel.send({
+          content: "選択した言語ペア以外の発話を検出したため、この発話は読み上げません。",
+          allowedMentions: { parse: [] },
+        }).catch((error: unknown) => {
+          this.#fail("CAPTION_SEND_FAILED", "警告を字幕チャンネルへ投稿できませんでした。", error);
+        });
+      }
+    }
+  }
+
+  #handleEndpoint(speaker: SpeakerStream): void {
+    try {
+      this.#flushSpeakerUsage(speaker);
+      const finalized = speaker.assembler.flush();
+      if (!finalized || this.#stopping) return;
+      const displayName = this.#guild.members.cache.get(speaker.userId)?.displayName;
+      if (!displayName) {
+        this.#fail("VOICE_CONNECTION_LOST", "発話者のDiscord情報を確認できませんでした。");
+        return;
+      }
+      this.#processor.enqueue({
+        ...finalized,
+        utteranceId: randomUUID(),
+        sessionId: this.#session.sessionId,
+        speakerUserId: speaker.userId,
+        speakerDisplayName: displayName,
+      });
+    } catch (error) {
+      const mapped = mapSttError(error);
+      this.#fail(mapped.code, mapped.publicMessage, error);
+    }
+  }
+
+  #flushSpeakerUsage(speaker: SpeakerStream): void {
+    if (speaker.lastUsageAtMonotonic === undefined) return;
+    const nowMonotonic = performance.now();
+    const audioMs = Math.max(0, Math.floor(nowMonotonic - speaker.lastUsageAtMonotonic));
+    const textCharacterCount = speaker.pendingTextCharacters;
+    speaker.lastUsageAtMonotonic = nowMonotonic;
+    speaker.pendingTextCharacters = 0;
+    if (audioMs === 0 && textCharacterCount === 0) return;
+    this.#ledger.recordProviderUsage({
+      requestRef: speaker.requestRef,
+      audioMs,
+      textCharacterCount,
+      at: new Date(),
+    });
+  }
+
+  #closeSpeaker(userId: string): void {
+    const speaker = this.#speakers.get(userId);
+    if (!speaker || speaker.closed) return;
+    speaker.closed = true;
+    this.#speakers.delete(userId);
+    if (speaker.keepaliveTimer) clearInterval(speaker.keepaliveTimer);
+    if (speaker.usageTimer) clearInterval(speaker.usageTimer);
+    speaker.opus.destroy();
+    try {
+      this.#flushSpeakerUsage(speaker);
+    } catch (error) {
+      if (!this.#stopping) throw error;
+    }
+    speaker.stt.close();
+    this.#ledger.finishProviderRequest(speaker.requestRef, "failed", new Date());
+  }
+
+  async #recoverVoiceConnection(): Promise<void> {
+    if (this.#stopping) return;
+    try {
+      await Promise.race([
+        entersState(
+          this.#connection,
+          VoiceConnectionStatus.Signalling,
+          this.#config.limits.voiceReconnectTimeoutMs,
+        ),
+        entersState(
+          this.#connection,
+          VoiceConnectionStatus.Connecting,
+          this.#config.limits.voiceReconnectTimeoutMs,
+        ),
+      ]);
+    } catch (error) {
+      this.#fail(
+        "VOICE_CONNECTION_LOST",
+        "Discord Voiceへ再接続できないため翻訳を停止します。",
+        error,
+      );
+    }
+  }
+
+  #fail(reason: string, publicMessage: string, cause?: unknown): void {
+    if (this.#stopping || this.#failureSent) return;
+    this.#failureSent = true;
+    this.#onFailure(this.#session.guildId, reason, publicMessage, cause);
+  }
+}
