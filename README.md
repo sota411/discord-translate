@@ -62,7 +62,7 @@ install -d -m 700 .data
 realpath .data/usage.sqlite
 ```
 
-表示されたパスを`SQLITE_PATH`へ設定してください。Docker Composeでは`SQLITE_PATH=/data/usage.sqlite`のまま使えます。
+表示されたパスを`SQLITE_PATH`へ設定してください。Docker Composeでは、ホスト側の設定にかかわらずコンテナ内の`/data/usage.sqlite`を使用します。
 
 用語設定を使う場合は、[translation-terms.example.json](./config/translation-terms.example.json)をコピーし、その絶対パスを`TRANSLATION_TERMS_PATH`へ設定します。未使用なら空欄のままで構いません。
 

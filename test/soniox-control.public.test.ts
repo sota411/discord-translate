@@ -7,6 +7,7 @@ import type {
   TtsModel,
 } from "@soniox/node";
 
+import { ConfigError } from "../src/config.js";
 import { ApplicationError } from "../src/domain/application-error.js";
 import {
   SonioxCapacityGate,
@@ -222,7 +223,7 @@ void test("定期照合は最新1件へ集約しセッション終了照合を�
   ]);
 });
 
-void test("TTSモデルが対象3言語を満たさない場合は起動前検証で拒否する", async () => {
+void test("TTSモデルの対応言語またはvoiceが不正なら起動前検証で拒否する", async () => {
   const sttModel: SonioxModel = {
     id: "stt-rt-v4",
     aliased_model_id: null,
@@ -261,10 +262,14 @@ void test("TTSモデルが対象3言語を満たさない場合は起動前検�
       {
         sttModel: "stt-rt-v4",
         ttsModel: "tts-rt-v2",
-        voices: { ja: "shared-voice", ko: "shared-voice", en: "shared-voice" },
+        voices: { ja: "Mima", ko: "shared-voice", en: "shared-voice" },
       },
     ),
-    /TTS modelがjaに未対応です.*TTS modelがkoに未対応です/s,
+    (error: unknown) =>
+      error instanceof ConfigError &&
+      error.issues.includes("TTS modelがjaに未対応です") &&
+      error.issues.includes("TTS modelがkoに未対応です") &&
+      error.issues.includes("SONIOX_VOICE_JA「Mima」を利用できません"),
   );
 });
 

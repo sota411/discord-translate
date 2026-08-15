@@ -6,6 +6,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env.local
+    environment:
+      SQLITE_PATH: /data/usage.sqlite
     volumes:
       - bot-data:/data
 

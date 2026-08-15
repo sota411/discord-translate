@@ -6,7 +6,7 @@ import {
   type TtsModel,
 } from "@soniox/node";
 
-import type { AppConfig } from "../config.js";
+import { ConfigError, type AppConfig } from "../config.js";
 import type { TranslationTerms } from "../config/translation-terms.js";
 import { ApplicationError } from "../domain/application-error.js";
 import {
@@ -165,7 +165,7 @@ export async function verifySonioxConfiguration(
       }
     }
     if (issues.length > 0) {
-      throw new Error(`Soniox設定の事前確認に失敗しました:\n- ${issues.join("\n- ")}`);
+      throw new ConfigError(issues);
     }
   } finally {
     deadline.clear();
