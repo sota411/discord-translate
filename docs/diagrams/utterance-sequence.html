@@ -54,7 +54,7 @@
 
     <svg viewBox="0 0 1280 840" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="utterance-sequence-title utterance-sequence-desc">
       <title id="utterance-sequence-title">1発話を翻訳音声と字幕へ変換する流れ</title>
-      <desc id="utterance-sequence-desc">Discordの発話中に、最初の確定翻訳で翻訳先TTS streamをpre-warmし、確定原文の言語は方向判定に使わない。PCMはendpointまで再生せず、endpoint後は字幕投稿を待たずに準備済み音声を再生する。複数発話の再生順はendpointの受付順に保つ。</desc>
+      <desc id="utterance-sequence-desc">Discordの発話中は確定原文と確定翻訳を蓄積し、TTS接続だけをウォームアップする。Soniox endpointで発話を確定した後に初めてTTS configと翻訳本文を送り、字幕投稿を待たずに音声を再生する。複数発話の再生順はendpointの受付順に保つ。</desc>
       <defs>
         <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
         <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
@@ -71,80 +71,78 @@
       <line x1="880" y1="128" x2="880" y2="760" stroke="rgba(45,49,66,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
       <line x1="1140" y1="128" x2="1140" y2="760" stroke="rgba(45,49,66,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
 
-      <!-- LOOP fragment: choose direction from finalized translation, then pre-warm -->
-      <rect x="320" y="288" width="600" height="168" rx="4" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
-      <rect x="320" y="288" width="44" height="16" rx="2" fill="#f5f5f5" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
-      <text x="342" y="300" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">LOOP</text>
-      <text x="332" y="320" fill="#4f5d75" font-size="8" font-family="'Geist Mono', 'Noto Sans Mono CJK JP', monospace" letter-spacing="0.04em">[direction from final translation]</text>
-
       <!-- Activation bars stay behind arrows and labels -->
       <rect x="356" y="168" width="8" height="592" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
-      <rect x="616" y="216" width="8" height="288" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
-      <rect x="876" y="336" width="8" height="120" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
-      <rect x="1136" y="528" width="8" height="232" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+      <rect x="616" y="256" width="8" height="168" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+      <rect x="876" y="208" width="8" height="344" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+      <rect x="1136" y="560" width="8" height="200" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
 
       <!-- Messages -->
       <line x1="120" y1="176" x2="356" y2="176" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
-      <line x1="364" y1="216" x2="616" y2="216" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
-      <line x1="616" y1="264" x2="364" y2="264" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
+      <line x1="364" y1="216" x2="876" y2="216" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+      <line x1="364" y1="264" x2="616" y2="264" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
       <line x1="616" y1="312" x2="364" y2="312" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
       <line x1="616" y1="344" x2="364" y2="344" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
-      <line x1="364" y1="376" x2="876" y2="376" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
-      <line x1="364" y1="408" x2="876" y2="408" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
-      <line x1="876" y1="440" x2="364" y2="440" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
-      <line x1="616" y1="488" x2="364" y2="488" stroke="#eb6c36" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
-      <line x1="364" y1="536" x2="1136" y2="536" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
-      <line x1="364" y1="584" x2="1136" y2="584" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
-      <line x1="1136" y1="632" x2="124" y2="632" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
-      <line x1="1136" y1="680" x2="364" y2="680" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
-      <line x1="364" y1="728" x2="1136" y2="728" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
+      <line x1="616" y1="376" x2="364" y2="376" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
+      <line x1="616" y1="424" x2="364" y2="424" stroke="#eb6c36" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+      <line x1="364" y1="472" x2="876" y2="472" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+      <line x1="364" y1="504" x2="876" y2="504" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+      <line x1="876" y1="536" x2="364" y2="536" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
+      <line x1="364" y1="568" x2="1136" y2="568" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
+      <line x1="364" y1="616" x2="1136" y2="616" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+      <line x1="1136" y1="664" x2="124" y2="664" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
+      <line x1="1136" y1="704" x2="364" y2="704" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
+      <line x1="364" y1="744" x2="1136" y2="744" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
 
-      <!-- Endpoint is the audible-release gate, not the TTS-start gate -->
-      <rect x="748" y="464" width="264" height="20" rx="4" fill="rgba(235,108,54,0.08)" stroke="rgba(235,108,54,0.45)" stroke-width="1"/>
-      <text x="880" y="477" fill="#2d3142" font-size="8" font-family="'Geist Mono', 'Noto Sans Mono CJK JP', monospace" text-anchor="middle">PCMはendpointまで再生しない</text>
+      <!-- Endpoint is both the utterance and TTS-content gate -->
+      <rect x="704" y="408" width="152" height="20" rx="4" fill="rgba(235,108,54,0.08)" stroke="rgba(235,108,54,0.45)" stroke-width="1"/>
+      <text x="780" y="421" fill="#2d3142" font-size="8" font-family="'Geist Mono', 'Noto Sans Mono CJK JP', monospace" text-anchor="middle">endpoint後にTTS本文を送る</text>
 
       <!-- Message labels: every mask stays clear of its connector -->
       <rect x="176" y="152" width="128" height="12" rx="2" fill="#f5f5f5"/>
       <text x="240" y="160" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">OPUS AUDIO</text>
 
-      <rect x="436" y="192" width="104" height="12" rx="2" fill="#f5f5f5"/>
-      <text x="488" y="200" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">PCM CHUNKS</text>
+      <rect x="532" y="192" width="176" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="620" y="200" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">SOCKET WARM · NO CONTENT</text>
 
-      <rect x="416" y="240" width="148" height="12" rx="2" fill="#f5f5f5"/>
-      <text x="490" y="248" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">PROVISIONAL · IGNORE</text>
+      <rect x="436" y="240" width="104" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="488" y="248" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">PCM CHUNKS</text>
 
       <rect x="416" y="288" width="148" height="12" rx="2" fill="#f5f5f5"/>
-      <text x="490" y="296" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">FINAL ORIGINAL · BUFFER</text>
+      <text x="490" y="296" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">PROVISIONAL · IGNORE</text>
 
-      <rect x="398" y="320" width="184" height="12" rx="2" fill="#f5f5f5"/>
-      <text x="490" y="328" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">FINAL TRANSLATION BATCH</text>
+      <rect x="416" y="320" width="148" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="490" y="328" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">FINAL ORIGINAL · BUFFER</text>
 
-      <rect x="548" y="352" width="144" height="12" rx="2" fill="#f5f5f5"/>
-      <text x="620" y="360" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">CONFIG PRE-WARM</text>
+      <rect x="398" y="352" width="184" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="490" y="360" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">FINAL TRANSLATION · BUFFER</text>
 
-      <rect x="550" y="384" width="140" height="12" rx="2" fill="#f5f5f5"/>
-      <text x="620" y="392" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">BATCH + TEXT END</text>
+      <rect x="408" y="400" width="164" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="490" y="408" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">ENDPOINT · FINALIZE</text>
 
-      <rect x="566" y="416" width="108" height="12" rx="2" fill="#f5f5f5"/>
-      <text x="620" y="424" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">PCM BUFFERED</text>
+      <rect x="550" y="448" width="140" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="620" y="456" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">TTS CONFIG</text>
 
-      <rect x="416" y="464" width="148" height="12" rx="2" fill="#f5f5f5"/>
-      <text x="490" y="472" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">ENDPOINT · RELEASE</text>
+      <rect x="536" y="480" width="168" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="620" y="488" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">FINAL TEXT + TEXT END</text>
 
-      <rect x="672" y="512" width="156" height="12" rx="2" fill="#f5f5f5"/>
-      <text x="750" y="520" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">CAPTION POST · NO GATE</text>
+      <rect x="566" y="512" width="108" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="620" y="520" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">PCM STREAM</text>
 
-      <rect x="674" y="560" width="152" height="12" rx="2" fill="#f5f5f5"/>
-      <text x="750" y="568" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">PLAY PREPARED PCM</text>
+      <rect x="672" y="544" width="156" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="750" y="552" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">CAPTION POST · NO GATE</text>
 
-      <rect x="558" y="608" width="144" height="12" rx="2" fill="#f5f5f5"/>
-      <text x="630" y="616" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">TRANSLATED VOICE</text>
+      <rect x="690" y="592" width="120" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="750" y="600" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">PLAY PCM</text>
 
-      <rect x="480" y="656" width="148" height="12" rx="2" fill="#f5f5f5"/>
-      <text x="554" y="664" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">PLAYBACK COMPLETE</text>
+      <rect x="558" y="640" width="144" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="630" y="648" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">TRANSLATED VOICE</text>
 
-      <rect x="674" y="704" width="152" height="12" rx="2" fill="#f5f5f5"/>
-      <text x="750" y="712" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">CAPTION STATUS EDIT</text>
+      <rect x="480" y="680" width="148" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="554" y="688" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">PLAYBACK COMPLETE</text>
+
+      <rect x="674" y="720" width="152" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="750" y="728" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">CAPTION STATUS EDIT</text>
 
       <!-- Actors -->
       <rect x="40" y="64" width="160" height="64" rx="6" fill="#f5f5f5"/>
@@ -155,7 +153,7 @@
       <rect x="280" y="64" width="160" height="64" rx="6" fill="#f5f5f5"/>
       <rect x="280" y="64" width="160" height="64" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1"/>
       <text x="360" y="92" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', 'Noto Sans JP', sans-serif" text-anchor="middle">Botパイプライン</text>
-      <text x="360" y="112" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">final-batch prefetch · FIFO</text>
+      <text x="360" y="112" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">endpoint gate · FIFO</text>
 
       <rect x="540" y="64" width="160" height="64" rx="6" fill="#f5f5f5"/>
       <rect x="540" y="64" width="160" height="64" rx="6" fill="rgba(46,90,168,0.04)" stroke="#2e5aa8" stroke-width="1"/>
