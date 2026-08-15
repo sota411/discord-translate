@@ -6,9 +6,10 @@
 
 ## 現在の状態
 
-- 実装済み: Guild/User許可リスト、Discord Voice受信・再生、Soniox STT/TTS、字幕、FIFO再生、SQLite利用量台帳、費用上限、利用ログ照合、graceful shutdown
+- 実装済み: Guild/User許可リスト、Discord Voice受信・再生、Soniox STT/TTS、字幕、TTS接続再利用、次の1件だけを先読みするFIFO再生、区間遅延ログ、SQLite利用量台帳、費用上限、利用ログ照合、graceful shutdown
 - 自動確認済み: lint、型検査、公開境界・統合テスト、production build、native module smoke、Docker build
-- 未確認: 実Discordと実Sonioxを使った3言語ペアの30分E2E。漏えい済みの旧Token/API Keyをローテーションしてから実施する
+- 実機確認済み: 実Discordと実Sonioxの日韓1人通話、字幕、読み上げ、8発話の区間遅延計測
+- 未確認: 2人通話、日英・韓英、3言語ペアの30分E2Eと料金受入。漏えい済みの旧Token/API Keyをローテーションしてから実施する
 
 Discordの音声受信はDiscord側で正式に文書化された安定APIではありません。`@discordjs/voice`は`0.19.2`へ固定しており、更新前に実機PoCを再実行してください。
 
@@ -128,6 +129,21 @@ pnpm docker:host:logs
 
 ログに`"event":"application_ready"`があれば、DiscordとSonioxへの接続準備は完了です。
 エラーがある場合は、省略せずこのコマンドの出力を共有してください。TokenやAPI Keyそのものはログへ出ません。
+
+翻訳が遅いと感じた場合は、発話内容を表示せず区間時間だけを確認できます。
+
+```bash
+# 今回のvethエラーが出るPC
+docker compose -f compose.yaml -f compose.host.yaml logs --since=30m bot \
+  | rg '"event":"translation_latency"'
+
+# 通常のPC
+docker compose logs --since=30m bot \
+  | rg '"event":"translation_latency"'
+```
+
+同じ`trace_id`が1発話です。`stage:"playback_started"`の`total_ms`が、最後の音声packetからDiscordで再生を始めるまでの時間です。
+`stage_ms`は直前に観測したstageとの差であり、字幕POSTとTTSは並行するため、常に同じstage順にはなりません。
 
 起動後によく使うコマンドは次のとおりです。
 

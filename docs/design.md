@@ -90,7 +90,8 @@ TTSもテキストチャンクの受信中から音声を返せる。
 | Opus処理 | `@discordjs/opus` | Discordの48 kHz stereo OpusをPCMへ復号し、送信時は`@discordjs/voice`のRaw入力経路でOpusへ符号化する |
 | 音声認識と翻訳 | Soniox Real-time STT WebSocket、`stt-rt-v5` | 原文と双方向翻訳を同じストリームで取得できる |
 | 読み上げ | Soniox Real-time TTS WebSocket、`tts-rt-v2` | 翻訳テキストを受けながらPCMを返せる |
-| Soniox SDK | `@soniox/node` | WebSocketの設定、トークン、利用APIの型を利用する |
+| Soniox SDK | `@soniox/node` | STT、モデル確認、利用ログ、並行数APIの公式実装と型を再利用する |
+| TTS transport | `ws` | 公式SDKが保持しない費用照合IDとstream error種別をraw protocol境界で受ける |
 | 利用量保存 | SQLite | 単一プロセスのprivate betaで、外部DBを増やさず永続化できる |
 | 配布 | Dockerイメージ | Opusのnative addonとNode.jsの実行条件を固定する |
 | CI | GitHub Actions | 型検査、テスト、イメージビルドを同じ環境で実行する |
@@ -348,14 +349,28 @@ TTSへ送る前に、元発話の長さと確定翻訳のUnicode code point数�
 `UTTERANCE_MAX_SOURCE_SECONDS`または`TTS_MAX_INPUT_CHARACTERS`を超えた場合は、翻訳を分割または切り捨てず、TTS streamを開始する前に`UTTERANCE_TOO_LONG`でセッションを停止する。
 両上限は、最も遅い設定voiceと最も長くなった対応言語の組み合わせでも、Sonioxの生成音声上限である2分へ達しない値をPoCで決める。
 
-TTS WebSocketは発話を処理するときに遅延接続し、1発話につき1本だけ作成する。
-Soniox TTSは接続後およそ10秒以内に最初のstream設定が必要であり、生成音声がない状態が3分を超えるとkeepalive中でも接続が閉じるため、Discordセッション開始時から接続を維持しない。
-確定翻訳はFIFOへ入れ、同時に生成するTTS要求は1本だけとする。
-先行発話の`terminated: true`とDiscord再生完了を確認してから次の発話を開始し、Soniox側の終了とローカルの再生完了を別々に記録する。
+TTS WebSocketは最初の発話を処理するときに遅延接続する。
+Soniox TTSは接続後およそ10秒以内に最初のstream設定が必要なため、Discordセッション開始時には先行接続しない。
+最初のstream設定後は20秒間隔で`{"keep_alive": true}`を送り、`terminated: true`を受けた接続を後続発話の別`stream_id`へ再利用する。
+生成音声がない状態が3分を超えるとkeepalive中でもSoniox側から接続が閉じられるため、待機中の切断は異常終了にせず、次の発話開始時に新しい接続を作る。
+active streamの途中で切断した場合は自動再送せず、要求を`failed`としてセッションを停止する。
 
-TTSだけは`@soniox/node` 2.3.0ではなく、生のWebSocket protocolを使用する。
-同SDKのTTS stream設定では`client_reference_id`を送れず、`max_audio_duration_reached`の`error_type`も保持されないためである。
-STT、モデル一覧、TTSモデル一覧、利用ログ、並行数確認には公式SDKを使用する。
+確定翻訳はFIFOへ入れ、1セッションで同時に生成するTTS要求は1本だけとする。
+字幕の`再生待ち`投稿とTTS要求は、発話上限の検証後に並行して開始する。
+両方の準備が終わるまではDiscord再生を始めない。
+Sonioxの`terminated: true`を受けた時点で前のTTS生成枠を解放し、Discordがその音声を再生中であれば次の1発話だけを先読み生成する。
+先読み音声は48 kHz mono PCMとして最大2分、11,520,000 byteまでメモリへ保持し、上限を超えた場合は`TTS_OUTPUT_LIMIT_REACHED`で停止する。
+2件以上を先読みせず、Discordの再生開始は前の再生完了を待つため、聞こえる順序はFIFOのままである。
+
+TTSだけは`@soniox/node` 2.3.0ではなく、既存依存の`ws`を使う小さなWebSocket adapterを使用する。
+公式SDKの`client.realtime.tts.multiStream()`は接続再利用、自動keepalive、stream単位の取消を備えるため採用可否を先に確認した。
+ただし、同SDKのTTS stream設定では利用ログ照合に必要な`client_reference_id`を送れず、`max_audio_duration_reached`の`error_type`も保持されない。
+さらに予期しない接続終了をstream errorとして公開しないため、費用のFail Closedと安定したエラーコードという本設計の境界を満たさない。
+SDKのprivate socketまたはprivate送信メソッドは使用しない。
+STT、モデル一覧、TTSモデル一覧、利用ログ、並行数確認には公式SDKをそのまま使用する。
+
+`@discordjs/voice` 0.19.2の`AudioPlayer`にはqueueまたはprefetch APIがなく、再生中の`play()`は現在のresourceを置換する。
+そのため再生順の管理だけはBotのFIFOで行い、外部キューライブラリは追加しない。
 
 ```json
 {
@@ -374,8 +389,9 @@ Raw入力経路のOpus符号化には`@discordjs/opus`を使用し、既知形�
 TTSの音声がすべて届く前でも、最初の再生可能フレームが届いた時点で再生を開始する。
 
 TTS streamは、`text_end: true`の送信後に`audio_end: true`と`terminated: true`を順に受けて、正常完了とする。
-`audio_end: true`だけではstream IDを再利用せず、`terminated: true`を受けるまで`provider_request.status`を`open`のままにする。
-利用者または自動終了条件による停止では、active streamへ`cancel: true`を送り、AudioPlayerを停止し、以後届いた音声を破棄する。
+`audio_end: true`だけではstreamを完了せず、`terminated: true`を受けるまで`provider_request.status`を`open`のままにする。
+利用者または自動終了条件による停止では、active streamへ`cancel: true`を送り、AudioPlayerを停止し、Sonioxの`terminated: true`を待って要求を`failed`へ確定する。
+`max_audio_duration_reached`を含むstream errorも直ちに要求を閉じず、後続の`terminated: true`まで追跡する。
 最後に何らかのTTS応答を受けてから`SONIOX_TERMINATION_TIMEOUT_MS`内に次の応答が届かなければ、TTS WebSocketを閉じ、要求を`failed`として記録する。
 
 事前上限を通過してもSonioxが`max_audio_duration_reached`を返した場合、すでにDiscordへ再生した音声は取り消せない。
@@ -394,6 +410,8 @@ Discord Botが同時に再生できる翻訳音声は1つとする。
 
 - 発話終端を確定した時刻の早い順にFIFOへ入れる
 - 再生中の発話を後続発話で中断しない
+- 前のTTS生成完了後は、Discord再生中に限り次の1件だけを先読みする
+- 先読み中もSoniox TTSを同時に2本生成せず、未再生音声を2件以上保持しない
 - 再生待ち時間をミリ秒で計測する
 - `PLAYBACK_QUEUE_MAX_MS`を超えた場合は、新しい翻訳を黙って破棄せず、`PLAYBACK_BACKLOG`としてセッションを停止する
 
@@ -413,6 +431,7 @@ Bot音声の再入力を検出した後で捨てるのではなく、音声購�
 
 字幕は、TTSへ渡した翻訳と、聞こえた翻訳音声を照合するための観測境界である。
 暫定トークンを逐次編集するライブ字幕にはせず、Sonioxが発話終端を確定した時点で1発話につき1件を`再生待ち`として投稿する。
+この初回POSTはTTS要求と並行して開始するが、POST完了前にDiscord音声を再生しない。
 再生完了、停止、または失敗時に同じメッセージの音声状態だけを編集し、別メッセージを追加しない。
 
 ```text
@@ -482,7 +501,8 @@ Discord Userの表示名を自動で用語設定へ加えない。
 | `playback_queue` | 発話キュー | TTS音声の直列再生 |
 
 入力のOpusとPCMはSonioxへ送信した後に解放する。
-確定済みの原文、翻訳文、TTSの未再生フレームは発話処理中のメモリにだけ置き、字幕状態の確定と再生完了、停止、またはエラーで解放する。
+確定済みの原文、翻訳文、TTSの未再生フレームは発話処理中のメモリにだけ置く。
+先読みは1発話かつ11,520,000 byte以下に制限し、字幕状態の確定と再生完了、停止、またはエラーで解放する。
 
 ### SQLite
 
@@ -792,6 +812,39 @@ private betaでは、Guild管理者が参加者へこの処理を事前に説明
 
 ### メトリクス
 
+実装では、1発話ごとにランダムUUIDを`trace_id`として採番し、構造化ログ`translation_latency`へ次の段階を記録する。
+ログには音声、原文、翻訳文、表示名、Discord IDを含めない。
+
+| stage | 観測点 |
+| --- | --- |
+| `stt_endpoint` | 最後のDiscord音声packetからSoniox endpoint eventまで |
+| `queue_started` | FIFOから処理を開始した時点 |
+| `caption_posted` | Discordの`再生待ち`字幕POST完了 |
+| `tts_requested` | TTS要求開始 |
+| `tts_connection_ready` | 新規または再利用WebSocketを送信可能と確認 |
+| `tts_text_sent` | TTS configと`text_end`送信完了 |
+| `tts_first_audio` | 最初のTTS PCM受信 |
+| `playback_started` | Discord AudioPlayerが`Playing`へ遷移 |
+| `tts_audio_end` | TTSの`audio_end`受信 |
+| `pipeline_finished` | 再生結果を字幕へ反映して発話処理完了 |
+
+各行の`total_ms`は最後のDiscord音声packetからの累積時間、`stage_ms`は直前に観測したstageからの経過時間である。
+字幕とTTSは並行するため、区間比較ではstageの固定順を仮定せず、同じ`trace_id`の`total_ms`同士の差を使う。
+
+2026-08-15に実Discordと実Sonioxの日韓1人通話で8発話を測った修正前baselineは次のとおりである。
+
+| 区間 | n | p50 | p95 | 平均 |
+| --- | ---: | ---: | ---: | ---: |
+| 発話末尾 → endpoint | 8 | 11 ms | 274 ms | 65 ms |
+| FIFO待ち | 8 | 0 ms | 3,504 ms | 917 ms |
+| 字幕POST | 8 | 498 ms | 754 ms | 527 ms |
+| TTS接続 | 8 | 601 ms | 753 ms | 622 ms |
+| TTS本文送信 → 最初のPCM | 8 | 575 ms | 588 ms | 529 ms |
+| 発話末尾 → Discord再生開始 | 8 | 1,994 ms | 5,023 ms | 2,661 ms |
+
+endpoint待ちではなく、前発話の再生完了まで次処理を止めるFIFOのhead-of-line、発話ごとのTTS接続、字幕POST後にTTSを始める直列処理が支配的だった。
+そのためendpointパラメータは変更せず、接続再利用、字幕/TTS並行開始、次の1件だけの先読みを修正対象とした。
+
 | メトリクス | 用途 |
 | --- | --- |
 | `translation_sessions_active` | 実行中セッション数 |
@@ -840,8 +893,8 @@ stableの`@discordjs/voice` 0.19.2が公開する受信streamはOpus payloadの`
 - Slash Command入力からDiscord応答まで
 - Opus音声fixture入力から、Sonioxクライアント境界へ渡すPCMまで
 - Soniox token fixture入力から、TTSへ送る確定テキストと字幕まで
-- TTS PCM fixture入力から、Discordへ渡すOpusと再生順まで
-- TTSの`audio_end`、`terminated`、`cancel`、`max_audio_duration_reached` fixtureから、要求状態と字幕の再生状態まで
+- TTS PCM fixture入力から、字幕/TTS並行開始、次の1件だけの先読み、Discordへ渡すOpusとFIFO再生順、先読み後の再生待ち上限、後続の先読み失敗で先行再生を中断しないことまで
+- TTS WebSocket fixtureから、接続再利用、待機切断後の再接続、`audio_end`、`terminated`、`cancel`、`max_audio_duration_reached`と要求状態まで
 - セッション開始と停止から、SQLiteへ残る利用量と終了理由まで
 - 未許可Guild、未許可の実行者または話者、費用上限超過、並行数不足、長すぎる発話から、不要なSoniox接続が0件であることまで
 
@@ -928,8 +981,9 @@ SQLiteのschema versionを管理し、起動時にtransaction内で前方migrati
 5. 実Discord Guildで音声受信とSoniox音声往復のPoCを行い、遅延、安定性、料金を測る
 6. 3言語ペアと30分E2Eを行い、MVP完了条件を確認する
 
-実装コードと認証情報を使わない統合テストは作成済みだが、実Discordと実Sonioxによる手順5、6は未実施である。
-旧TokenとAPI Keyをローテーションし、PoCで音声受信が安定しない、または遅延が会話ログの`2〜3秒`側に寄る場合はprivate betaを開始せず、代替案を比較してMVP目標値を確定する。
+実装コードと認証情報を使わない統合テストは作成済みである。
+実Discordと実Sonioxの日韓1人通話では音声往復と遅延区間を確認済みだが、2人通話、日英・韓英、30分継続、料金の受入確認は未実施である。
+残るPoCで音声受信が安定しない、または修正後のp95がMVP目標を満たさない場合はprivate betaを開始せず、代替案を比較して目標値を確定する。
 
 ## 参考
 
@@ -946,6 +1000,11 @@ SQLiteのschema versionを管理し、起動時にtransaction内で前方migrati
 - [Soniox: STT WebSocket API](https://soniox.com/docs/api-reference/stt/websocket-api)
 - [Soniox: Real-time Text-to-Speech](https://soniox.com/docs/tts/rt/real-time-generation)
 - [Soniox: TTS WebSocket API](https://soniox.com/docs/api-reference/tts/websocket-api)
+- [Soniox: TTS connection keepalive](https://soniox.com/docs/tts/rt/connection-keepalive)
+- [Soniox: TTS limits and quotas](https://soniox.com/docs/tts/rt/limits-and-quotas)
+- [Soniox Node SDK: multi-stream connection](https://soniox.com/docs/sdk/node-SDK/tts/realtime-speech-generation#multi-stream-connection)
+- [Soniox JavaScript SDK: TTS types](https://github.com/soniox/soniox-js/blob/8661b750e6cbd0a2c382f6b79c7c198e29c4a2b0/packages/core/src/types/tts.ts)
+- [Soniox JavaScript SDK: realtime TTS implementation](https://github.com/soniox/soniox-js/blob/8661b750e6cbd0a2c382f6b79c7c198e29c4a2b0/packages/core/src/realtime/tts.ts)
 - [Soniox: TTS models](https://soniox.com/docs/tts/models)
 - [Soniox: Endpoint detection](https://soniox.com/docs/stt/rt/endpoint-detection)
 - [Soniox: Supported translation languages](https://soniox.com/docs/translation/supported-languages)
@@ -959,6 +1018,8 @@ SQLiteのschema versionを管理し、起動時にtransaction内で前方migrati
 - [Soniox: Data residency and Project regions](https://soniox.com/docs/data-residency)
 - [Soniox: Security and privacy](https://soniox.com/docs/security-and-privacy)
 - [discord.js voice](https://discord.js.org/docs/packages/voice/stable)
+- [discord.js voice: AudioPlayer](https://discord.js.org/docs/packages/voice/0.19.2/AudioPlayer%3AClass)
+- [discord.js guide: Audio player](https://discordjs.guide/voice/audio-player)
 - [discord.js stable](https://discord.js.org/docs/packages/discord.js/stable)
 - [Discord: Voice Connections](https://docs.discord.com/developers/topics/voice-connections)
 - [Discord: Application Commands](https://docs.discord.com/developers/interactions/application-commands)
