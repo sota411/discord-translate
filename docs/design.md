@@ -84,19 +84,21 @@ TTSもテキストチャンクの受信中から音声を返せる。
 
 | 用途 | 技術 | 選定理由 |
 | --- | --- | --- |
-| 実行環境 | Node.js 24.17.0以上、TypeScript | 現行の`@discordjs/voice`が要求するNode.jsバージョンに合わせる |
+| 実行環境 | Node.js 24.17.0以上、TypeScript | 現行の`discord.js` stableドキュメントが示すNode.js要件に合わせる |
 | Discord Bot | `discord.js` | Slash Command、Guild、Channel、Userの操作を同じSDKで扱う |
 | Discord音声 | `@discordjs/voice` | ユーザー別のOpus受信とBot音声送信を扱う |
-| Opus処理 | `@discordjs/opus`、FFmpegまたは`prism-media` | Discord OpusとSoniox向けPCMを相互変換する |
+| Opus処理 | `@discordjs/opus` | Discordの48 kHz stereo OpusをPCMへ復号し、送信時は`@discordjs/voice`のRaw入力経路でOpusへ符号化する |
 | 音声認識と翻訳 | Soniox Real-time STT WebSocket、`stt-rt-v5` | 原文と双方向翻訳を同じストリームで取得できる |
 | 読み上げ | Soniox Real-time TTS WebSocket、`tts-rt-v2` | 翻訳テキストを受けながらPCMを返せる |
 | Soniox SDK | `@soniox/node` | WebSocketの設定、トークン、利用APIの型を利用する |
 | 利用量保存 | SQLite | 単一プロセスのprivate betaで、外部DBを増やさず永続化できる |
-| 配布 | Dockerイメージ | Opus、FFmpeg、Node.jsの実行条件を固定する |
+| 配布 | Dockerイメージ | Opusのnative addonとNode.jsの実行条件を固定する |
 | CI | GitHub Actions | 型検査、テスト、イメージビルドを同じ環境で実行する |
 
 モデル名は設定可能にするが、任意の文字列へ暗黙にフォールバックしない。
 起動時にSonioxのモデル一覧と照合し、設定したモデルが利用できない場合はBotをReadyにしない。
+Discord音声受信はstable supportが保証されず、後続版では受信packetの公開形も変更されているため、MVPは`@discordjs/voice`を`0.19.2`へexact pinする。
+Discord音声の実機PoCを再実行するまで、この依存だけを自動更新しない。
 
 ## システム構成
 
@@ -121,7 +123,7 @@ Discord利用者へAPIキーまたは一時APIキーを渡さない。
 - Discord GatewayとInteractionsにはTLS接続を使用する
 - Discord VoiceはUDPの送受信を必要とする
 - Soniox STTとTTSにはTLS上のWebSocketで接続する
-- SQLiteはBotプロセスからだけ読み書きできる永続ボリュームへ置く
+- SQLiteはBotプロセスからだけ読み書きできる永続ボリュームへ置き、ディレクトリを`0700`、DBファイルを`0600`にする
 - Botは外部からHTTPリクエストを受け付けない
 
 `SONIOX_REGION`は任意URLではなく、次の固定マッピングへ解決する。
@@ -201,7 +203,7 @@ Sonioxには`two_way`を指定し、実際の入力言語に応じて反対側�
 5. 対象音声チャンネルの人間の参加者が全員`ALLOWED_USER_IDS`に含まれる
 6. 対象音声チャンネルの人間の参加者が2人以下である
 7. Botが音声チャンネルの`ViewChannel`、`Connect`、`Speak`を持つ
-8. Botがコマンド実行チャンネルの`ViewChannel`、`SendMessages`、`EmbedLinks`を持つ
+8. Botがコマンド実行チャンネルの`ViewChannel`、`SendMessages`を持つ
 9. 同じGuildに実行中または開始処理中のセッションがない
 10. User、Guild、サービス全体の利用上限に達していない
 11. SQLiteが書き込み可能で、Soniox利用ログとの照合が許容時間内に成功している
@@ -221,7 +223,10 @@ Sonioxには`two_way`を指定し、実際の入力言語に応じて反対側�
 Botサーバーは音声と字幕本文を保存しません。
 ```
 
-開始メッセージはephemeralにせず、音声チャンネルの参加者が確認できる通常メッセージとして投稿する。
+Discord Interactionは3秒以内の応答が必要なため、最初にephemeralで`deferReply`する。
+認可失敗はそのephemeral応答を編集して理由を返す。
+開始成功時だけ、字幕チャンネルへ上記の通常メッセージを別途投稿し、ephemeral応答には開始済みであることを返す。
+1つのInteraction応答を途中でephemeralから通常投稿へ変更しない。
 
 ### 停止権限
 
@@ -234,6 +239,8 @@ Botサーバーは音声と字幕本文を保存しません。
 停止要求を受けた時点で新しい音声入力を受け付けず、再生中の音声、TTSストリーム、再生待ちキューを停止する。
 処理中の翻訳を最後まで読み上げるdrainは行わない。
 利用者が停止を要求した後も音声処理が続く状態を避けるためである。
+停止までに受信したTTS音声時間と送信済み文字数は、cancel後も利用量台帳へ記録する。
+この台帳更新に失敗した場合は正常停止として扱わず、他の停止処理を継続したうえで停止エラーへ集約する。
 
 実行中のセッションがない場合は、`翻訳セッションは実行されていません`と返す。
 
@@ -278,7 +285,7 @@ Botサーバーは音声と字幕本文を保存しません。
 1. `VoiceReceiver`の発話開始イベントからDiscord User IDを取得する
 2. Botアカウント、対象セッション外の利用者、`ALLOWED_USER_IDS`外の利用者を除外する
 3. 許可済みUser IDだけを指定してOpusパケットの受信ストリームを購読する
-4. Opusを48 kHz、16-bit、monoのPCMへ変換する
+4. Discordの48 kHz、16-bit、stereo OpusをPCMへ復号し、左右のsampleを平均して48 kHz、16-bit、monoへ変換する
 5. UserごとのSoniox STT WebSocketへPCMを送る
 6. Sonioxから原文トークンと翻訳トークンを受け取る
 
@@ -328,10 +335,12 @@ Botは次の条件をすべて満たすトークンだけをTTSへ送る。
 - `source_language`がその反対側である
 - `is_final`が`true`である
 
-`<end>`は本文ではなく発話境界を示す制御トークンとして先に判定し、翻訳文へ連結しない。
+Sonioxのwire protocolには`<end>`などの制御トークンがあるが、`@soniox/node` 2.3.0はそれらをtoken配列から除外する。
+そのためBotは本文から`<end>`を探さず、SDKの`endpoint` eventを発話境界として扱う。
 `is_final: false`の暫定トークンは画面表示にもTTSにも使わず、同じ発話の確定版を待つ。
-確定済みトークンは受信順に発話バッファへ加え、Sonioxが発話終端の`<end>`を返すまではTTS streamを開始しない。
-`<end>`を受けて事前上限を確認した後、確定翻訳を順序どおりのtext chunkとして送り、最後のchunkで`text_end: true`を指定する。
+確定済みトークンは受信順に発話バッファへ加え、`endpoint` eventを受けるまではTTSを開始しない。
+バッファ追加時点でも、確定済み元発話の時間範囲と確定翻訳の文字数を確認し、endpoint欠落時に無制限に蓄積しない。
+`endpoint` eventを受けて同じ上限を再確認した後、確定翻訳をTTSへ送り、最後のmessageで`text_end: true`を指定する。
 独自の形態素解析やLLMによる意味区切り判定は追加しない。
 Sonioxの確定トークンとendpoint detectionを、取り消し不能な音声へ進める境界とする。
 
@@ -339,9 +348,14 @@ TTSへ送る前に、元発話の長さと確定翻訳のUnicode code point数�
 `UTTERANCE_MAX_SOURCE_SECONDS`または`TTS_MAX_INPUT_CHARACTERS`を超えた場合は、翻訳を分割または切り捨てず、TTS streamを開始する前に`UTTERANCE_TOO_LONG`でセッションを停止する。
 両上限は、最も遅い設定voiceと最も長くなった対応言語の組み合わせでも、Sonioxの生成音声上限である2分へ達しない値をPoCで決める。
 
-TTS WebSocketはセッションごとに1本維持し、発話ごとに独立したstream IDを作成する。
-確定翻訳はFIFOへ入れ、同時に生成するTTS streamは1本だけとする。
-先行発話の`terminated: true`を受けてから次のstreamを開始し、Soniox側のstream終了とローカルの再生完了を別々に記録する。
+TTS WebSocketは発話を処理するときに遅延接続し、1発話につき1本だけ作成する。
+Soniox TTSは接続後およそ10秒以内に最初のstream設定が必要であり、生成音声がない状態が3分を超えるとkeepalive中でも接続が閉じるため、Discordセッション開始時から接続を維持しない。
+確定翻訳はFIFOへ入れ、同時に生成するTTS要求は1本だけとする。
+先行発話の`terminated: true`とDiscord再生完了を確認してから次の発話を開始し、Soniox側の終了とローカルの再生完了を別々に記録する。
+
+TTSだけは`@soniox/node` 2.3.0ではなく、生のWebSocket protocolを使用する。
+同SDKのTTS stream設定では`client_reference_id`を送れず、`max_audio_duration_reached`の`error_type`も保持されないためである。
+STT、モデル一覧、TTSモデル一覧、利用ログ、並行数確認には公式SDKを使用する。
 
 ```json
 {
@@ -355,13 +369,14 @@ TTS WebSocketはセッションごとに1本維持し、発話ごとに独立し
 }
 ```
 
-Sonioxから返るPCMをOpusへ変換し、DiscordのAudioPlayerへ渡す。
+Sonioxから返る48 kHz mono PCMの各sampleを左右へ複製し、48 kHz stereoの`StreamType.Raw`としてDiscordのAudioPlayerへ渡す。
+Raw入力経路のOpus符号化には`@discordjs/opus`を使用し、既知形式の変換へFFmpegを追加しない。
 TTSの音声がすべて届く前でも、最初の再生可能フレームが届いた時点で再生を開始する。
 
 TTS streamは、`text_end: true`の送信後に`audio_end: true`と`terminated: true`を順に受けて、正常完了とする。
 `audio_end: true`だけではstream IDを再利用せず、`terminated: true`を受けるまで`provider_request.status`を`open`のままにする。
 利用者または自動終了条件による停止では、active streamへ`cancel: true`を送り、AudioPlayerを停止し、以後届いた音声を破棄する。
-`SONIOX_TERMINATION_TIMEOUT_MS`内に`terminated: true`が届かなければTTS WebSocketを閉じ、要求を`failed`として記録する。
+最後に何らかのTTS応答を受けてから`SONIOX_TERMINATION_TIMEOUT_MS`内に次の応答が届かなければ、TTS WebSocketを閉じ、要求を`failed`として記録する。
 
 事前上限を通過してもSonioxが`max_audio_duration_reached`を返した場合、すでにDiscordへ再生した音声は取り消せない。
 字幕へ`一部再生後に失敗`と表示し、`TTS_OUTPUT_LIMIT_REACHED`でセッションを停止する。
@@ -410,7 +425,7 @@ Bot音声の再入力を検出した後で捨てるのではなく、音声購�
 字幕には次のルールを適用する。
 
 - Discordの表示名を文字列として表示し、User mentionへ変換しない
-- `allowed_mentions`を空にし、字幕内の文字列から通知を発生させない
+- 初回投稿と状態編集の両方で`allowed_mentions: { parse: [] }`を明示し、字幕内の文字列から通知を発生させない
 - 原文と翻訳文には確定済みトークンだけを使う
 - 初回投稿は`再生待ち`とし、音声化が完了した場合は`再生済み`、再生前にセッションが停止した場合は`未再生`、音声の一部を再生した後で失敗した場合は`一部再生後に失敗`へ更新する
 - APIキー、内部例外、Sonioxの生レスポンス、音声データを含めない
@@ -438,7 +453,8 @@ MVPではWeb UIやDiscordコマンドを作らず、起動時に読み込むJSON
 ```
 
 双方向で別の表記が必要な語は、反対方向の`source`と`target`も明示する。
-同じ`source`に複数の`target`がある、空文字列がある、対応外ペアがある、Sonioxのcontext上限を超える場合は起動エラーにする。
+同じ`source`に複数の`target`がある、空文字列がある、対応外ペアがある、または各ペアのJSON表現が10,000 Unicode code pointを超える場合は起動エラーにする。
+この文字数上限は、Sonioxが示すcontextの目安に対するローカルの安全弁であり、provider側のtoken上限を置き換えるものではない。
 不正な用語だけを無視して起動する挙動は採用しない。
 
 Discord Userの表示名を自動で用語設定へ加えない。
@@ -544,8 +560,8 @@ STT接続時間はUserごとの定期区切りで、TTS費用は発話ごとに�
 
 ### 現行料金の扱い
 
-2026年8月15日時点のSoniox公式価格では、リアルタイムSTTは入力音声約`$0.12/時`、TTSは生成音声約`$0.70/時`である。
-翻訳はリアルタイムSTTと同じAPI呼び出しに含まれる。
+2026年8月15日時点のSoniox公式価格では、リアルタイムSTTは入力音声約`$0.12/時`、STTとTTSの入力・出力textは`$4.00/100万token`、TTSは生成音声約`$0.70/時`である。
+翻訳はリアルタイムSTTと同じAPI呼び出しに含まれるが、翻訳を含む公式概算は約`$0.18/時`であり、出力text token分は0円ではない。
 実際の請求はトークン単位であり、contextと出力テキストも課金対象になるため、`$0.82/時`を固定単価として扱わない。
 
 MVPの標準ケースは、2人のSTT接続を60分維持し、合計60分の翻訳音声を生成する通話である。
@@ -582,6 +598,7 @@ estimated_cost_microusd = ceil((audio_cost + text_cost) × COST_ESTIMATE_SAFETY_
 
 単価と安全係数をコードへ固定せず、設定から読み込む。
 `TEXT_COST_MICROUSD_PER_MILLION_CHARACTERS_UPPER_BOUND`は、STT入力text、STT出力text、TTS入力textの現行単価と、1文字あたりtoken数の安全側見積もりをまとめた上限値とする。
+初期値は`16,000,000 microUSD/100万文字`とし、`$4.00/100万token`に対してUnicode code point 1文字を最大4 tokenとして見積もる。
 価格改定時に運営者が値を更新しないまま起動しないよう、設定には確認日も含める。
 
 ### Soniox利用ログとの照合
@@ -592,6 +609,11 @@ Botは次のタイミングで`provider_request`と照合する。
 - `USAGE_RECONCILE_INTERVAL_SECONDS`ごと
 - セッション終了後
 - Bot起動時
+
+照合要求は1本ずつ実行する。
+定期照合は、実行中または待機中に次のintervalが来てもキューへ積み増さず、最新時刻の1件へ集約する。
+セッション終了後の照合は省略せず、実行中の照合が終わった直後に定期照合より優先して実行する。
+これによりSonioxが遅延またはtimeoutしても、定期照合の滞留件数に比例してshutdownが遅れないようにする。
 
 最後の照合成功から`USAGE_RECONCILE_MAX_STALENESS_SECONDS`を超えた場合、新しいセッションを拒否する。
 実行中のセッションはローカル見積もりで上限を守り、照合失敗だけを理由に音声処理を直ちに中断しない。
@@ -659,7 +681,7 @@ Botは`SONIOX_PROJECT_MONTHLY_BUDGET_MICROUSD`へ同じ値を保持し、`GLOBAL
 | `PRICING_MAX_AGE_DAYS` | 必須 | 1以上。確認日からこの日数を超えた場合は起動を拒否する |
 | `USAGE_RECONCILE_INTERVAL_SECONDS` | 必須 | 1以上 |
 | `USAGE_RECONCILE_MAX_STALENESS_SECONDS` | 必須 | 照合間隔より大きい値 |
-| `SONIOX_LIMIT_CHECK_MAX_STALENESS_SECONDS` | 必須 | 1以上。開始前の並行数確認に使う |
+| `SONIOX_LIMIT_CHECK_MAX_STALENESS_SECONDS` | 必須 | 1以上。Soniox control APIの応答期限と開始前の並行数確認に使う |
 | `SONIOX_STT_MODEL` | 必須 | 初期値`stt-rt-v5`、起動時に照合する |
 | `SONIOX_TTS_MODEL` | 必須 | 初期値`tts-rt-v2`、起動時に照合する |
 | `SONIOX_VOICE_JA` | 必須 | 利用可能なvoice ID |
@@ -790,7 +812,7 @@ APIエラー率、p95遅延、再生キュー上限、月間費用の80%と100%�
 
 ### PoC
 
-本体実装の前に、次の順で公開境界を検証する。
+private betaの受入前に、次の順で公開境界を検証する。
 
 1. テストGuildで`@discordjs/voice`から2人分の音声を30分継続受信し、User IDとOpusパケットを対応づけられることを確認する
 2. 保存済みの同じ10分音声をSonioxへ送り、日韓、日英、韓英の両方向で原文、翻訳、TTS、実料金を測る
@@ -805,7 +827,11 @@ PoCでは次を記録する。
 - `VALORANT`、`ult`、`gg`などの用語一致
 - 日本語、韓国語、英語それぞれの読み上げ自然さ
 - STT接続時間、TTS生成時間、Soniox利用ログ上の実料金
-- Discordの欠落パケット、再接続回数、音声デコードエラー
+- Discord音声の受信間隔、再接続回数、音声デコードエラー
+
+stableの`@discordjs/voice` 0.19.2が公開する受信streamはOpus payloadの`Buffer`であり、RTP sequence、timestamp、SSRCを公開しない。
+そのため、この固定バージョンの公開APIだけでは真の欠落パケット数を測定できない。
+非公開hookには依存せず、受信間隔の異常、decoder error、切断を代替指標として記録し、RTP metadataがstable APIへ入った後に欠落数の計測を追加する。
 
 ### 統合テスト
 
@@ -847,7 +873,7 @@ PoCでは次を記録する。
 1. [Soniox Console](https://console.soniox.com/)で、このBot専用のProjectを作成する
 2. アカウントで利用可能なProject regionを選び、Project Limitsへ月額上限を設定してから、そのProject専用のAPI Keyを作成する。日本regionが選択肢にない場合は、Soniox Supportへregional deploymentの利用を申請するか、利用可能なregionを選ぶ
 3. [Discord Developer Portal](https://discord.com/developers/applications)でApplicationとBotを作成し、`Public Bot`をOFF、Installation Contextsを`Guild Install`のみ、Install Linkを`None`にする
-4. OAuth2 URL Generatorで`bot`と`applications.commands`を選び、`View Channels`、`Send Messages`、`Embed Links`、`Connect`、`Speak`だけを指定したURLから、Application OwnerがBotをテストGuildへ追加する。生成URLは配布せず、Install Linkは`None`のままにする
+4. OAuth2 URL Generatorで`bot`と`applications.commands`を選び、`View Channels`、`Send Messages`、`Connect`、`Speak`だけを指定したURLから、Application OwnerがBotをテストGuildへ追加する。生成URLは配布せず、Install Linkは`None`のままにする
 5. テストGuildだけへSlash CommandをGuild Commandとして登録する
 6. `cp .env.example .env.local && chmod 600 .env.local`を実行し、Bot Token、Application ID、Soniox API Key、許可するGuild ID、運営者本人と通話相手のUser IDを入力する
 7. `LOG_ID_HMAC_KEY`用に`openssl rand -hex 32`を実行し、出力を`.env.local`へ保存する
@@ -860,7 +886,7 @@ Token、API Key、実ID、HMAC Keyはチャット、Issue、Git、コンテナ�
 
 - Linux上で単一のDockerコンテナを動かす
 - SQLiteと運用ログは専用の永続ボリュームへ置く
-- コンテナにはNode.js、Opus実装、FFmpeg、Botコードだけを含める
+- コンテナにはNode.js、Opus native addon、Botコードだけを含め、FFmpegは含めない
 - secretはイメージまたはGitへ含めず、デプロイ環境から注入する
 - Botプロセスは1レプリカに固定する
 - コンテナからDiscord Voice用UDP、Discord API、Soniox APIへ接続できることをデプロイ前に確認する
@@ -895,14 +921,15 @@ SQLiteのschema versionを管理し、起動時にtransaction内で前方migrati
 
 ## 実装順序
 
-1. Discord音声受信とSoniox音声往復のPoCを作り、遅延、安定性、料金を測る
-2. `/translate start`と`stop`、言語ペア、Guildごとの状態遷移を実装する
-3. User別STT、確定トークン、TTS、FIFO再生、字幕を接続する
-4. SQLiteの利用量台帳、上限、Soniox利用ログ照合を追加する
-5. エラー通知、構造化ログ、メトリクス、graceful shutdownを追加する
-6. 実Discord Guildで30分E2Eを行い、MVP完了条件を確認する
+1. `/translate start`と`stop`、言語ペア、Guildごとの状態遷移を実装する
+2. User別STT、確定トークン、TTS、FIFO再生、字幕を接続する
+3. SQLiteの利用量台帳、上限、Soniox利用ログ照合を追加する
+4. エラー通知、構造化ログ、計測点、graceful shutdownを追加する
+5. 実Discord Guildで音声受信とSoniox音声往復のPoCを行い、遅延、安定性、料金を測る
+6. 3言語ペアと30分E2Eを行い、MVP完了条件を確認する
 
-PoCでDiscord音声受信が安定しない、または遅延が会話ログの`2〜3秒`側に寄る場合は、Bot本体の実装へ進まず、代替案を比較してMVP目標値を確定する。
+実装コードと認証情報を使わない統合テストは作成済みだが、実Discordと実Sonioxによる手順5、6は未実施である。
+旧TokenとAPI Keyをローテーションし、PoCで音声受信が安定しない、または遅延が会話ログの`2〜3秒`側に寄る場合はprivate betaを開始せず、代替案を比較してMVP目標値を確定する。
 
 ## 参考
 
@@ -923,6 +950,7 @@ PoCでDiscord音声受信が安定しない、または遅延が会話ログの`
 - [Soniox: Endpoint detection](https://soniox.com/docs/stt/rt/endpoint-detection)
 - [Soniox: Supported translation languages](https://soniox.com/docs/translation/supported-languages)
 - [Soniox: Language restrictions](https://soniox.com/docs/stt/concepts/language-restrictions)
+- [Soniox: Context](https://soniox.com/docs/stt/concepts/context)
 - [Soniox: API pricing](https://soniox.com/pricing)
 - [Soniox: Usage logs](https://soniox.com/docs/guides/usage-logs)
 - [Soniox: Concurrency limits](https://soniox.com/docs/guides/concurrency-limits)
@@ -931,6 +959,7 @@ PoCでDiscord音声受信が安定しない、または遅延が会話ログの`
 - [Soniox: Data residency and Project regions](https://soniox.com/docs/data-residency)
 - [Soniox: Security and privacy](https://soniox.com/docs/security-and-privacy)
 - [discord.js voice](https://discord.js.org/docs/packages/voice/stable)
+- [discord.js stable](https://discord.js.org/docs/packages/discord.js/stable)
 - [Discord: Voice Connections](https://docs.discord.com/developers/topics/voice-connections)
 - [Discord: Application Commands](https://docs.discord.com/developers/interactions/application-commands)
 - [Discord: Building your first Bot](https://docs.discord.com/developers/quick-start/getting-started)
