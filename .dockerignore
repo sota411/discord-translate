@@ -1,0 +1,13 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+.data
+dist
+docs
+node_modules
+output
+test
+*.sqlite
+*.sqlite-*

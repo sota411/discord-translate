@@ -1,0 +1,10 @@
+{
+  "ja-ko": [
+    { "source": "VALORANT", "target": "발로란트" },
+    { "source": "ult", "target": "궁극기" }
+  ],
+  "ja-en": [
+    { "source": "VALORANT", "target": "VALORANT" }
+  ],
+  "ko-en": []
+}
