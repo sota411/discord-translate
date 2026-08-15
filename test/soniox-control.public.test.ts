@@ -11,11 +11,35 @@ import { ConfigError } from "../src/config.js";
 import { ApplicationError } from "../src/domain/application-error.js";
 import {
   SonioxCapacityGate,
+  SonioxSttFactory,
   SonioxUsageReconciliationQueue,
   SonioxUsageReconciler,
   hasSonioxCapacity,
   verifySonioxConfiguration,
 } from "../src/soniox/control.js";
+
+void test("STTは実測で選んだendpoint低遅延設定を常に送る", () => {
+  let received: Record<string, unknown> | undefined;
+  const factory = new SonioxSttFactory(
+    {
+      realtime: {
+        stt: (input: Record<string, unknown>) => {
+          received = input;
+          return {};
+        },
+      },
+    } as never,
+    "stt-rt-v5",
+    { "ja-ko": [], "ja-en": [], "ko-en": [] },
+  );
+
+  factory.create("ja-ko", "request-ref");
+
+  assert.ok(received);
+  assert.equal(received.max_endpoint_delay_ms, 500);
+  assert.equal(received.endpoint_latency_adjustment_level, 3);
+  assert.equal(received.endpoint_sensitivity, 0.5);
+});
 
 function withTestDeadline<T>(operation: Promise<T>, timeoutMs = 50): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -235,7 +259,7 @@ void test("TTSモデルの対応言語またはvoiceが不正なら起動前検�
     supports_max_endpoint_delay: true,
     supports_endpoint_sensitivity: true,
     supports_endpoint_latency_adjustment: true,
-    endpoint_latency_adjustment_max_level: 3,
+    endpoint_latency_adjustment_max_level: 2,
     translation_targets: [],
     two_way_translation_pairs: [],
     one_way_translation: null,
@@ -250,7 +274,7 @@ void test("TTSモデルの対応言語またはvoiceが不正なら起動前検�
     supports_speed_adjustment: true,
     speed_min: 0.7,
     speed_max: 1.3,
-    supports_silence_reduction: true,
+    supports_silence_reduction: false,
   };
 
   await assert.rejects(
@@ -269,6 +293,8 @@ void test("TTSモデルの対応言語またはvoiceが不正なら起動前検�
       error instanceof ConfigError &&
       error.issues.includes("TTS modelがjaに未対応です") &&
       error.issues.includes("TTS modelがkoに未対応です") &&
+      error.issues.includes("STT modelがendpoint低遅延level 3に未対応です") &&
+      error.issues.includes("TTS modelが無音短縮に未対応です") &&
       error.issues.includes("SONIOX_VOICE_JA「Mima」を利用できません"),
   );
 });

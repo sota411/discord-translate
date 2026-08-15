@@ -2,7 +2,9 @@ import { performance } from "node:perf_hooks";
 
 export type TranslationLatencyStage =
   | "stt_endpoint"
+  | "queue_enqueued"
   | "queue_started"
+  | "playback_slot_ready"
   | "caption_posted"
   | "tts_requested"
   | "tts_connection_ready"
@@ -28,6 +30,7 @@ export type TranslationLatencyRecorder = {
 type TraceState = {
   startedAt: number;
   lastStageAt: number;
+  seenStages: Set<TranslationLatencyStage>;
 };
 
 export function createTranslationLatencyRecorder(
@@ -47,6 +50,7 @@ export function createTranslationLatencyRecorder(
       stage_ms: Math.max(0, Math.round(observedAt - state.lastStageAt)),
       total_ms: Math.max(0, Math.round(observedAt - state.startedAt)),
     });
+    state.seenStages.add(stage);
     state.lastStageAt = observedAt;
   };
 
@@ -56,13 +60,14 @@ export function createTranslationLatencyRecorder(
       const state = {
         startedAt: sourceAudioEndedAtMonotonic,
         lastStageAt: sourceAudioEndedAtMonotonic,
+        seenStages: new Set<TranslationLatencyStage>(),
       };
       traces.set(traceId, state);
       emit(traceId, "stt_endpoint", observedAt, state);
     },
     mark: (traceId, stage) => {
       const state = traces.get(traceId);
-      if (!state) return;
+      if (!state || state.seenStages.has(stage)) return;
       emit(traceId, stage, now(), state);
     },
     finish: (traceId) => {

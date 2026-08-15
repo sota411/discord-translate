@@ -115,6 +115,7 @@ void test("TTS wireへ不透明request refを送り、PCMと正常終端を公�
     assert.equal(config.api_key, "test-api-key");
     assert.equal(config.client_reference_id, "00000000-0000-4000-8000-000000000100");
     assert.equal(config.stream_id, "00000000-0000-4000-8000-000000000101");
+    assert.equal(config.reduce_silence, true);
     assert.deepEqual(received[1], {
       stream_id: "00000000-0000-4000-8000-000000000101",
       text: "안녕하세요",
@@ -127,6 +128,65 @@ void test("TTS wireへ不透明request refを送り、PCMと正常終端を公�
       audioMs: 1,
       textCharacterCount: 5,
     }]);
+  });
+});
+
+void test("確定原文の時点でTTS configだけを送り、翻訳本文を後から渡せる", async () => {
+  const received: Record<string, unknown>[] = [];
+  let resolveConfigReceived = (): void => undefined;
+  const configReceived = new Promise<void>((resolve) => {
+    resolveConfigReceived = resolve;
+  });
+  await withServer((socket) => {
+    socket.on("message", (data) => {
+      const message = JSON.parse(rawDataToUtf8(data)) as Record<string, unknown>;
+      received.push(message);
+      if (message.api_key !== undefined) resolveConfigReceived();
+      if (message.text_end === true) {
+        socket.send(JSON.stringify({
+          stream_id: message.stream_id,
+          audio: Buffer.from([1, 0, 2, 0]).toString("base64"),
+          audio_end: true,
+        }));
+        socket.send(JSON.stringify({ stream_id: message.stream_id, terminated: true }));
+      }
+    });
+  }, async (url) => {
+    const gateway = new RawSonioxTtsGateway({
+      url,
+      apiKey: "test-api-key",
+      model: "tts-rt-v2",
+      voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
+      terminationTimeoutMs: 1_000,
+      ledger: new RecordingLedger(),
+      createRequestRef: () => "00000000-0000-4000-8000-000000000150",
+    });
+
+    const prepared = await gateway.prepare({
+      utteranceId: "00000000-0000-4000-8000-000000000151",
+      sessionId: "00000000-0000-4000-8000-000000000001",
+      speakerUserId: "323456789012345678",
+      language: "ko",
+    });
+    await configReceived;
+    assert.equal(received.length, 1);
+    const config = received[0];
+    assert.ok(config);
+    assert.equal(config.stream_id, "00000000-0000-4000-8000-000000000151");
+    assert.equal(config.voice, "ko-voice");
+
+    await prepared.sendText("안녕하세요");
+    const audio: Buffer[] = [];
+    for await (const chunk of prepared.audio) audio.push(chunk as Buffer);
+    await prepared.completed;
+
+    assert.deepEqual(Buffer.concat(audio), Buffer.from([1, 0, 2, 0]));
+    assert.deepEqual(received[1], {
+      stream_id: "00000000-0000-4000-8000-000000000151",
+      text: "안녕하세요",
+      text_end: true,
+    });
+    gateway.close();
   });
 });
 
@@ -154,6 +214,7 @@ void test("連続するTTS streamが同じWebSocket接続を再利用する", as
       terminationTimeoutMs: 1_000,
       ledger: new RecordingLedger(),
     });
+    gateway.warm();
 
     for (const utteranceId of ["stream-1", "stream-2"]) {
       const speech = await gateway.synthesize({

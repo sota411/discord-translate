@@ -23,6 +23,12 @@ export type FinalizedUtterance = {
   sourceDurationMs: number;
 };
 
+export type AcceptedTranslationToken = {
+  sourceLanguage: Language;
+  targetLanguage: Language;
+  text: string;
+};
+
 type OriginalBuffer = {
   text: string[];
   startMs?: number;
@@ -50,8 +56,8 @@ export class TranslationTokenAssembler {
     this.#maxInputCharacters = limits.maxInputCharacters;
   }
 
-  public accept(token: TranslationToken): void {
-    if (!token.is_final) return;
+  public accept(token: TranslationToken): AcceptedTranslationToken | undefined {
+    if (!token.is_final) return undefined;
     if (token.translation_status === "original" && this.#isPairLanguage(token.language)) {
       const original = this.#originals.get(token.language) ?? { text: [] };
       original.text.push(token.text);
@@ -73,7 +79,7 @@ export class TranslationTokenAssembler {
         this.#throwTooLong();
       }
       this.#originals.set(token.language, original);
-      return;
+      return undefined;
     }
 
     if (
@@ -82,7 +88,20 @@ export class TranslationTokenAssembler {
       !this.#isPairLanguage(token.source_language) ||
       token.language === token.source_language
     ) {
-      return;
+      return undefined;
+    }
+    if (
+      this.#sourceLanguage !== undefined &&
+      this.#targetLanguage !== undefined &&
+      (
+        token.source_language !== this.#sourceLanguage ||
+        token.language !== this.#targetLanguage
+      )
+    ) {
+      throw new ApplicationError(
+        "SONIOX_STREAM_FAILED",
+        "同じ発話内で翻訳方向が変化したため、翻訳を停止します。",
+      );
     }
     if (!this.#sourceLanguage) {
       this.#sourceLanguage = token.source_language;
@@ -97,7 +116,13 @@ export class TranslationTokenAssembler {
         this.#throwTooLong();
       }
       this.#translation.push(token.text);
+      return {
+        sourceLanguage: token.source_language,
+        targetLanguage: token.language,
+        text: token.text,
+      };
     }
+    return undefined;
   }
 
   public flush(): FinalizedUtterance | undefined {

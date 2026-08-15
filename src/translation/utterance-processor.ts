@@ -3,6 +3,7 @@ import { Readable } from "node:stream";
 import { ApplicationError } from "../domain/application-error.js";
 import type { Language } from "../domain/language-pair.js";
 import type { TranslationLatencyRecorder } from "../observability/translation-latency.js";
+import { maxTtsAudioBytes } from "./tts-batch-prefetch.js";
 
 export type CaptionState = "pending" | "played" | "not_played" | "partial_failure";
 
@@ -30,24 +31,33 @@ export type SynthesizedSpeech = {
   hasReceivedAudio?: () => boolean;
 };
 
+export type TtsSynthesisRequest = {
+  utteranceId: string;
+  traceId?: string;
+  sessionId: string;
+  speakerUserId: string;
+  language: Language;
+};
+
+export type PreparedSynthesizedSpeech = SynthesizedSpeech & {
+  sendText(text: string): Promise<void>;
+};
+
 export type TtsGateway = {
-  synthesize(input: {
-    utteranceId: string;
-    sessionId: string;
-    speakerUserId: string;
-    language: Language;
-    text: string;
-  }): Promise<SynthesizedSpeech>;
+  warm?(): void;
+  prepare?(input: TtsSynthesisRequest): Promise<PreparedSynthesizedSpeech>;
+  synthesize(input: TtsSynthesisRequest & { text: string }): Promise<SynthesizedSpeech>;
 };
 
 export type PlaybackGateway = {
-  play(audio: Readable, traceId?: string): Promise<void>;
+  play(audio: Readable, traceId?: string, onStarted?: () => void): Promise<void>;
   stop(): void;
 };
 
 type QueuedUtterance = {
   utterance: TranslationUtterance;
   enqueuedAt: number;
+  preparedSpeech: SynthesizedSpeech | undefined;
 };
 
 type Signal = {
@@ -65,8 +75,6 @@ type ProcessingTask = {
   failure: Error | undefined;
   finished: boolean;
 };
-
-const maxPrefetchedAudioBytes = 48_000 * 2 * 120;
 
 function createSignal(): Signal {
   let resolve = (): void => undefined;
@@ -139,9 +147,17 @@ export class UtteranceProcessor {
     this.#onFatal = (error) => options.onFatal(error);
   }
 
-  public enqueue(utterance: TranslationUtterance): void {
-    if (this.#stopped) return;
-    this.#queue.push({ utterance, enqueuedAt: this.#now() });
+  public enqueue(
+    utterance: TranslationUtterance,
+    preparedSpeech?: SynthesizedSpeech,
+  ): void {
+    if (this.#stopped) {
+      preparedSpeech?.cancel();
+      void preparedSpeech?.completed.catch(() => undefined);
+      return;
+    }
+    this.#latency?.mark(utterance.utteranceId, "queue_enqueued");
+    this.#queue.push({ utterance, enqueuedAt: this.#now(), preparedSpeech });
     this.#wakeDrain();
     if (!this.#drainPromise) {
       this.#drainPromise = this.#drain().finally(() => {
@@ -157,14 +173,23 @@ export class UtteranceProcessor {
   public async stop(): Promise<void> {
     this.#stopped = true;
     this.#stopRequested.resolve();
-    for (const queued of this.#queue) {
-      this.#latency?.finish(queued.utterance.utteranceId);
-    }
-    this.#queue.length = 0;
+    const queuedCompletions = this.#discardQueuedUtterances();
     this.#wakeDrain();
     for (const speech of this.#activeSpeeches) speech.cancel();
     this.#playback.stop();
-    await this.#drainPromise;
+    const cleanupResults = await Promise.allSettled([
+      this.#drainPromise ?? Promise.resolve(),
+      ...queuedCompletions,
+    ]);
+    const usageFailure = cleanupResults.find(
+      (result): result is PromiseRejectedResult =>
+        result.status === "rejected" && isUsageAccountingError(result.reason),
+    );
+    if (usageFailure) throw usageFailure.reason;
+    const failure = cleanupResults.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (failure) throw failure.reason;
   }
 
   async #drain(): Promise<void> {
@@ -194,21 +219,33 @@ export class UtteranceProcessor {
       }
       if (previous) await previous.done;
     } catch (error) {
-      for (const queued of this.#queue) {
-        this.#latency?.finish(queued.utterance.utteranceId);
+      const queuedCompletions = this.#discardQueuedUtterances();
+      const cleanupResults = await Promise.allSettled([
+        ...[...this.#tasks].map((task) => task.done),
+        ...queuedCompletions,
+      ]);
+      let usageCleanupError: ApplicationError | undefined;
+      for (const result of cleanupResults) {
+        if (result.status !== "rejected") continue;
+        const reason: unknown = result.reason;
+        if (isUsageAccountingError(reason)) {
+          usageCleanupError = reason;
+          break;
+        }
       }
-      this.#queue.length = 0;
-      await Promise.allSettled([...this.#tasks].map((task) => task.done));
+      const effectiveError = usageCleanupError ?? error;
 
-      if (this.#hasStopped() && isUsageAccountingError(error)) throw error;
+      if (this.#hasStopped() && isUsageAccountingError(effectiveError)) {
+        throw effectiveError;
+      }
       if (this.#hasStopped()) return;
 
-      const applicationError = error instanceof ApplicationError
-        ? error
+      const applicationError = effectiveError instanceof ApplicationError
+        ? effectiveError
         : new ApplicationError(
             "SONIOX_STREAM_FAILED",
             "翻訳音声の生成または再生に失敗しました。",
-            { cause: error },
+            { cause: effectiveError },
           );
       this.#onFatal(applicationError);
     }
@@ -276,23 +313,39 @@ export class UtteranceProcessor {
     playbackDone: Signal,
     markPlaybackFinished: () => void,
   ): Promise<void> {
-    this.#assertQueueWaitWithinLimit(queued);
-    const inputCharacters = Array.from(queued.utterance.translatedText).length;
-    if (
-      queued.utterance.sourceDurationMs > this.#maxSourceDurationMs ||
-      inputCharacters > this.#maxInputCharacters
-    ) {
-      throw new ApplicationError(
-        "UTTERANCE_TOO_LONG",
-        "UTTERANCE_TOO_LONG: 発話を短く区切って再実行してください。",
-      );
+    try {
+      this.#assertQueueWaitWithinLimit(queued);
+      const inputCharacters = Array.from(queued.utterance.translatedText).length;
+      if (
+        queued.utterance.sourceDurationMs > this.#maxSourceDurationMs ||
+        inputCharacters > this.#maxInputCharacters
+      ) {
+        throw new ApplicationError(
+          "UTTERANCE_TOO_LONG",
+          "UTTERANCE_TOO_LONG: 発話を短く区切って再実行してください。",
+        );
+      }
+    } catch (error) {
+      const preparedSpeech = queued.preparedSpeech;
+      if (preparedSpeech) {
+        preparedSpeech.cancel();
+        const [completion] = await Promise.allSettled([preparedSpeech.completed]);
+        if (
+          completion.status === "rejected" &&
+          isUsageAccountingError(completion.reason)
+        ) {
+          throw completion.reason;
+        }
+      }
+      throw error;
     }
 
     let caption: number | undefined;
     let captionPromise: Promise<number> | undefined;
     let captionFailure: Error | undefined;
     let speech: SynthesizedSpeech | undefined;
-    let playbackWasStarted = false;
+    const playbackState = { wasStarted: false };
+    let playbackRequested = false;
     let playbackCompleted = false;
     let playbackStopRequested = false;
     try {
@@ -308,21 +361,35 @@ export class UtteranceProcessor {
         captionFailure = asError(error, "Discord字幕POSTに失敗しました。");
       });
       this.#latency?.mark(queued.utterance.utteranceId, "tts_requested");
-      const speechPromise = this.#tts.synthesize({
-        utteranceId: queued.utterance.utteranceId,
-        sessionId: queued.utterance.sessionId,
-        speakerUserId: queued.utterance.speakerUserId,
-        language: queued.utterance.targetLanguage,
-        text: queued.utterance.translatedText,
-      }).then((created) => {
+      if (queued.preparedSpeech?.hasReceivedAudio?.()) {
+        this.#latency?.mark(queued.utterance.utteranceId, "tts_first_audio");
+      }
+      const speechPromise = Promise.resolve(
+        queued.preparedSpeech ?? this.#tts.synthesize({
+          utteranceId: queued.utterance.utteranceId,
+          traceId: queued.utterance.utteranceId,
+          sessionId: queued.utterance.sessionId,
+          speakerUserId: queued.utterance.speakerUserId,
+          language: queued.utterance.targetLanguage,
+          text: queued.utterance.translatedText,
+        }),
+      ).then((created) => {
         this.#activeSpeeches.add(created);
         void created.completed.catch(() => undefined);
+        void created.completed.then(
+          () => this.#latency?.mark(
+            queued.utterance.utteranceId,
+            "tts_audio_end",
+          ),
+          () => undefined,
+        );
         return created;
       });
 
       const preparedSpeech = await speechPromise;
       speech = preparedSpeech;
-      const generationWork = prefetch
+      const mustBufferForPrefetch = prefetch && queued.preparedSpeech === undefined;
+      const generationWork = mustBufferForPrefetch
         ? this.#bufferForPlayback(preparedSpeech.audio).then(async (audio) => {
             await preparedSpeech.completed;
             return audio;
@@ -333,9 +400,14 @@ export class UtteranceProcessor {
         (error: unknown) => generation.reject(error),
       );
 
+      const playbackSlot = previousPlayback.then(() => {
+        this.#latency?.mark(queued.utterance.utteranceId, "playback_slot_ready");
+      });
       const [audio] = await Promise.all([
-        prefetch ? generationWork : Promise.resolve(preparedSpeech.audio),
-        previousPlayback,
+        mustBufferForPrefetch
+          ? generationWork
+          : Promise.resolve(preparedSpeech.audio),
+        playbackSlot,
       ]);
       if (this.#hasStopped()) {
         speech.cancel();
@@ -357,10 +429,13 @@ export class UtteranceProcessor {
       if (captionFailure) throw captionFailure;
       const previousError = previousFailure();
       if (previousError) throw previousError;
-      playbackWasStarted = true;
+      playbackRequested = true;
       const playbackWork = this.#playback.play(
         audio,
         queued.utterance.utteranceId,
+        () => {
+          playbackState.wasStarted = true;
+        },
       ).then(
         () => {
           playbackCompleted = !this.#hasStopped() && !playbackStopRequested;
@@ -386,7 +461,7 @@ export class UtteranceProcessor {
           captionPromise,
           caption,
           captionStateAfterPlayback(
-            playbackWasStarted,
+            playbackState.wasStarted,
             playbackCompleted,
             speech,
           ),
@@ -404,7 +479,7 @@ export class UtteranceProcessor {
       markPlaybackFinished();
       playbackDone.reject(error);
       speech?.cancel();
-      if (playbackWasStarted) {
+      if (playbackRequested) {
         playbackStopRequested = true;
         this.#playback.stop();
       }
@@ -419,7 +494,7 @@ export class UtteranceProcessor {
             captionPromise,
             caption,
             captionStateAfterPlayback(
-              playbackWasStarted,
+              playbackState.wasStarted,
               playbackCompleted,
               speech,
             ),
@@ -437,7 +512,7 @@ export class UtteranceProcessor {
         await this.#captions.update(
           caption,
           captionStateAfterPlayback(
-            playbackWasStarted,
+            playbackState.wasStarted,
             playbackCompleted,
             speech,
           ),
@@ -458,7 +533,7 @@ export class UtteranceProcessor {
         ? chunk
         : Buffer.from(chunk as Uint8Array);
       bytes += buffer.length;
-      if (bytes > maxPrefetchedAudioBytes) {
+      if (bytes > maxTtsAudioBytes) {
         throw new ApplicationError(
           "TTS_OUTPUT_LIMIT_REACHED",
           "生成音声が先読み上限へ達しました。発話を短く区切ってください。",
@@ -517,6 +592,19 @@ export class UtteranceProcessor {
     const wake = this.#queueWake;
     this.#queueWake = undefined;
     wake?.();
+  }
+
+  #discardQueuedUtterances(): Promise<void>[] {
+    const completions: Promise<void>[] = [];
+    for (const queued of this.#queue) {
+      if (queued.preparedSpeech) {
+        queued.preparedSpeech.cancel();
+        completions.push(queued.preparedSpeech.completed);
+      }
+      this.#latency?.finish(queued.utterance.utteranceId);
+    }
+    this.#queue.length = 0;
+    return completions;
   }
 
   #assertQueueWaitWithinLimit(queued: QueuedUtterance): void {

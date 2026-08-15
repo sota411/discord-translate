@@ -7,8 +7,10 @@ import { ApplicationError } from "../domain/application-error.js";
 import type { Language } from "../domain/language-pair.js";
 import type { TranslationLatencyRecorder } from "../observability/translation-latency.js";
 import type {
+  PreparedSynthesizedSpeech,
   SynthesizedSpeech,
   TtsGateway,
+  TtsSynthesisRequest,
 } from "../translation/utterance-processor.js";
 
 export type TtsUsageLedger = {
@@ -137,13 +139,17 @@ export class RawSonioxTtsGateway implements TtsGateway {
     this.#now = options.now ?? (() => new Date());
   }
 
-  public async synthesize(input: {
-    utteranceId: string;
-    sessionId: string;
-    speakerUserId: string;
-    language: Language;
-    text: string;
-  }): Promise<SynthesizedSpeech> {
+  public async synthesize(
+    input: TtsSynthesisRequest & { text: string },
+  ): Promise<SynthesizedSpeech> {
+    const prepared = await this.prepare(input);
+    await prepared.sendText(input.text);
+    return prepared;
+  }
+
+  public async prepare(
+    input: TtsSynthesisRequest,
+  ): Promise<PreparedSynthesizedSpeech> {
     if (this.#closed) {
       throw new ApplicationError(
         "SONIOX_STREAM_FAILED",
@@ -173,6 +179,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
     let canceled = false;
     let terminalError: ApplicationError | undefined;
     let sentTextCharacterCount = 0;
+    let textSent = false;
     let inactivityTimer: NodeJS.Timeout | undefined;
     let resolveCompletion: (() => void) | undefined;
     let rejectCompletion: ((error: Error) => void) | undefined;
@@ -254,11 +261,10 @@ export class RawSonioxTtsGateway implements TtsGateway {
           receivedAudioBytes += chunk.length;
           audio.write(chunk);
           if (isFirstAudio) {
-            this.#latency?.mark(input.utteranceId, "tts_first_audio");
+            this.#latency?.mark(input.traceId ?? input.utteranceId, "tts_first_audio");
           }
         }
         if (event.audio_end) {
-          this.#latency?.mark(input.utteranceId, "tts_audio_end");
           audioEnded = true;
           audio.end();
         }
@@ -286,7 +292,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
     try {
       socket = await this.#getSocket();
       stream.socket = socket;
-      this.#latency?.mark(input.utteranceId, "tts_connection_ready");
+      this.#latency?.mark(input.traceId ?? input.utteranceId, "tts_connection_ready");
     } catch (error) {
       const mapped = error instanceof ApplicationError
         ? error
@@ -311,35 +317,57 @@ export class RawSonioxTtsGateway implements TtsGateway {
         voice: this.#voices[input.language],
         audio_format: "pcm_s16le",
         sample_rate: 48_000,
+        reduce_silence: true,
         stream_id: input.utteranceId,
         client_reference_id: requestRef,
       });
       this.#ensureKeepalive(socket);
-      await this.#send(socket, {
-        stream_id: input.utteranceId,
-        text: input.text,
-        text_end: true,
-      });
-      sentTextCharacterCount = Array.from(input.text).length;
-      this.#latency?.mark(input.utteranceId, "tts_text_sent");
     } catch (error) {
+      const mapped = new ApplicationError(
+        "SONIOX_STREAM_FAILED",
+        "Soniox TTSへstream設定を送信できませんでした。",
+        { cause: error },
+      );
       finish(
         "failed",
-        new ApplicationError(
-          "SONIOX_STREAM_FAILED",
-          "Soniox TTSへ本文を送信できませんでした。",
-          { cause: error },
-        ),
+        mapped,
       );
       await completed;
-      throw error;
+      throw mapped;
     }
-    resetInactivityTimeout();
 
     return {
       audio,
       completed,
       hasReceivedAudio: () => receivedAudioBytes > 0,
+      sendText: async (text) => {
+        if (settled || textSent) {
+          throw new ApplicationError(
+            "SONIOX_STREAM_FAILED",
+            "Soniox TTS streamへ本文を送信できない状態です。",
+          );
+        }
+        try {
+          await this.#send(socket, {
+            stream_id: input.utteranceId,
+            text,
+            text_end: true,
+          });
+        } catch (error) {
+          const mapped = new ApplicationError(
+            "SONIOX_STREAM_FAILED",
+            "Soniox TTSへ本文を送信できませんでした。",
+            { cause: error },
+          );
+          finish("failed", mapped);
+          await completed;
+          throw mapped;
+        }
+        textSent = true;
+        sentTextCharacterCount = Array.from(text).length;
+        this.#latency?.mark(input.traceId ?? input.utteranceId, "tts_text_sent");
+        resetInactivityTimeout();
+      },
       cancel: () => {
         if (settled) return;
         canceled = true;
@@ -385,6 +413,11 @@ export class RawSonioxTtsGateway implements TtsGateway {
     for (const stream of [...this.#streams.values()]) stream.fail(error);
     this.#socket?.terminate();
     this.#socket = undefined;
+  }
+
+  public warm(): void {
+    if (this.#closed) return;
+    void this.#getSocket().catch(() => undefined);
   }
 
   async #getSocket(): Promise<WebSocket> {

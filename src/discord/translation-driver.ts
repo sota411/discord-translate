@@ -31,6 +31,7 @@ import { downmixStereoS16leToMono } from "../audio/pcm.js";
 import { ApplicationError } from "../domain/application-error.js";
 import { languagesForPair } from "../domain/language-pair.js";
 import type { TranslationLatencyRecorder } from "../observability/translation-latency.js";
+import type { TranslationFlowObserver } from "../observability/translation-flow.js";
 import type {
   SessionDescriptor,
   SessionRuntime,
@@ -38,7 +39,11 @@ import type {
 } from "../session/session-manager.js";
 import { SonioxSttFactory } from "../soniox/control.js";
 import type { TtsGateway } from "../translation/utterance-processor.js";
-import { TranslationTokenAssembler } from "../translation/token-assembler.js";
+import {
+  TtsBatchPrefetch,
+  TtsSerialScheduler,
+} from "../translation/tts-batch-prefetch.js";
+import { StreamingUtterance } from "../translation/streaming-utterance.js";
 import { UtteranceProcessor } from "../translation/utterance-processor.js";
 import type { UsageLedger } from "../usage/usage-ledger.js";
 import { DiscordCaptionGateway } from "./caption-gateway.js";
@@ -60,6 +65,7 @@ type DiscordTranslationDriverOptions = {
   sttFactory: SonioxSttFactory;
   tts: TtsGateway;
   latency: TranslationLatencyRecorder;
+  observeFlow?: TranslationFlowObserver;
   onFailure: RuntimeFailureHandler;
 };
 
@@ -69,7 +75,8 @@ type SpeakerStream = {
   opus: AudioReceiveStream;
   decoder: InstanceType<typeof OpusEncoder>;
   stt: RealtimeSttSession;
-  assembler: TranslationTokenAssembler;
+  utterance: StreamingUtterance;
+  burstHasPacket: boolean;
   lastUsageAtMonotonic?: number;
   lastAudioAtMonotonic?: number;
   pendingTextCharacters: number;
@@ -114,6 +121,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
   readonly #sttFactory: SonioxSttFactory;
   readonly #tts: TtsGateway;
   readonly #latency: TranslationLatencyRecorder;
+  readonly #observeFlow: TranslationFlowObserver;
   readonly #onFailure: RuntimeFailureHandler;
 
   public constructor(options: DiscordTranslationDriverOptions) {
@@ -123,6 +131,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
     this.#sttFactory = options.sttFactory;
     this.#tts = options.tts;
     this.#latency = options.latency;
+    this.#observeFlow = options.observeFlow ?? (() => undefined);
     this.#onFailure = (guildId, reason, publicMessage, cause) => {
       options.onFailure(guildId, reason, publicMessage, cause);
     };
@@ -179,6 +188,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
         sttFactory: this.#sttFactory,
         tts: this.#tts,
         latency: this.#latency,
+        observeFlow: this.#observeFlow,
         onFailure: this.#onFailure,
       });
     } catch (error) {
@@ -221,6 +231,7 @@ type TranslationRuntimeOptions = {
   sttFactory: SonioxSttFactory;
   tts: TtsGateway;
   latency: TranslationLatencyRecorder;
+  observeFlow: TranslationFlowObserver;
   onFailure: RuntimeFailureHandler;
 };
 
@@ -233,14 +244,19 @@ class DiscordTranslationRuntime implements SessionRuntime {
   readonly #config: AppConfig;
   readonly #ledger: UsageLedger;
   readonly #sttFactory: SonioxSttFactory;
+  readonly #tts: TtsGateway;
   readonly #latency: TranslationLatencyRecorder;
+  readonly #observeFlow: TranslationFlowObserver;
   readonly #onFailure: RuntimeFailureHandler;
   readonly #player: AudioPlayer;
   readonly #processor: UtteranceProcessor;
+  readonly #ttsScheduler = new TtsSerialScheduler();
   readonly #participants: Set<string>;
   readonly #speakers = new Map<string, SpeakerStream>();
+  readonly #prefetchCleanupTasks = new Set<Promise<void>>();
   readonly #warnedUnsupported = new Set<string>();
   readonly #speakingListener: (userId: string) => void;
+  readonly #speakingEndListener: (userId: string) => void;
   readonly #maxSessionTimer: NodeJS.Timeout;
   readonly #idleTimer: NodeJS.Timeout;
   #lastHumanAudioAt = performance.now();
@@ -256,7 +272,9 @@ class DiscordTranslationRuntime implements SessionRuntime {
     this.#config = options.config;
     this.#ledger = options.ledger;
     this.#sttFactory = options.sttFactory;
+    this.#tts = options.tts;
     this.#latency = options.latency;
+    this.#observeFlow = options.observeFlow;
     this.#onFailure = (guildId, reason, publicMessage, cause) => {
       options.onFailure(guildId, reason, publicMessage, cause);
     };
@@ -277,7 +295,9 @@ class DiscordTranslationRuntime implements SessionRuntime {
     });
 
     this.#speakingListener = (userId) => this.#handleSpeakingStart(userId);
+    this.#speakingEndListener = (userId) => this.#handleSpeakingEnd(userId);
     this.#connection.receiver.speaking.on("start", this.#speakingListener);
+    this.#connection.receiver.speaking.on("end", this.#speakingEndListener);
     this.#connection.on(VoiceConnectionStatus.Disconnected, () => {
       void this.#recoverVoiceConnection();
     });
@@ -298,34 +318,41 @@ class DiscordTranslationRuntime implements SessionRuntime {
     this.#idleTimer.unref();
   }
 
-  public updateParticipants(participantIds: readonly string[]): Promise<void> {
+  public async updateParticipants(participantIds: readonly string[]): Promise<void> {
     const next = new Set(participantIds);
     const removed = [...this.#speakers.keys()].filter((userId) => !next.has(userId));
     this.#participants.clear();
     for (const participantId of participantIds) this.#participants.add(participantId);
-    for (const userId of removed) this.#closeSpeaker(userId, "completed");
-    return Promise.resolve();
+    await Promise.all(
+      removed.map((userId) => this.#closeSpeaker(userId, "completed")),
+    );
   }
 
   public async stop(reason: string): Promise<void> {
     if (this.#stopping) return;
     this.#stopping = true;
     const cleanupErrors: unknown[] = [];
+    const pendingPrefetchCleanups = [...this.#prefetchCleanupTasks];
     clearTimeout(this.#maxSessionTimer);
     clearInterval(this.#idleTimer);
     this.#connection.receiver.speaking.off("start", this.#speakingListener);
+    this.#connection.receiver.speaking.off("end", this.#speakingEndListener);
     try {
       await this.#processor.stop();
     } catch (error) {
       cleanupErrors.push(error);
     }
     const providerStatus = reason.startsWith("SONIOX_") ? "failed" : "completed";
-    for (const userId of [...this.#speakers.keys()]) {
-      try {
-        this.#closeSpeaker(userId, providerStatus);
-      } catch (error) {
-        cleanupErrors.push(error);
-      }
+    const speakerCleanupResults = await Promise.allSettled(
+      [...this.#speakers.keys()].map((userId) =>
+        this.#closeSpeaker(userId, providerStatus)),
+    );
+    for (const result of speakerCleanupResults) {
+      if (result.status === "rejected") cleanupErrors.push(result.reason);
+    }
+    const prefetchCleanupResults = await Promise.allSettled(pendingPrefetchCleanups);
+    for (const result of prefetchCleanupResults) {
+      if (result.status === "rejected") cleanupErrors.push(result.reason);
     }
     try {
       this.#player.stop(true);
@@ -350,7 +377,6 @@ class DiscordTranslationRuntime implements SessionRuntime {
   #handleSpeakingStart(userId: string): void {
     if (
       this.#stopping ||
-      this.#speakers.has(userId) ||
       !this.#participants.has(userId) ||
       !this.#config.discord.allowedUserIds.has(userId)
     ) {
@@ -358,6 +384,13 @@ class DiscordTranslationRuntime implements SessionRuntime {
     }
     const member = this.#voiceChannel.members.get(userId);
     if (!member || member.user.bot) return;
+    this.#observeFlow("voice_speaking_started");
+    this.#tts.warm?.();
+    const existing = this.#speakers.get(userId);
+    if (existing) {
+      existing.burstHasPacket = false;
+      return;
+    }
 
     const opus = this.#connection.receiver.subscribe(userId, {
       end: { behavior: EndBehaviorType.Manual },
@@ -371,10 +404,20 @@ class DiscordTranslationRuntime implements SessionRuntime {
       opus,
       decoder: new OpusEncoder(48_000, 2),
       stt: stt.session,
-      assembler: new TranslationTokenAssembler(this.#session.pair, {
+      utterance: new StreamingUtterance({
+        pair: this.#session.pair,
         maxSourceDurationMs: this.#config.limits.utteranceMaxSourceSeconds * 1_000,
         maxInputCharacters: this.#config.limits.ttsMaxInputCharacters,
+        createPrefetch: (targetLanguage) => new TtsBatchPrefetch({
+          utteranceId: randomUUID(),
+          sessionId: this.#session.sessionId,
+          speakerUserId: userId,
+          language: targetLanguage,
+          tts: this.#tts,
+          scheduler: this.#ttsScheduler,
+        }),
       }),
+      burstHasPacket: false,
       pendingTextCharacters: stt.initialTextCharacterCount,
       closed: false,
     };
@@ -394,7 +437,9 @@ class DiscordTranslationRuntime implements SessionRuntime {
       startedAt: new Date(),
     });
     speaker.stt.on("result", (result) => this.#handleSttResult(speaker, result));
-    speaker.stt.on("endpoint", () => this.#handleEndpoint(speaker));
+    speaker.stt.on("endpoint", () => {
+      void this.#handleEndpoint(speaker);
+    });
     speaker.stt.on("error", (error) => {
       const mapped = mapSttError(error);
       this.#fail(mapped.code, mapped.publicMessage, error);
@@ -418,6 +463,10 @@ class DiscordTranslationRuntime implements SessionRuntime {
         const stereoPcm = speaker.decoder.decode(packet);
         const monoPcm = downmixStereoS16leToMono(stereoPcm);
         speaker.stt.sendAudio(monoPcm);
+        if (!speaker.burstHasPacket) {
+          speaker.burstHasPacket = true;
+          this.#observeFlow("voice_first_packet_received");
+        }
         const receivedAt = performance.now();
         speaker.lastAudioAtMonotonic = receivedAt;
         this.#lastHumanAudioAt = receivedAt;
@@ -450,12 +499,15 @@ class DiscordTranslationRuntime implements SessionRuntime {
     speaker.opus.resume();
   }
 
+  #handleSpeakingEnd(userId: string): void {
+    if (this.#speakers.has(userId)) this.#observeFlow("voice_speaking_ended");
+  }
+
   #handleSttResult(speaker: SpeakerStream, result: RealtimeResult): void {
     try {
       const pairLanguages = new Set(languagesForPair(this.#session.pair));
       for (const token of result.tokens) {
         speaker.pendingTextCharacters += Array.from(token.text).length;
-        speaker.assembler.accept(token);
         if (
           token.is_final &&
           token.translation_status === "none" &&
@@ -472,38 +524,63 @@ class DiscordTranslationRuntime implements SessionRuntime {
           });
         }
       }
+      if (speaker.utterance.accept(result.tokens)) {
+        this.#observeFlow("tts_prefetch_started");
+      }
     } catch (error) {
       const mapped = mapSttError(error);
       this.#fail(mapped.code, mapped.publicMessage, error);
     }
   }
 
-  #handleEndpoint(speaker: SpeakerStream): void {
+  async #handleEndpoint(speaker: SpeakerStream): Promise<void> {
     try {
+      if (this.#stopping) return;
       this.#flushSpeakerUsage(speaker);
-      const finalized = speaker.assembler.flush();
-      if (!finalized || this.#stopping) return;
+      const { finalized, prefetch: ttsPrefetch } = speaker.utterance.takeAtEndpoint();
+      if (!finalized) {
+        this.#observeFlow("stt_endpoint_empty");
+        if (ttsPrefetch) await this.#cancelPrefetchAndWait(ttsPrefetch);
+        return;
+      }
+      this.#observeFlow("stt_endpoint_finalized");
+      this.#observeFlow(
+        ttsPrefetch?.hasReceivedAudio()
+          ? "tts_prefetch_ready"
+          : "tts_prefetch_pending",
+      );
       const displayName = this.#guild.members.cache.get(speaker.userId)?.displayName;
       if (!displayName) {
+        if (ttsPrefetch) await this.#cancelPrefetchAndWait(ttsPrefetch);
         this.#fail("VOICE_CONNECTION_LOST", "発話者のDiscord情報を確認できませんでした。");
         return;
       }
-      const utteranceId = randomUUID();
+      const utteranceId = ttsPrefetch?.utteranceId ?? randomUUID();
       this.#latency.start(
         utteranceId,
         speaker.lastAudioAtMonotonic ?? performance.now(),
       );
+      const preparedSpeech = ttsPrefetch?.finish();
       this.#processor.enqueue({
         ...finalized,
         utteranceId,
         sessionId: this.#session.sessionId,
         speakerUserId: speaker.userId,
         speakerDisplayName: displayName,
-      });
+      }, preparedSpeech);
     } catch (error) {
       const mapped = mapSttError(error);
       this.#fail(mapped.code, mapped.publicMessage, error);
     }
+  }
+
+  #cancelPrefetchAndWait(prefetch: TtsBatchPrefetch): Promise<void> {
+    const completion = Promise.resolve().then(() => prefetch.cancelAndWait());
+    this.#prefetchCleanupTasks.add(completion);
+    void completion.finally(() => {
+      this.#prefetchCleanupTasks.delete(completion);
+    }).catch(() => undefined);
+    return completion;
   }
 
   #flushSpeakerUsage(speaker: SpeakerStream): void {
@@ -522,15 +599,25 @@ class DiscordTranslationRuntime implements SessionRuntime {
     });
   }
 
-  #closeSpeaker(userId: string, status: "completed" | "failed"): void {
+  async #closeSpeaker(
+    userId: string,
+    status: "completed" | "failed",
+  ): Promise<void> {
     const speaker = this.#speakers.get(userId);
     if (!speaker || speaker.closed) return;
     speaker.closed = true;
     this.#speakers.delete(userId);
+    const ttsPrefetch = speaker.utterance.discard();
+    const cleanupErrors: unknown[] = [];
+    let prefetchCompletion: Promise<void> | undefined;
+    try {
+      prefetchCompletion = ttsPrefetch?.cancelAndWait();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
     if (speaker.keepaliveTimer) clearInterval(speaker.keepaliveTimer);
     if (speaker.usageTimer) clearInterval(speaker.usageTimer);
     speaker.opus.destroy();
-    const cleanupErrors: unknown[] = [];
     try {
       this.#flushSpeakerUsage(speaker);
     } catch (error) {
@@ -545,6 +632,13 @@ class DiscordTranslationRuntime implements SessionRuntime {
       this.#ledger.finishProviderRequest(speaker.requestRef, status, new Date());
     } catch (error) {
       cleanupErrors.push(error);
+    }
+    if (prefetchCompletion) {
+      try {
+        await prefetchCompletion;
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
     }
     if (cleanupErrors.length > 0) {
       throw new AggregateError(cleanupErrors, "発話者の音声ストリームを正常に終了できませんでした");

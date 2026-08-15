@@ -118,6 +118,7 @@ export async function startApplication(
       sttFactory,
       tts,
       latency,
+      observeFlow: (stage) => logger.info("translation_flow", { stage }),
       onFailure: (guildId, reason, publicMessage, cause) => {
         void controllerReference.current?.handleRuntimeFailure(
           guildId,
