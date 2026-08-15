@@ -6,7 +6,7 @@
 
 ## 現在の状態
 
-- 実装済み: Guild/User許可リスト、Discord Voice受信・再生、Soniox STT/TTS、字幕、確定原文tokenでのTTS stream pre-warm、確定翻訳バッチの発話中TTS先読み、endpoint順のFIFO再生、区間遅延ログ、SQLite利用量台帳、費用上限、利用ログ照合、graceful shutdown
+- 実装済み: Guild/User許可リスト、Discord Voice受信・再生、Soniox STT/TTS、字幕、最初の確定翻訳tokenでのTTS stream pre-warm、確定翻訳バッチの発話中TTS先読み、endpoint順のFIFO再生、区間遅延ログ、SQLite利用量台帳、費用上限、利用ログ照合、graceful shutdown
 - 自動確認済み: lint、型検査、公開境界・統合テスト、production build、native module smoke、Docker build
 - 実機確認済み: 実Discordと実Sonioxの日韓1人通話、字幕、読み上げ、8発話の区間遅延計測。実Sonioxを使った合成音声PoCの2回の観測では、発話末尾からendpointまで92〜221 msで、翻訳PCMは発話末尾の44〜62 ms前に準備できた
 - 未確認: 修正版の実Discordにおける再生待ちなし経路のp95 300 ms、複数人通話（3人を含む）、日英・韓英、3言語ペアの30分E2Eと料金受入
@@ -154,7 +154,7 @@ docker compose logs --since=30m bot \
 音声再生は字幕POST完了を待たないため、`caption_posted`が`playback_started`より後に出る場合も正常です。
 発話中にTTS先読みが完了した場合、`tts_connection_ready`や`tts_text_sent`は計測開始より前なので、その発話の`translation_latency`には出ません。`tts_first_audio`は、endpoint時点ですでにPCMがあればendpointと同じ時刻に記録します。
 
-`translation_flow`は本文やDiscord IDを含まない段階ログです。`tts_prefetch_started`は最初の確定原文tokenから翻訳先を決め、本文なしのTTS stream設定を始めた段階です。`tts_prefetch_ready`ならendpointより前にPCMが到着済み、`tts_prefetch_pending`ならendpoint時点ではTTS待ちです。`voice_speaking_started`の後に`stt_endpoint_finalized`も`stt_endpoint_empty`も出ない場合は、Discord受信またはSTT経路を先に調べます。
+`translation_flow`は本文やDiscord IDを含まない段階ログです。`tts_prefetch_started`は最初の確定翻訳tokenの`language`を翻訳先のSSOTとして、TTS stream設定と最初の確定翻訳batchの送信を始めた段階です。確定原文tokenは1発話の本文として受信順に保持し、その言語ラベルは方向判定に使いません。`tts_prefetch_ready`ならendpointより前にPCMが到着済み、`tts_prefetch_pending`ならendpoint時点ではTTS待ちです。`voice_speaking_started`の後に`stt_endpoint_finalized`も`stt_endpoint_empty`も出ない場合は、Discord受信またはSTT経路を先に調べます。
 
 音声のFIFO順は、Sonioxの`endpoint` eventをBotが受信した順です。先読みが終わっていても、`playback_started`は先行音声の完了を待つため追い越しません。p95 300 msの目標は、先行音声が再生中ではない経路に適用します。先行音声の尺より早く後続音声を再生するとFIFOが壊れるため、再生待ちは同じ`trace_id`の`playback_slot_ready.total_ms - queue_enqueued.total_ms`として分けて確認します。
 

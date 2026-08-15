@@ -54,7 +54,7 @@
 
     <svg viewBox="0 0 1280 840" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="utterance-sequence-title utterance-sequence-desc">
       <title id="utterance-sequence-title">1発話を翻訳音声と字幕へ変換する流れ</title>
-      <desc id="utterance-sequence-desc">Discordの発話中に、最初の確定原文で翻訳先TTS streamをpre-warmし、Sonioxが返した確定翻訳バッチだけを本文として送る。PCMはendpointまで再生せず、endpoint後は字幕投稿を待たずに準備済み音声を再生する。複数発話の再生順はendpointの受付順に保つ。</desc>
+      <desc id="utterance-sequence-desc">Discordの発話中に、最初の確定翻訳で翻訳先TTS streamをpre-warmし、確定原文の言語は方向判定に使わない。PCMはendpointまで再生せず、endpoint後は字幕投稿を待たずに準備済み音声を再生する。複数発話の再生順はendpointの受付順に保つ。</desc>
       <defs>
         <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
         <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
@@ -71,11 +71,11 @@
       <line x1="880" y1="128" x2="880" y2="760" stroke="rgba(45,49,66,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
       <line x1="1140" y1="128" x2="1140" y2="760" stroke="rgba(45,49,66,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
 
-      <!-- LOOP fragment: pre-warm once, then each finalized translation result batch -->
+      <!-- LOOP fragment: choose direction from finalized translation, then pre-warm -->
       <rect x="320" y="288" width="600" height="168" rx="4" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
       <rect x="320" y="288" width="44" height="16" rx="2" fill="#f5f5f5" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
       <text x="342" y="300" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">LOOP</text>
-      <text x="332" y="320" fill="#4f5d75" font-size="8" font-family="'Geist Mono', 'Noto Sans Mono CJK JP', monospace" letter-spacing="0.04em">[pre-warm, then final batches]</text>
+      <text x="332" y="320" fill="#4f5d75" font-size="8" font-family="'Geist Mono', 'Noto Sans Mono CJK JP', monospace" letter-spacing="0.04em">[direction from final translation]</text>
 
       <!-- Activation bars stay behind arrows and labels -->
       <rect x="356" y="168" width="8" height="592" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
@@ -88,8 +88,8 @@
       <line x1="364" y1="216" x2="616" y2="216" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
       <line x1="616" y1="264" x2="364" y2="264" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
       <line x1="616" y1="312" x2="364" y2="312" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
-      <line x1="364" y1="344" x2="876" y2="344" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
-      <line x1="616" y1="376" x2="364" y2="376" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
+      <line x1="616" y1="344" x2="364" y2="344" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
+      <line x1="364" y1="376" x2="876" y2="376" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
       <line x1="364" y1="408" x2="876" y2="408" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
       <line x1="876" y1="440" x2="364" y2="440" stroke="#4f5d75" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
       <line x1="616" y1="488" x2="364" y2="488" stroke="#eb6c36" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
@@ -114,13 +114,13 @@
       <text x="490" y="248" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">PROVISIONAL · IGNORE</text>
 
       <rect x="416" y="288" width="148" height="12" rx="2" fill="#f5f5f5"/>
-      <text x="490" y="296" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">FINAL ORIGINAL</text>
+      <text x="490" y="296" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">FINAL ORIGINAL · BUFFER</text>
 
-      <rect x="548" y="320" width="144" height="12" rx="2" fill="#f5f5f5"/>
-      <text x="620" y="328" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">CONFIG PRE-WARM</text>
+      <rect x="398" y="320" width="184" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="490" y="328" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">FINAL TRANSLATION BATCH</text>
 
-      <rect x="398" y="352" width="184" height="12" rx="2" fill="#f5f5f5"/>
-      <text x="490" y="360" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">FINAL TRANSLATION BATCH</text>
+      <rect x="548" y="352" width="144" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="620" y="360" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">CONFIG PRE-WARM</text>
 
       <rect x="550" y="384" width="140" height="12" rx="2" fill="#f5f5f5"/>
       <text x="620" y="392" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">BATCH + TEXT END</text>
