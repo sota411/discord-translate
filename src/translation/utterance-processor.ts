@@ -60,6 +60,9 @@ type ProcessingTask = {
   done: Promise<void>;
   generationDone: Promise<void>;
   playbackStarted: Promise<void>;
+  playbackDone: Promise<void>;
+  playbackFinished: boolean;
+  failure: Error | undefined;
   finished: boolean;
 };
 
@@ -77,6 +80,21 @@ function createSignal(): Signal {
 
 function isUsageAccountingError(error: unknown): error is ApplicationError {
   return error instanceof ApplicationError && error.code.startsWith("USAGE_");
+}
+
+function asError(error: unknown, message: string): Error {
+  return error instanceof Error ? error : new Error(message, { cause: error });
+}
+
+function captionStateAfterPlayback(
+  playbackWasStarted: boolean,
+  playbackCompleted: boolean,
+  speech: SynthesizedSpeech | undefined,
+): CaptionState {
+  if (playbackCompleted) return "played";
+  return playbackWasStarted && speech?.hasReceivedAudio?.()
+    ? "partial_failure"
+    : "not_played";
 }
 
 type UtteranceProcessorOptions = {
@@ -104,7 +122,9 @@ export class UtteranceProcessor {
   readonly #queue: QueuedUtterance[] = [];
   readonly #tasks = new Set<ProcessingTask>();
   readonly #activeSpeeches = new Set<SynthesizedSpeech>();
+  readonly #stopRequested = createSignal();
   #drainPromise: Promise<void> | undefined;
+  #queueWake: (() => void) | undefined;
   #stopped = false;
 
   public constructor(options: UtteranceProcessorOptions) {
@@ -122,6 +142,7 @@ export class UtteranceProcessor {
   public enqueue(utterance: TranslationUtterance): void {
     if (this.#stopped) return;
     this.#queue.push({ utterance, enqueuedAt: this.#now() });
+    this.#wakeDrain();
     if (!this.#drainPromise) {
       this.#drainPromise = this.#drain().finally(() => {
         this.#drainPromise = undefined;
@@ -135,10 +156,12 @@ export class UtteranceProcessor {
 
   public async stop(): Promise<void> {
     this.#stopped = true;
+    this.#stopRequested.resolve();
     for (const queued of this.#queue) {
       this.#latency?.finish(queued.utterance.utteranceId);
     }
     this.#queue.length = 0;
+    this.#wakeDrain();
     for (const speech of this.#activeSpeeches) speech.cancel();
     this.#playback.stop();
     await this.#drainPromise;
@@ -156,16 +179,20 @@ export class UtteranceProcessor {
         const queued = this.#queue.shift();
         if (!queued) {
           if (!previous) return;
-          await previous.done;
-          previous = undefined;
+          await this.#waitForQueueOrCompletion(previous);
           continue;
         }
 
         this.#latency?.mark(queued.utterance.utteranceId, "queue_started");
-        const task = this.#startTask(queued, previous, previous !== undefined);
+        const task = this.#startTask(
+          queued,
+          previous,
+          previous !== undefined && !previous.playbackFinished,
+        );
         previous = task;
         await Promise.all([task.generationDone, task.playbackStarted]);
       }
+      if (previous) await previous.done;
     } catch (error) {
       for (const queued of this.#queue) {
         this.#latency?.finish(queued.utterance.utteranceId);
@@ -194,26 +221,45 @@ export class UtteranceProcessor {
   ): ProcessingTask {
     const generation = createSignal();
     const playback = createSignal();
+    const playbackDone = createSignal();
     const task: ProcessingTask = {
       done: Promise.resolve(),
       generationDone: generation.promise,
       playbackStarted: playback.promise,
+      playbackDone: playbackDone.promise,
+      playbackFinished: false,
+      failure: undefined,
       finished: false,
     };
-    task.done = this.#process(
+    void task.playbackDone.catch(() => undefined);
+    const previousDone = previous?.done ?? Promise.resolve();
+    const processing = this.#process(
       queued,
-      previous?.done ?? Promise.resolve(),
+      previous?.playbackDone ?? Promise.resolve(),
+      previousDone,
+      () => previous?.failure,
       prefetch,
       generation,
       playback,
+      playbackDone,
+      () => {
+        task.playbackFinished = true;
+      },
+    );
+    task.done = processing.then(
+      () => this.#hasStopped() ? undefined : previousDone,
     ).finally(() => {
       task.finished = true;
       this.#tasks.delete(task);
       this.#latency?.finish(queued.utterance.utteranceId);
     });
     void task.done.catch((error: unknown) => {
-      generation.reject(error);
-      playback.reject(error);
+      const normalized = asError(error, "発話の処理に失敗しました。");
+      task.failure = normalized;
+      task.playbackFinished = true;
+      generation.reject(normalized);
+      playback.reject(normalized);
+      playbackDone.reject(normalized);
     });
     this.#tasks.add(task);
     return task;
@@ -222,9 +268,13 @@ export class UtteranceProcessor {
   async #process(
     queued: QueuedUtterance,
     previousPlayback: Promise<void>,
+    previousDone: Promise<void>,
+    previousFailure: () => Error | undefined,
     prefetch: boolean,
     generation: Signal,
     playback: Signal,
+    playbackDone: Signal,
+    markPlaybackFinished: () => void,
   ): Promise<void> {
     this.#assertQueueWaitWithinLimit(queued);
     const inputCharacters = Array.from(queued.utterance.translatedText).length;
@@ -239,15 +289,23 @@ export class UtteranceProcessor {
     }
 
     let caption: number | undefined;
+    let captionPromise: Promise<number> | undefined;
+    let captionFailure: Error | undefined;
     let speech: SynthesizedSpeech | undefined;
     let playbackWasStarted = false;
+    let playbackCompleted = false;
+    let playbackStopRequested = false;
     try {
-      const captionPromise = this.#captions.post({
+      captionPromise = this.#captions.post({
         ...queued.utterance,
         state: "pending",
       }).then((reference) => {
+        caption = reference;
         this.#latency?.mark(queued.utterance.utteranceId, "caption_posted");
         return reference;
+      });
+      void captionPromise.catch((error: unknown) => {
+        captionFailure = asError(error, "Discord字幕POSTに失敗しました。");
       });
       this.#latency?.mark(queued.utterance.utteranceId, "tts_requested");
       const speechPromise = this.#tts.synthesize({
@@ -262,29 +320,7 @@ export class UtteranceProcessor {
         return created;
       });
 
-      const [captionResult, speechResult] = await Promise.allSettled([
-        captionPromise,
-        speechPromise,
-      ]);
-      if (captionResult.status === "fulfilled") caption = captionResult.value;
-      if (speechResult.status === "fulfilled") speech = speechResult.value;
-      if (captionResult.status === "rejected" || speechResult.status === "rejected") {
-        if (speech) {
-          speech.cancel();
-          try {
-            await speech.completed;
-          } catch (completionError) {
-            if (isUsageAccountingError(completionError)) throw completionError;
-          }
-        }
-        if (caption !== undefined) await this.#captions.update(caption, "not_played");
-        if (speechResult.status === "rejected") throw speechResult.reason;
-        if (captionResult.status === "rejected") throw captionResult.reason;
-        throw new Error("字幕またはTTSの準備状態を判定できませんでした。");
-      }
-
-      caption = captionResult.value;
-      const preparedSpeech = speechResult.value;
+      const preparedSpeech = await speechPromise;
       speech = preparedSpeech;
       const generationWork = prefetch
         ? this.#bufferForPlayback(preparedSpeech.audio).then(async (audio) => {
@@ -305,7 +341,9 @@ export class UtteranceProcessor {
         speech.cancel();
         const [completion] = await Promise.allSettled([speech.completed]);
         playback.resolve();
-        await this.#captions.update(caption, "not_played");
+        markPlaybackFinished();
+        playbackDone.resolve();
+        this.#updateCaptionAfterStop(captionPromise, caption, "not_played");
         if (
           completion.status === "rejected" &&
           isUsageAccountingError(completion.reason)
@@ -316,44 +354,94 @@ export class UtteranceProcessor {
       }
 
       this.#assertQueueWaitWithinLimit(queued);
+      if (captionFailure) throw captionFailure;
+      const previousError = previousFailure();
+      if (previousError) throw previousError;
       playbackWasStarted = true;
+      const playbackWork = this.#playback.play(
+        audio,
+        queued.utterance.utteranceId,
+      ).then(
+        () => {
+          playbackCompleted = !this.#hasStopped() && !playbackStopRequested;
+          markPlaybackFinished();
+          playbackDone.resolve();
+        },
+        (error: unknown) => {
+          const normalized = asError(error, "翻訳音声の再生に失敗しました。");
+          markPlaybackFinished();
+          playbackDone.reject(normalized);
+          throw normalized;
+        },
+      );
       playback.resolve();
-      await Promise.all([
-        this.#playback.play(audio, queued.utterance.utteranceId),
+      const [captionReference] = await Promise.all([
+        this.#awaitOrStop(captionPromise),
+        playbackWork,
         generationWork,
+        this.#awaitOrStop(previousDone),
       ]);
       if (this.#hasStopped()) {
-        await this.#captions.update(
+        this.#updateCaptionAfterStop(
+          captionPromise,
           caption,
-          speech.hasReceivedAudio?.() ? "partial_failure" : "not_played",
+          captionStateAfterPlayback(
+            playbackWasStarted,
+            playbackCompleted,
+            speech,
+          ),
         );
       } else {
+        if (captionReference === undefined) {
+          throw new Error("字幕POSTの完了状態を判定できませんでした。");
+        }
+        caption = captionReference;
         await this.#captions.update(caption, "played");
       }
     } catch (error) {
       generation.reject(error);
       playback.reject(error);
+      markPlaybackFinished();
+      playbackDone.reject(error);
       speech?.cancel();
-      if (playbackWasStarted) this.#playback.stop();
+      if (playbackWasStarted) {
+        playbackStopRequested = true;
+        this.#playback.stop();
+      }
       let completionError: unknown;
       if (speech) {
         const [completion] = await Promise.allSettled([speech.completed]);
         if (completion.status === "rejected") completionError = completion.reason;
       }
+      if (this.#hasStopped()) {
+        if (captionPromise) {
+          this.#updateCaptionAfterStop(
+            captionPromise,
+            caption,
+            captionStateAfterPlayback(
+              playbackWasStarted,
+              playbackCompleted,
+              speech,
+            ),
+          );
+        }
+        if (isUsageAccountingError(completionError)) throw completionError;
+        if (isUsageAccountingError(error)) throw error;
+        return;
+      }
+      if (caption === undefined && captionPromise) {
+        const [captionResult] = await Promise.allSettled([captionPromise]);
+        if (captionResult.status === "fulfilled") caption = captionResult.value;
+      }
       if (caption !== undefined) {
         await this.#captions.update(
           caption,
-          playbackWasStarted && speech?.hasReceivedAudio?.()
-            ? "partial_failure"
-            : "not_played",
+          captionStateAfterPlayback(
+            playbackWasStarted,
+            playbackCompleted,
+            speech,
+          ),
         );
-      }
-      if (this.#hasStopped()) {
-        if (isUsageAccountingError(completionError)) throw completionError;
-        if (isUsageAccountingError(error)) {
-          throw error;
-        }
-        return;
       }
       if (isUsageAccountingError(completionError)) throw completionError;
       throw error;
@@ -379,6 +467,56 @@ export class UtteranceProcessor {
       chunks.push(buffer);
     }
     return Readable.from(chunks, { objectMode: false });
+  }
+
+  #awaitOrStop<T>(promise: Promise<T>): Promise<T | undefined> {
+    if (this.#hasStopped()) return Promise.resolve(undefined);
+    return Promise.race([
+      promise,
+      this.#stopRequested.promise.then(() => undefined),
+    ]);
+  }
+
+  #updateCaptionAfterStop(
+    captionPromise: Promise<number>,
+    caption: number | undefined,
+    state: CaptionState,
+  ): void {
+    void Promise.resolve().then(async () => {
+      const reference = caption ?? await captionPromise;
+      await this.#captions.update(reference, state);
+    }).catch(() => undefined);
+  }
+
+  #waitForQueueOrCompletion(previous: ProcessingTask): Promise<void> {
+    if (this.#queue.length > 0 || this.#stopped || previous.finished) {
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const settle = (callback: () => void): void => {
+        if (settled) return;
+        settled = true;
+        if (this.#queueWake === wake) this.#queueWake = undefined;
+        callback();
+      };
+      const wake = (): void => settle(resolve);
+      this.#queueWake = wake;
+      void previous.done.then(
+        wake,
+        (error: unknown) => settle(() => reject(asError(
+          error,
+          "先行発話の処理に失敗しました。",
+        ))),
+      );
+    });
+  }
+
+  #wakeDrain(): void {
+    const wake = this.#queueWake;
+    this.#queueWake = undefined;
+    wake?.();
   }
 
   #assertQueueWaitWithinLimit(queued: QueuedUtterance): void {
