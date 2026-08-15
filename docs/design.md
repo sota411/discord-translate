@@ -38,14 +38,15 @@ Discordの音声チャンネルで、2つの言語を話す最大3人が、元�
 - 3つの対応言語ペアについて、両方向の音声翻訳が実機のDiscord音声チャンネルで動作する
 - `MAX_SPEAKERS_PER_SESSION=3`の30分通話で、3人分のDiscord音声受信、Soniox接続、字幕投稿、読み上げ再生が途中停止しない
 - 暫定トークンがTTSへ送られないことを、イベントログと字幕で確認できる
-- 発話区切りから翻訳音声の再生開始までのp50とp95を計測し、PoC後に本書へ記録した目標値以内である
+- 先行音声が再生中ではない経路で、最後のDiscord音声packetから翻訳音声の再生開始までのp95が300 ms以内である
 - Bot自身の読み上げ音声を再入力せず、翻訳ループが発生しない
 - `/translate stop`、最大時間、無音、参加者不在、利用上限の各条件で、音声受信と外部API接続が終了する
 - 未許可Guildまたは上限超過の要求では、Sonioxへ接続する前に処理を拒否する
 - Sonioxの利用ログとローカル利用量台帳を照合し、セッションごとの実料金を確認できる
 
-会話ログの`700ms〜1.2秒`と`2〜3秒`は、分割型を続けるか一体型APIを再比較するかの目安であり、合意済みのMVP合格値ではない。
-PoCでp50、p95、最大値と会話時の体感を記録し、一体型APIとの比較結果を確認してから、実装手順2へ進む前にMVPの目標値を本節へ固定する。
+300 msの対象から、先行音声の再生完了を待つFIFO待ち時間は除く。翻訳音声を重ねず、前の発話を中断しない以上、後続発話を先行音声の残り時間より早く再生することはできないためである。
+FIFO待ちは同じ`trace_id`の`playback_slot_ready.total_ms - queue_enqueued.total_ms`から導出し、10秒を超えた場合はセッションを停止する。
+実Sonioxを使った合成音声PoCでは300 ms以内へ入ったが、実Discordでのp95は未確認であり、private beta受入前に測定する。
 
 ### 非ゴール（今回のスコープ外）
 
@@ -315,6 +316,8 @@ Sonioxにはraw PCMとして次を指定する。
   "enable_language_identification": true,
   "enable_endpoint_detection": true,
   "max_endpoint_delay_ms": 500,
+  "endpoint_latency_adjustment_level": 3,
+  "endpoint_sensitivity": 0.5,
   "translation": {
     "type": "two_way",
     "language_a": "ja",
@@ -328,6 +331,8 @@ Sonioxにはraw PCMとして次を指定する。
 `language_hints_strict`は有効にしない。
 ペア外の言語も識別できる状態を残し、翻訳対象は`two_way`の2言語だけに限定する。
 対応ペア外の言語を検出した場合、Sonioxの`translation_status: "none"`をTTSへ送らず、同じUserに対する警告を字幕チャンネルへ1回だけ投稿する。
+`max_endpoint_delay_ms: 500`、`endpoint_latency_adjustment_level: 3`、`endpoint_sensitivity: 0.5`は、実Sonioxを使った低遅延PoCで採用した値である。
+起動時にモデル一覧を確認し、この3設定とlevel 3に対応しないモデルではReadyにしない。
 
 ### 翻訳確定と読み上げ
 
@@ -341,32 +346,33 @@ Botは次の条件をすべて満たすトークンだけをTTSへ送る。
 
 Sonioxのwire protocolには`<end>`などの制御トークンがあるが、`@soniox/node` 2.3.0はそれらをtoken配列から除外する。
 そのためBotは本文から`<end>`を探さず、SDKの`endpoint` eventを発話境界として扱う。
-`is_final: false`の暫定トークンは画面表示にもTTSにも使わず、同じ発話の確定版を待つ。
-確定済みトークンは受信順に発話バッファへ加え、`endpoint` eventを受けるまではTTSを開始しない。
-バッファ追加時点でも、確定済み元発話の時間範囲と確定翻訳の文字数を確認し、endpoint欠落時に無制限に蓄積しない。
-`endpoint` eventを受けて同じ上限を再確認した後、確定翻訳をTTSへ送り、最後のmessageで`text_end: true`を指定する。
-独自の形態素解析やLLMによる意味区切り判定は追加しない。
-Sonioxの確定トークンとendpoint detectionを、取り消し不能な音声へ進める境界とする。
+`is_final: false`の暫定トークンは画面表示にもTTS本文にも使わず、同じ発話の確定版を待つ。
+最初の確定原文トークンの言語から翻訳先を決め、本文なしのTTS stream設定を先に送る。これにより、TTS modelの準備時間を発話中へ移す。確定原文と異なる翻訳方向が同じ発話内で返った場合は、誤ったvoiceを使わずFail Fastでセッションを停止する。
+SDKが1回の`result` eventで返した確定翻訳トークンを受信順に連結し、準備したTTS streamへ`text_end: true`で送る。
+これを発話中から始め、返ったPCMを48 kHz monoのままメモリへ読み切る。独自の形態素解析やLLMによる意味区切り判定は追加しない。
+SonioxのSpeech-to-Speech実装例が翻訳トークンをTTSへ順次渡す構成を採用しているため、本実装ではその境界を確定トークンだけに狭めて利用する。
 
-TTSへ送る前に、元発話の長さと確定翻訳のUnicode code point数を確認する。
-`UTTERANCE_MAX_SOURCE_SECONDS`または`TTS_MAX_INPUT_CHARACTERS`を超えた場合は、翻訳を分割または切り捨てず、TTS streamを開始する前に`UTTERANCE_TOO_LONG`でセッションを停止する。
+`endpoint` eventは、1発話の字幕を確定し、準備済み音声をDiscord再生へ渡す境界である。
+endpointより前にTTS PCMが届いても再生せず、取消不能な音声を聞き手へ出すのはendpoint後に限る。
+発話中の各バッチで、確定済み元発話の時間範囲と確定翻訳のUnicode code point数を加算し、上限を超えた時点で先読み中のTTSを取り消して`UTTERANCE_TOO_LONG`でセッションを停止する。
+後続トークンで上限超過が判明する前に送信済みのTTS利用量は取り消せないため、利用量台帳へ記録する。
 両上限は、最も遅い設定voiceと最も長くなった対応言語の組み合わせでも、Sonioxの生成音声上限である2分へ達しない値をPoCで決める。
 
-TTS WebSocketは最初の発話を処理するときに遅延接続する。
-Soniox TTSは接続後およそ10秒以内に最初のstream設定が必要なため、Discordセッション開始時には先行接続しない。
-最初のstream設定後は20秒間隔で`{"keep_alive": true}`を送り、`terminated: true`を受けた接続を後続発話の別`stream_id`へ再利用する。
-生成音声がない状態が3分を超えるとkeepalive中でもSoniox側から接続が閉じられるため、待機中の切断は異常終了にせず、次の発話開始時に新しい接続を作る。
+Discordのspeaking startを受けた時点でTTS WebSocketの接続だけを開始し、確定原文トークンを待つ間にTLSとWebSocketの接続時間を隠す。
+Soniox TTSは接続後およそ10秒以内に最初のstream設定が必要である。長い発話で設定前に接続が閉じた場合は、最初の確定原文トークンで新しい接続を作り、翻訳先のstream設定だけを送る。
+確定翻訳が成立しないままendpointへ達した場合は、このprepared streamを`cancel: true`で終了し、provider requestの完了と利用量台帳への反映を待つ。
+最初のstream設定後は20秒間隔で`{"keep_alive": true}`を送り、`terminated: true`を受けた接続を後続バッチの別`stream_id`へ再利用する。
+生成音声がない状態が3分を超えてSoniox側から接続を閉じられた場合も、次のバッチで再接続する。
 active streamの途中で切断した場合は自動再送せず、要求を`failed`としてセッションを停止する。
 
-確定翻訳はSonioxの`endpoint` eventをBotが受信した順にFIFOへ入れ、1セッションで同時に生成するTTS要求は1本だけとする。
-字幕の`再生待ち`投稿とTTS要求は、発話上限の検証後に並行して開始する。
-先行発話の再生が終了済みであれば、最初のTTS PCMを受信した時点でDiscord再生を開始し、字幕POSTの完了は待たない。
+1セッションにつき1つの共有スケジューラを持ち、話者が複数でも同時に生成するTTS要求を1本へ制限する。
+各TTS streamの`terminated: true`を受けてから次の確定バッチを開始し、同じ発話に属するPCMはバッチ順に連結する。
+先読み音声は1発話ごとに最大2分、11,520,000 byteまで保持し、超過時は`TTS_OUTPUT_LIMIT_REACHED`で停止する。
+endpointを受信すると字幕の`再生待ち`投稿を開始し、先行音声が再生中でなければ準備済みPCMを直ちにAudioPlayerへ渡す。字幕POSTの完了は待たない。
+endpoint時点でTTSが未完了でも、最初のPCMが届き次第再生を開始できる。
 再生直前に字幕POSTの失敗が確定済みであれば音声を再生せず、再生開始後に判明した場合はその音声を停止し、いずれもセッションを復旧不能な障害として終了する。
+AudioPlayerの`Idle`だけを再生成功と見なさず、`Playing`を観測した後の自然な`Idle`だけを完了とする。再生開始前のstream終了と明示停止は失敗として区別する。
 前発話のAudioPlayer完了を字幕POST・状態編集を含む全処理完了とは別のPromiseで管理し、次発話の再生順序には前者だけを使う。
-Sonioxの`terminated: true`を受けた時点で前のTTS生成枠を解放し、Discordがその音声を再生中であれば次の1発話だけを先読み生成する。
-次の発話がTTS生成完了時点にまだ到着していなくても、先行音声の再生中に後からFIFOへ入った時点で待機中のdrainを起床し、直ちに1件先読みする。
-先読み音声は48 kHz mono PCMとして最大2分、11,520,000 byteまでメモリへ保持し、上限を超えた場合は`TTS_OUTPUT_LIMIT_REACHED`で停止する。
-2件以上を先読みせず、Discordの再生開始は前の再生完了を待つため、聞こえる順序はFIFOのままである。
 
 TTSだけは`@soniox/node` 2.3.0ではなく、既存依存の`ws`を使う小さなWebSocket adapterを使用する。
 公式SDKの`client.realtime.tts.multiStream()`は接続再利用、自動keepalive、stream単位の取消を備えるため採用可否を先に確認した。
@@ -385,11 +391,13 @@ STT、モデル一覧、TTSモデル一覧、利用ログ、並行数確認に�
   "voice": "<configured-multilingual-voice>",
   "audio_format": "pcm_s16le",
   "sample_rate": 48000,
-  "stream_id": "<utterance-id>",
+  "reduce_silence": true,
+  "stream_id": "<provider-segment-id>",
   "client_reference_id": "<opaque-provider-request-id>"
 }
 ```
 
+起動時にTTSモデルの`supports_silence_reduction`を確認し、対応モデルだけへ`reduce_silence: true`を送る。
 Sonioxから返る48 kHz mono PCMの各sampleを左右へ複製し、48 kHz stereoの`StreamType.Raw`としてDiscordのAudioPlayerへ渡す。
 Raw入力経路のOpus符号化には`@discordjs/opus`を使用し、既知形式の変換へFFmpegを追加しない。
 TTSの音声がすべて届く前でも、最初の再生可能フレームが届いた時点で再生を開始する。
@@ -414,11 +422,11 @@ TTS streamは、`text_end: true`の送信後に`audio_end: true`と`terminated: 
 Discord Botが同時に再生できる翻訳音声は1つとする。
 複数人が同時に話した場合も、TTS音声を重ねて再生しない。
 
-- 発話終端を確定した時刻の早い順にFIFOへ入れる
+- Botがendpointを受信した順にFIFOへ入れる
 - 再生中の発話を後続発話で中断しない
-- 前のTTS生成完了後は、Discord再生中に限り次の1件だけを先読みする
-- 先行再生中に後から到着した発話でも、再生完了を待たず先読みを開始する
-- 先読み中もSoniox TTSを同時に2本生成せず、未再生音声を2件以上保持しない
+- 発話中のTTS先読み順と、endpoint後の再生順を分ける
+- セッション共有スケジューラにより、複数話者でもSoniox TTSを同時に2本生成しない
+- 未再生PCMは発話単位で11,520,000 byteを上限とし、再生待ち時間でも打ち切る
 - 再生待ち時間をミリ秒で計測する
 - `PLAYBACK_QUEUE_MAX_MS`を超えた場合は、新しい翻訳を黙って破棄せず、`PLAYBACK_BACKLOG`としてセッションを停止する
 
@@ -428,6 +436,7 @@ FIFOの基準は、複数のSTT streamからBotへ届いた`endpoint` eventの�
 
 同時発話が続くと、翻訳が正しくても聞き手へ届く時刻が遅れる。
 この制約は字幕で補完せず、1対1通話の運用上の前提として開始メッセージへ記載する。
+300 msの目標は再生待ちがない経路へ適用し、FIFO待ちを含む発話は別集計とする。
 
 ### 翻訳ループの防止
 
@@ -514,7 +523,7 @@ Discord Userの表示名を自動で用語設定へ加えない。
 
 入力のOpusとPCMはSonioxへ送信した後に解放する。
 確定済みの原文、翻訳文、TTSの未再生フレームは発話処理中のメモリにだけ置く。
-先読みは1発話かつ11,520,000 byte以下に制限し、字幕状態の確定と再生完了、停止、またはエラーで解放する。
+先読みは1発話あたり11,520,000 byte以下に制限し、字幕状態の確定と再生完了、停止、またはエラーで解放する。
 
 ### SQLite
 
@@ -575,7 +584,7 @@ Botが生成した`request_ref`だけをSonioxへ送り、対応関係はロー�
 | `updated_at` | `TEXT` | UTCのRFC 3339 |
 
 主キーは`(scope_type, scope_id, period)`とする。
-STT接続時間はUserごとの定期区切りで、TTS費用は発話ごとに、その発話者、Guild、globalの3スコープへ同じトランザクションで加算する。
+STT接続時間はUserごとの定期区切りで、TTS費用は確定翻訳バッチごとに、その発話者、Guild、globalの3スコープへ同じトランザクションで加算する。
 
 ### 保持期間
 
@@ -831,19 +840,36 @@ private betaでは、Guild管理者が参加者へこの処理を事前に説明
 | stage | 観測点 |
 | --- | --- |
 | `stt_endpoint` | 最後のDiscord音声packetからSoniox endpoint eventまで |
+| `queue_enqueued` | endpoint確定後、FIFOへ投入した時点 |
 | `queue_started` | FIFOから処理を開始した時点 |
 | `caption_posted` | Discordの`再生待ち`字幕POST完了。音声開始の待機条件ではない |
 | `tts_requested` | TTS要求開始 |
 | `tts_connection_ready` | 新規または再利用WebSocketを送信可能と確認 |
-| `tts_text_sent` | TTS configと`text_end`送信完了 |
+| `tts_text_sent` | 確定翻訳batchと`text_end`送信完了 |
 | `tts_first_audio` | 最初のTTS PCM受信 |
+| `playback_slot_ready` | 先行音声が完了し、この発話がDiscord再生枠を得た時点 |
 | `playback_started` | Discord AudioPlayerが`Playing`へ遷移 |
-| `tts_audio_end` | TTSの`audio_end`受信 |
+| `tts_audio_end` | endpoint後に観測した、1発話に属する全TTSバッチの音声生成完了状態 |
 | `pipeline_finished` | 再生結果を字幕へ反映して発話処理完了 |
 
 各行の`total_ms`は最後のDiscord音声packetからの累積時間、`stage_ms`は直前に観測したstageからの経過時間である。
 字幕とTTSは並行するため、区間比較ではstageの固定順を仮定せず、同じ`trace_id`の`total_ms`同士の差を使う。
 `caption_posted`が`playback_started`より後に出力されることは、本設計では正常である。
+発話中にTTS先読みを開始した場合、`tts_connection_ready`と`tts_text_sent`はtrace開始より前に起きることがあるため、その段階は遡って記録しない。`tts_audio_end`はendpoint後に準備済み音声の完了状態を観測して記録する。先読み中にすでに完了していた場合は、実際の完了時刻ではなくendpoint直後という上限値になる。
+endpoint時点でPCMを受信済みなら、`tts_first_audio`をendpointと同じ時刻に記録する。これは「endpointまでに準備済み」を表す上限値であり、実際の先行時間ではない。
+
+発話の欠落箇所を本文なしで切り分けるため、`translation_flow`へ次の段階も記録する。複数話者の段階を個別追跡するログではないため、IDは付けない。
+
+| stage | 観測点 |
+| --- | --- |
+| `voice_speaking_started` | Discordが話し始めを検出 |
+| `voice_first_packet_received` | Botがそのspeaking burstの最初のOpus packetをPCM化してSTTへ送信 |
+| `voice_speaking_ended` | Discordが話し終わりを検出。Soniox endpointとは別のイベント |
+| `stt_endpoint_empty` | endpointを受けたが原文と翻訳の確定組を作れなかった |
+| `stt_endpoint_finalized` | endpointで1発話をFIFOへ入れた |
+| `tts_prefetch_started` | 最初の確定原文tokenから翻訳先を決め、本文なしのTTS stream設定を始めた |
+| `tts_prefetch_ready` | endpoint時点でTTS PCMを受信済み |
+| `tts_prefetch_pending` | endpoint時点では最初のTTS PCMを待っている |
 
 2026-08-15に実Discordと実Sonioxの日韓1人通話で8発話を測った修正前baselineは次のとおりである。
 
@@ -856,14 +882,19 @@ private betaでは、Guild管理者が参加者へこの処理を事前に説明
 | TTS本文送信 → 最初のPCM | 8 | 575 ms | 588 ms | 529 ms |
 | 発話末尾 → Discord再生開始 | 8 | 1,994 ms | 5,023 ms | 2,661 ms |
 
-endpoint待ちではなく、前発話の再生完了まで次処理を止めるFIFOのhead-of-line、発話ごとのTTS接続、字幕POST後にTTSを始める直列処理が支配的だった。
-そのためendpointパラメータは変更せず、接続再利用、字幕/TTS並行開始、次の1件だけの先読みを修正対象とした。
+修正前は、前発話の再生完了まで次処理を止めるFIFOのhead-of-line、発話ごとのTTS接続、字幕POST後にTTSを始める直列処理が支配的だった。
+接続再利用、字幕とTTSの並行開始、後続1件の先読みでこの3点を削ったが、再生待ちがない発話でも再利用接続で715 msかかり、300 msへ届かなかった。
 
 2026-08-16の追跡計測では、ミュート直後に相当する直近5発話の発話末尾からendpointまでは10〜233 msだった。
 一方、後続発話が先行TTS生成の完了後に到着した1発話で、FIFO処理開始まで1,143 ms待ってからTTSに590 msかかり、再生開始が累積1,931 msになっていた。
 また、TTS音声の準備後も字幕POSTを待った発話では、直近5発話の最大で183 msの追加待機があった。
-この「後着発話でdrainが起きない」条件と「字幕POSTを再生条件にする」条件を解消し、不定期な追加待機だけを削る。
-空いたTTS接続の再接続とSonioxの最初のPCM生成、先行音声のFIFO再生完了待ちは引き続き必要な待機である。
+この「後着発話でdrainが起きない」条件と「字幕POSTを再生条件にする」条件は解消した。
+その後の直近5発話では、再生待ちなしの初回接続が1,137 ms、再利用接続が715 msだった。短い間隔で続けた2発話は先行音声の再生を待ち、4,022 msと2,521 msになった。5発話とも最終的には再生され、欠落ではなかった。
+
+300 msへ近づけるため、2026-08-16に実Sonioxへ約2.8秒の合成日本語音声を実時間で送るPoCを行った。
+最初の確定原文tokenで翻訳先のTTS stream設定だけを送り、確定翻訳をSonioxの`result`単位で発話中にTTSへ渡した。`max_endpoint_delay_ms: 500`、`endpoint_latency_adjustment_level: 3`、`endpoint_sensitivity: 0.5`を指定した2回の観測では、最後の入力PCMからendpointまで92〜221 ms、最初の翻訳PCMは最後の入力PCMより44〜62 ms前に到着した。この2回は構成選択のPoCであり、p95の受入測定ではない。
+この結果を根拠に、発話後にTTSを始める構成を廃止し、確定原文でstreamをpre-warmして確定翻訳バッチだけを発話中に先読みする構成へ変更した。
+これは実Sonioxの境界までは確認済みだが、Discord受信とAudioPlayerを含むp95 300 msは未確認である。
 
 同修正を反映した実行中コンテナでは、再生まで完了した30発話について`stt_endpoint`の受付順と`playback_started`の順を照合し、順序逆転は0件だった。
 この照合はBotが受信したendpoint順に対するFIFOを確認するものであり、複数話者の物理的な発話開始順を保証するものではない。
@@ -877,7 +908,7 @@ endpoint待ちではなく、前発話の再生完了まで次処理を止める
 | `speech_to_final_translation_ms` | 発話から確定翻訳までの遅延 |
 | `final_translation_to_tts_audio_ms` | 確定翻訳から最初のTTS音声までの遅延 |
 | `speech_to_playback_ms` | 発話区切りからDiscord再生開始までの全体遅延 |
-| `playback_queue_wait_ms` | 同時発話による待ち時間 |
+| `playback_queue_wait_ms` | `playback_slot_ready.total_ms - queue_enqueued.total_ms`から導出するFIFO全体の待ち時間 |
 | `soniox_requests_total` | API、結果、error_type別の要求数 |
 | `soniox_cost_microusd` | User、Guild、global別の見積もりと実額 |
 | `usage_reconciliation_lag_seconds` | 利用ログ照合の遅れ |
@@ -916,7 +947,7 @@ stableの`@discordjs/voice` 0.19.2が公開する受信streamはOpus payloadの`
 - Slash Command入力からDiscord応答まで
 - Opus音声fixture入力から、Sonioxクライアント境界へ渡すPCMまで
 - Soniox token fixture入力から、TTSへ送る確定テキストと字幕まで
-- TTS PCM fixture入力から、字幕/TTS並行開始、字幕POSTを待たない音声開始、再生前字幕失敗のFail Fast、後着発話を含む次の1件だけの先読み、Discordへ渡すOpusとFIFO再生順、先読み後の再生待ち上限、後続の先読み失敗で先行再生を中断しないことまで
+- TTS PCM fixture入力から、確定翻訳バッチのendpoint前先読み、複数話者で共有するTTS直列スケジューラ、字幕POSTを待たない音声開始、`Playing`前の`Idle`を成功扱いしないこと、Discordへ渡すOpusとFIFO再生順、再生待ち上限、後続失敗で先行再生を中断しないことまで
 - TTS WebSocket fixtureから、接続再利用、待機切断後の再接続、`audio_end`、`terminated`、`cancel`、`max_audio_duration_reached`と要求状態まで
 - セッション開始と停止から、SQLiteへ残る利用量と終了理由まで
 - 未許可Guild、未許可の実行者または話者、費用上限超過、並行数不足、長すぎる発話から、不要なSoniox接続が0件であることまで
@@ -1005,7 +1036,7 @@ SQLiteのschema versionを管理し、起動時にtransaction内で前方migrati
 6. 3言語ペアと30分E2Eを行い、MVP完了条件を確認する
 
 実装コードと認証情報を使わない統合テストは作成済みである。
-実Discordと実Sonioxの日韓1人通話では音声往復と遅延区間を確認済みだが、複数人通話（3人を含む）、日英・韓英、30分継続、料金の受入確認は未実施である。
+実Discordと実Sonioxの日韓1人通話では音声往復と修正前の遅延区間を確認済みである。実Sonioxの合成音声PoCでは発話中先読みを確認済みだが、修正版の実Discord p95、複数人通話（3人を含む）、日英・韓英、30分継続、料金の受入確認は未実施である。
 残るPoCで音声受信が安定しない、または修正後のp95がMVP目標を満たさない場合はprivate betaを開始せず、代替案を比較して目標値を確定する。
 
 ## 参考
@@ -1019,6 +1050,8 @@ SQLiteのschema versionを管理し、起動時にtransaction内で前方migrati
 ### 公式資料
 
 - [Soniox: Real-time speech-to-speech translation](https://soniox.com/docs/translation/sts-translation)
+- [Soniox: Speech-to-speech translation demo](https://soniox.com/docs/demo-apps/soniox-speech-to-speech-translation)
+- [Soniox examples: speech-to-speech translation pre-warming](https://github.com/soniox/soniox_examples/blob/75a1aac9c3a354b7f286345fb99f31d2beff55c2/apps/soniox-speech-to-speech-translation-demo/main.py)
 - [Soniox: Speech-to-text translation](https://soniox.com/docs/translation/stt-translation)
 - [Soniox: STT WebSocket API](https://soniox.com/docs/api-reference/stt/websocket-api)
 - [Soniox: Real-time Text-to-Speech](https://soniox.com/docs/tts/rt/real-time-generation)
