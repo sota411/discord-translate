@@ -115,12 +115,15 @@ export class SttTurnFinalizer {
     if (kind === "endpoint" && this.#manualFinalizeRequested) {
       this.#ignoredFinalizedBoundaryCount += 1;
     }
-    this.#hasPendingAudio = this.#audioAfterFinalizeRequest || this.#speaking;
+    const hadAudioAfterFinalizeRequest = this.#audioAfterFinalizeRequest;
+    this.#hasPendingAudio = hadAudioAfterFinalizeRequest || this.#speaking;
     this.#manualFinalizeRequested = false;
     this.#audioAfterFinalizeRequest = false;
     const transcriptProgressed = this.#transcriptProgressAfterFinalizeRequest;
     this.#transcriptProgressAfterFinalizeRequest = false;
-    if (transcriptProgressed) this.#scheduleTranscriptTimers();
+    if (transcriptProgressed && hadAudioAfterFinalizeRequest) {
+      this.#scheduleTranscriptTimers();
+    }
     if (this.#hasPendingAudio && !this.#speaking) {
       this.#scheduleSpeakingEndFinalize();
     }

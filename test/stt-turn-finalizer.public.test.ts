@@ -221,6 +221,37 @@ void test("manual finalizeの応答待ち中に次発話の認識が進んだ場
   finalizer.close();
 });
 
+void test("manual finalize後の同一発話の遅延認識だけでは次発話の停滞監視を始めない", (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const calls: FinalizeCall[] = [];
+  const finalizer = new SttTurnFinalizer({
+    session: recordingSession(calls),
+    speakingEndDelayMs: 100,
+    transcriptInactivityMs: 3_000,
+    maxTurnMs: 30_000,
+    trailingSilenceMs: 200,
+  });
+
+  finalizer.audioReceived();
+  finalizer.speakingEnded();
+  context.mock.timers.tick(100);
+  assert.equal(calls.filter((call) => call.kind === "finalize").length, 1);
+
+  finalizer.transcriptProgressed();
+  assert.equal(finalizer.boundaryReceived("finalized"), true);
+  context.mock.timers.tick(2_500);
+
+  finalizer.speakingStarted();
+  finalizer.audioReceived();
+  context.mock.timers.tick(500);
+  assert.equal(calls.filter((call) => call.kind === "finalize").length, 1);
+
+  finalizer.speakingEnded();
+  context.mock.timers.tick(100);
+  assert.equal(calls.filter((call) => call.kind === "finalize").length, 2);
+  finalizer.close();
+});
+
 void test("ノイズの誤認識でテキストが進み続けても発話時間上限で確定する", (context) => {
   context.mock.timers.enable({ apis: ["setTimeout"] });
   const calls: FinalizeCall[] = [];
