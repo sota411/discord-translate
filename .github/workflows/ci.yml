@@ -21,8 +21,10 @@ jobs:
           node-version: 24.17.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --prod
       - run: pnpm check
       - run: pnpm build
       - run: pnpm smoke:runtime
       - run: pnpm diagrams:sync && git diff --exit-code -- docs/diagrams
+      - run: cp .env.example .env.local && docker compose --env-file .env.local config -q
       - run: docker build --tag discord-translate:ci .

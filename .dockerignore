@@ -11,3 +11,4 @@ output
 test
 *.sqlite
 *.sqlite-*
+config/translation-terms.json

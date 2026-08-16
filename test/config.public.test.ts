@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 
 import { ConfigError, loadConfig } from "../src/config.js";
@@ -156,4 +157,22 @@ void test("翻訳用語JSONは対応ペア、空文字、重複、context上限�
     })),
     /10,000/u,
   );
+});
+
+void test("config:checkは存在しない翻訳用語ファイルを起動前に拒否する", () => {
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "tsx", "src/check-config.ts"],
+    {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: validEnv({
+        TRANSLATION_TERMS_PATH: "/nonexistent/discord-translate/terms.json",
+      }),
+    },
+  );
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /翻訳用語ファイル/u);
+  assert.doesNotMatch(result.stdout, /Botを起動できます/u);
 });

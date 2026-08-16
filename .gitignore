@@ -14,3 +14,4 @@ output/
 .data/
 *.sqlite
 *.sqlite-*
+config/translation-terms.json

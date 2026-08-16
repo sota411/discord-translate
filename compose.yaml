@@ -8,8 +8,11 @@ services:
       - .env.local
     environment:
       SQLITE_PATH: /data/usage.sqlite
+      TRANSLATION_TERMS_PATH: /config/translation-terms.json
+    stop_grace_period: 30s
     volumes:
       - bot-data:/data
+      - ${TRANSLATION_TERMS_PATH:-./config/translation-terms.empty.json}:/config/translation-terms.json:ro
 
 volumes:
   bot-data:

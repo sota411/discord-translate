@@ -63,6 +63,9 @@ export function loadTranslationTerms(filePath: string | undefined): TranslationT
   try {
     return parseTranslationTerms(readFileSync(filePath, "utf8"));
   } catch (error) {
-    throw new Error(`翻訳用語ファイルを読み込めません: ${filePath}`, { cause: error });
+    const reason = error instanceof Error ? `: ${error.message}` : "";
+    throw new Error(`翻訳用語ファイルを読み込めません: ${filePath}${reason}`, {
+      cause: error,
+    });
   }
 }
