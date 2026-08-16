@@ -6,8 +6,8 @@
 
 ## 現在の状態
 
-- 実装済み: Guild/User許可リスト、Discord Voice受信・再生、Soniox STT/TTS、字幕、Soniox endpoint後だけのTTS生成、本文を送らないTTS接続ウォームアップ、endpoint順のFIFO再生、破損Opus packetの局所破棄、区間遅延ログ、SQLite利用量台帳、費用上限、利用ログ照合、graceful shutdown
-- 自動確認済み: lint、型検査、公開境界・統合テスト、production build、native module smoke、Docker build
+- 実装済み: Guild/User許可リスト、Discord Voice受信・再生、Soniox STT/TTS、字幕、Soniox endpoint後だけのTTS生成、本文を送らないTTS接続ウォームアップ、endpoint順のFIFO再生、実時間の再生待ち上限、接続・合成のキャンセル、STT接続待ちの有界音声buffer、TTS wire応答検証、破損Opus packetの局所破棄、区間遅延ログ、SQLite利用量台帳、費用上限、利用ログ照合、graceful shutdown
+- 自動確認済み: lint、型検査、公開境界・統合テスト、production build、production依存監査、native module smoke、Compose設定検証、Docker build
 - 実機確認済み: 実Discordと実Sonioxの日韓1人通話、字幕、読み上げ、8発話の区間遅延計測。発話中にTTSへ確定翻訳を送るPoCも実施したが、通常操作と安定性を優先し、現行実装には採用していない
 - 未確認: endpoint後にTTSを開始する現行版の実Discord遅延、複数人通話（3人を含む）、日英・韓英、3言語ペアの30分E2Eと料金受入。300 msは発話中TTSを採用しない現行方針と実測値が両立しないため、MVPの必須受入条件にはしない
 
@@ -65,7 +65,14 @@ realpath .data/usage.sqlite
 
 表示されたパスを`SQLITE_PATH`へ設定してください。Docker Composeでは、ホスト側の設定にかかわらずコンテナ内の`/data/usage.sqlite`を使用します。
 
-用語設定を使う場合は、[translation-terms.example.json](./config/translation-terms.example.json)をコピーし、その絶対パスを`TRANSLATION_TERMS_PATH`へ設定します。未使用なら空欄のままで構いません。
+用語設定を使う場合は、[translation-terms.example.json](./config/translation-terms.example.json)をGit管理外のファイルへコピーし、その絶対パスを`TRANSLATION_TERMS_PATH`へ設定します。
+
+```bash
+cp config/translation-terms.example.json config/translation-terms.json
+realpath config/translation-terms.json
+```
+
+Docker Composeは、このホスト側ファイルをコンテナ内の`/config/translation-terms.json`へ読み取り専用でマウントします。未使用なら空欄のままで構いません。その場合は、空の既定用語集をマウントします。`pnpm config:check`は指定ファイルの存在とJSON内容も検証します。
 
 ## 3. Sonioxを設定する
 
@@ -81,7 +88,7 @@ pnpm soniox:inspect
 
 `tts-rt-v2`とvoice IDが表示されれば、Sonioxの準備は完了です。voiceは確認済みの初期値`Kenji`、`Mina`、`Emma`をそのまま使用できます。変更したい場合だけ、`SONIOX_VOICE_JA`、`SONIOX_VOICE_KO`、`SONIOX_VOICE_EN`を書き換えてください。
 
-最後に、値そのものを表示せず、不足している設定名と理由だけを確認します。
+最後に、TokenやAPI Keyを表示せず、不足している設定名と理由を確認します。
 
 ```bash
 pnpm config:check
@@ -141,11 +148,11 @@ pnpm docker:host:status
 
 ```bash
 # 今回のvethエラーが出るPC
-docker compose -f compose.yaml -f compose.host.yaml logs --since=30m bot \
+docker compose --env-file .env.local -f compose.yaml -f compose.host.yaml logs --since=30m bot \
   | rg '"event":"(translation_latency|translation_flow)"'
 
 # 通常のPC
-docker compose logs --since=30m bot \
+docker compose --env-file .env.local logs --since=30m bot \
   | rg '"event":"(translation_latency|translation_flow)"'
 ```
 
@@ -155,7 +162,7 @@ docker compose logs --since=30m bot \
 
 TTSのconfigと確定翻訳本文は、`stt_endpoint`の後にだけ送ります。Discordの`voice_speaking_started`で行うのはWebSocket接続だけで、config、本文、PCMは送りません。
 
-`translation_flow`は本文やDiscord IDを含まない段階ログです。`voice_packet_dropped`は、Discordから受け取ったOpus packetを破損packetとして1件だけ破棄したことを表します。1回でセッションは停止しませんが、繰り返す場合はDiscord音声受信経路を調べてください。`voice_speaking_started`の後に`stt_endpoint_finalized`も`stt_endpoint_empty`も出ない場合は、Discord受信またはSTT経路を先に調べます。
+`translation_flow`は本文やDiscord IDを含まない段階ログです。`voice_packet_dropped`は、Discordから受け取ったOpus packetを破損packetとして1件だけ破棄したことを表します。1回でセッションは停止しませんが、繰り返す場合はDiscord音声受信経路を調べてください。`voice_startup_buffer_overflow`は、STT接続待ちの音声bufferが上限へ達してセッションを停止したことを表します。`voice_speaking_started`の後に`stt_endpoint_finalized`も`stt_endpoint_empty`も出ない場合は、Discord受信またはSTT経路を先に調べます。
 
 音声のFIFO順は、Sonioxの`endpoint` eventをBotが受信した順です。先行音声が再生中なら、endpointで確定済みの後続1件だけをTTS生成して待機しますが、再生順を追い越しません。再生待ちは同じ`trace_id`の`playback_slot_ready.total_ms - queue_enqueued.total_ms`で確認します。
 
@@ -183,6 +190,36 @@ pnpm docker:host:down
 停止しても、永続volumeのSQLiteは残ります。
 
 SQLiteを含む永続volumeまで削除する`docker compose down -v`は、データを初期化するとき以外は実行しないでください。
+
+### SQLiteをバックアップ・復元する
+
+バックアップ時はBotを停止し、停止済みコンテナからSQLiteをコピーします。`down`はコンテナを削除するため、コピーが終わる前に実行しないでください。
+
+```bash
+install -d -m 700 backups
+docker compose --env-file .env.local stop bot
+bot_container="$(docker compose --env-file .env.local ps --all -q bot)"
+test -n "$bot_container"
+docker cp "$bot_container:/data/usage.sqlite" \
+  "backups/usage-$(date +%Y%m%d-%H%M%S).sqlite"
+docker compose --env-file .env.local start bot
+```
+
+復元時は対象ファイルを明示し、Botを停止したまま永続volumeへ配置します。次の`backup_path`だけを実在するバックアップへ変更してください。
+
+```bash
+backup_path="$(realpath backups/usage-YYYYMMDD-HHMMSS.sqlite)"
+test -f "$backup_path"
+docker compose --env-file .env.local stop bot
+docker compose --env-file .env.local run --rm --no-deps --user root \
+  --entrypoint sh \
+  -e BACKUP_FILE="$(basename "$backup_path")" \
+  -v "$(dirname "$backup_path"):/backup:ro" \
+  bot -c 'install -o node -g node -m 600 "/backup/$BACKUP_FILE" /data/usage.sqlite.restore && rm -f /data/usage.sqlite-wal /data/usage.sqlite-shm && mv /data/usage.sqlite.restore /data/usage.sqlite'
+docker compose --env-file .env.local start bot
+```
+
+host network設定を使うPCでは、各`docker compose`へ`-f compose.yaml -f compose.host.yaml`を追加します。Botの構造化ログは永続volumeではなく標準出力へ出ます。Dockerのログドライバーまたは外部の収集基盤で、保存期間とrotationを設定してください。
 
 `SIGINT`または`SIGTERM`を受けると、新規コマンドを拒否し、音声・Soniox接続・Discord接続・SQLiteを順に閉じます。
 
@@ -215,6 +252,18 @@ pnpm dev
 
 自動停止条件は、最大30分、120秒無音、参加者不在、未許可Userの参加、設定人数を超える参加、再生待ち10秒超過、利用上限、外部接続障害です。
 
+### 3言語ペアの受入確認
+
+自動テストでは、次の6方向について確定原文・確定翻訳とSonioxの双方向設定を確認します。実Discordと実Sonioxを使う受入確認は別途必要です。
+
+| pair | 確認する方向 |
+| --- | --- |
+| `ja-ko` | 日本語→韓国語、韓国語→日本語 |
+| `ja-en` | 日本語→英語、英語→日本語 |
+| `ko-en` | 韓国語→英語、英語→韓国語 |
+
+各pairで両方向の短い発話、字幕、読み上げ、停止を確認した後、許可済みの3人で30分継続します。開始失敗、途中停止、字幕欠落、再生順、`translation_latency`のp50・p95・最大値、Soniox利用ログの実料金を記録してください。この3人・30分・日英・韓英の実機受入は、現時点では未実施です。
+
 ### `/translate`が表示されない場合
 
 まずGuild Commandを登録し直します。
@@ -241,8 +290,14 @@ pnpm docker:host:logs
 pnpm check
 pnpm build
 pnpm smoke:runtime
+pnpm audit --prod
 pnpm diagrams:sync
+docker compose --env-file .env.local config -q
+# 通常のPC
 docker build --tag discord-translate:local .
+
+# vethエラーが出るこのPC
+docker build --network=host --tag discord-translate:local .
 ```
 
 実APIへ接続しないテストは、Soniox TTS WebSocketのローカルfixtureを含めて実行されます。実機E2Eの記録項目と合格条件は[検証方針](./docs/design.md#検証方針)にあります。

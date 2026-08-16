@@ -721,7 +721,7 @@ Botは`SONIOX_PROJECT_MONTHLY_BUDGET_MICROUSD`へ同じ値を保持し、`GLOBAL
 | `SONIOX_VOICE_JA` | 必須 | 利用可能なvoice ID |
 | `SONIOX_VOICE_KO` | 必須 | 利用可能なvoice ID |
 | `SONIOX_VOICE_EN` | 必須 | 利用可能なvoice ID |
-| `TRANSLATION_TERMS_PATH` | 任意 | 指定時は読めない、または不正なら起動エラー |
+| `TRANSLATION_TERMS_PATH` | 任意 | ホスト上の絶対パス。指定時は読めない、または不正なら起動エラー。Composeは同じファイルをコンテナ内の固定パスへ読み取り専用でマウントする |
 | `SQLITE_PATH` | 必須 | 専用永続ボリューム内の絶対パス |
 | `LOG_ID_HMAC_KEY` | 必須 | ログ用IDを生成するsecret。既定値なし |
 
@@ -807,19 +807,17 @@ private betaでは、Guild管理者が参加者へこの処理を事前に説明
 
 ### ログ
 
-構造化ログには次を含める。
+すべての構造化ログは`timestamp`、`level`、`event`を持つ。実装済みのイベント別フィールドは次のとおりである。
 
-- `timestamp`
-- `level`
-- `event`
-- `session_id`
-- `LOG_ID_HMAC_KEY`を使ってHMAC化したGuild IDとUser ID
-- `state`
-- `pair`
-- `provider_request_ref`
-- Sonioxの`request_id`
-- エラーコード
-- 処理時間と音声時間
+| イベント | フィールド |
+| --- | --- |
+| `translation_latency` | `trace_id`、`stage`、`stage_ms`、`total_ms` |
+| `translation_flow` | `stage`。複数話者を識別するIDは持たない |
+| `translation_runtime_failed` | HMAC化した`guild_id`、`session_id`、`reason`、`error_name`、該当時だけ`error_code` |
+| その他のエラーイベント | `error_name`、該当時だけ`error_code`。処理箇所に応じてHMAC化した`guild_id`または`reason` |
+| 起動・停止イベント | 件数、region、停止理由など、そのイベントに必要な非秘密情報 |
+
+`provider_request_ref`と利用量はSQLiteへ記録するが、通常ログへは出力しない。Sonioxの`request_id`、セッション状態、言語ペアをすべてのログへ一律に付ける実装もない。
 
 音声、原文、翻訳文、表示名、APIキーを含めない。
 利用者へ表示する日本語メッセージと、運用者が分岐に使う安定したエラーコードを分ける。
@@ -856,6 +854,7 @@ TTSのstream設定、本文、PCMはすべて`stt_endpoint`後に生じるため
 | `voice_speaking_started` | Discordが話し始めを検出 |
 | `voice_first_packet_received` | Botがそのspeaking burstの最初のOpus packetをPCM化してSTTへ送信 |
 | `voice_packet_dropped` | `@discordjs/opus`が破損と判定した1 packetだけを破棄し、セッションは継続 |
+| `voice_startup_buffer_overflow` | STT接続待ちの有界Opus bufferが件数またはbyte上限へ達し、セッションを停止 |
 | `voice_speaking_ended` | Discordが話し終わりを検出。Soniox endpointとは別のイベント |
 | `stt_endpoint_empty` | endpointを受けたが原文と翻訳の確定組を作れなかった |
 | `stt_endpoint_finalized` | endpointで1発話をFIFOへ入れた |
@@ -888,7 +887,9 @@ TTSのstream設定、本文、PCMはすべて`stt_endpoint`後に生じるため
 
 発話中TTS導入前のFIFO・字幕ゲート修正を反映した当時のコンテナでは、再生まで完了した30発話について`stt_endpoint`の受付順と`playback_started`の順を照合し、順序逆転は0件だった。この過去の照合はBotが受信したendpoint順に対するFIFOを確認したものであり、現行版の遅延や複数話者の物理的な発話開始順を保証するものではない。
 
-| メトリクス | 用途 |
+次の表は、`translation_latency`ログとSQLiteから運用時に集計する指標候補である。現時点ではメトリクスexporterとアラートルールを実装しておらず、表の名前をそのまま出力してはいない。
+
+| 集計指標候補 | 用途 |
 | --- | --- |
 | `translation_sessions_active` | 実行中セッション数 |
 | `translation_session_starts_total` | 開始数。pair、結果、拒否理由別 |
@@ -902,7 +903,7 @@ TTSのstream設定、本文、PCMはすべて`stt_endpoint`後に生じるため
 | `soniox_cost_microusd` | User、Guild、global別の見積もりと実額 |
 | `usage_reconciliation_lag_seconds` | 利用ログ照合の遅れ |
 
-APIエラー率、p95遅延、再生キュー上限、月間費用の80%と100%、照合遅延について運用アラートを設定する。
+private betaの運用基盤を決める際に、APIエラー率、p95遅延、再生キュー上限、月間費用の80%と100%、照合遅延のアラートを設定する。リポジトリ内にアラート設定はまだない。
 
 ## 検証方針
 
@@ -938,6 +939,8 @@ stableの`@discordjs/voice` 0.19.2が公開する受信streamはOpus payloadの`
 - Soniox token fixture入力から、確定原文の言語ラベルが確定翻訳と食い違う場合も含め、endpointで確定する原文・翻訳と、endpoint前にTTS要求を作らないことまで
 - TTS PCM fixture入力から、endpoint確定後のTTS生成、同時TTS 1本の制約、字幕POSTを待たない音声開始、`Playing`前の`Idle`を成功扱いしないこと、FIFO再生順、再生待ち上限、後続失敗で先行再生を中断しないことまで
 - TTS WebSocket fixtureから、本文を送らない接続ウォームアップ、接続再利用、待機切断後の再接続、`audio_end`、`terminated`、`cancel`、`max_audio_duration_reached`と要求状態まで
+- TTS WebSocket fixtureから、`null`、型不正、base64不正の応答をprocess例外にせずstream失敗へ変換することと、接続待ちを`AbortSignal`で終了できることまで
+- 3言語ペアの両方向から、確定原文・確定翻訳の組み立てとSonioxの双方向設定まで
 - セッション開始と停止から、SQLiteへ残る利用量と終了理由まで
 - 未許可Guild、未許可の実行者または話者、費用上限超過、並行数不足、長すぎる発話から、不要なSoniox接続が0件であることまで
 
@@ -981,7 +984,7 @@ Token、API Key、実ID、HMAC Keyはチャット、Issue、Git、コンテナ�
 ### デプロイ
 
 - Linux上で単一のDockerコンテナを動かす
-- SQLiteと運用ログは専用の永続ボリュームへ置く
+- SQLiteは専用の永続ボリュームへ置く。運用ログは標準出力へ出し、Dockerまたは収集基盤側で保存期間とrotationを設定する
 - コンテナにはNode.js、Opus native addon、Botコードだけを含め、FFmpegは含めない
 - secretはイメージまたはGitへ含めず、デプロイ環境から注入する
 - Botプロセスは1レプリカに固定する
@@ -995,7 +998,7 @@ Token、API Key、実ID、HMAC Keyはチャット、Issue、Git、コンテナ�
 起動時は、設定検証、SQLite migration、未終了セッションの回収、Sonioxモデル確認、利用ログ照合、Discord接続の順に行う。
 途中で失敗した場合はDiscordへReadyを通知せず、プロセスを非ゼロで終了する。
 
-`SIGTERM`では新しいコマンドを拒否し、全セッションを`PROCESS_SHUTDOWN`で停止してからDiscordとSQLiteを閉じる。
+`SIGTERM`では新しいコマンドを拒否し、接続中のVoice待機とTTS合成をキャンセルし、全セッションを`PROCESS_SHUTDOWN`で停止してからDiscordとSQLiteを閉じる。Composeは30秒の停止猶予を与える。
 終了期限を超えた場合も、音声や字幕本文をファイルへ退避しない。
 
 ### DB migration
@@ -1034,7 +1037,7 @@ SQLiteのschema versionを管理し、起動時にtransaction内で前方migrati
 
 - [discord_realtime_translation_chat.zip](../discord_realtime_translation_chat.zip)
   - SHA-256: `662b2f367040321ad67669d7290dc383900e54835030d585f579479bf68b1c76`
-- 章立てと粒度の参照: [design (1).md](./design%20%281%29.md)
+- 章立てと粒度の参照: [design-structure-sample.md](./reference/design-structure-sample.md)
 
 ### 公式資料
 
