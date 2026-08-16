@@ -121,7 +121,13 @@ export class DiscordBotController {
   ): Promise<void> {
     const guildId = newState.guild.id;
     const session = this.#commands.getSession(guildId);
-    if (session?.state !== "ACTIVE") return;
+    if (
+      !session ||
+      session.state === "FAILED" ||
+      session.state === "STOPPING"
+    ) {
+      return;
+    }
     const isBot = newState.id === this.#client.user?.id;
     const affectsSession =
       oldState.channelId === session.voiceChannelId ||
@@ -129,7 +135,11 @@ export class DiscordBotController {
     if (!isBot && !affectsSession) return;
 
     try {
-      if (isBot && newState.channelId !== session.voiceChannelId) {
+      if (
+        isBot &&
+        session.state === "ACTIVE" &&
+        newState.channelId !== session.voiceChannelId
+      ) {
         if (await this.#commands.stopForFailure(guildId, "BOT_VOICE_REMOVED")) {
           await this.#postAutomaticStop(
             newState.guild,

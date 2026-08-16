@@ -28,6 +28,7 @@ import {
 
 import type { AppConfig } from "../config.js";
 import { decodeDiscordOpusPacketToMono } from "../audio/pcm.js";
+import { OpusStartupBuffer } from "../audio/opus-startup-buffer.js";
 import { ApplicationError } from "../domain/application-error.js";
 import { languagesForPair } from "../domain/language-pair.js";
 import type { TranslationLatencyRecorder } from "../observability/translation-latency.js";
@@ -46,6 +47,8 @@ import { DiscordCaptionGateway } from "./caption-gateway.js";
 import { DiscordPlaybackGateway } from "./playback-gateway.js";
 
 const { OpusEncoder } = opus;
+const maxStartupOpusPackets = 250;
+const maxStartupOpusBytes = 512 * 1024;
 
 export type RuntimeFailureHandler = (
   guildId: string,
@@ -76,6 +79,9 @@ type SpeakerStream = {
   lastUsageAtMonotonic?: number;
   lastAudioAtMonotonic?: number;
   pendingTextCharacters: number;
+  startupOpus: OpusStartupBuffer;
+  sttConnected: boolean;
+  startupBufferOverflowed: boolean;
   keepaliveTimer?: NodeJS.Timeout;
   usageTimer?: NodeJS.Timeout;
   closed: boolean;
@@ -136,13 +142,16 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
   public async start(
     session: Readonly<SessionDescriptor>,
     participantIds: readonly string[],
+    signal: AbortSignal,
   ): Promise<SessionRuntime> {
+    signal.throwIfAborted();
     const guild = this.#client.guilds.cache.get(session.guildId);
     if (!guild) throw new Error("Discord Guildがクライアントキャッシュにありません");
     const [voiceChannel, textChannel] = await Promise.all([
       guild.channels.fetch(session.voiceChannelId),
       guild.channels.fetch(session.textChannelId),
     ]);
+    signal.throwIfAborted();
     if (voiceChannel?.type !== ChannelType.GuildVoice) {
       throw new Error("対象チャンネルはGuild Voice Channelではありません");
     }
@@ -163,6 +172,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
 
     let connection: VoiceConnection | undefined;
     try {
+      signal.throwIfAborted();
       connection = joinVoiceChannel({
         channelId: voiceChannel.id,
         guildId: guild.id,
@@ -170,7 +180,12 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
         selfDeaf: false,
         selfMute: false,
       });
-      await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
+      await entersState(
+        connection,
+        VoiceConnectionStatus.Ready,
+        AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
+      );
+      signal.throwIfAborted();
       this.#assertParticipantsUnchanged(voiceChannel, participantIds);
       return new DiscordTranslationRuntime({
         session,
@@ -396,7 +411,6 @@ class DiscordTranslationRuntime implements SessionRuntime {
     const opus = this.#connection.receiver.subscribe(userId, {
       end: { behavior: EndBehaviorType.Manual },
     });
-    opus.pause();
     const requestRef = randomUUID();
     const stt = this.#sttFactory.create(this.#session.pair, requestRef);
     const speaker: SpeakerStream = {
@@ -412,9 +426,19 @@ class DiscordTranslationRuntime implements SessionRuntime {
       }),
       burstHasPacket: false,
       pendingTextCharacters: stt.initialTextCharacterCount,
+      startupOpus: new OpusStartupBuffer({
+        maxPackets: maxStartupOpusPackets,
+        maxBytes: maxStartupOpusBytes,
+      }),
+      sttConnected: false,
+      startupBufferOverflowed: false,
       closed: false,
     };
     this.#speakers.set(userId, speaker);
+    speaker.opus.on("data", (packet: Buffer) => this.#handleOpusPacket(speaker, packet));
+    speaker.opus.on("error", (error) => {
+      this.#fail("VOICE_CONNECTION_LOST", "Discordの音声受信に失敗しました。", error);
+    });
     void this.#connectSpeaker(speaker).catch((error: unknown) => {
       const mapped = mapSttError(error);
       this.#fail(mapped.code, mapped.publicMessage, error);
@@ -438,41 +462,16 @@ class DiscordTranslationRuntime implements SessionRuntime {
       this.#fail(mapped.code, mapped.publicMessage, error);
     });
     await speaker.stt.connect();
-    if (this.#stopping || speaker.closed) {
+    if (this.#stopping || speaker.closed || speaker.startupBufferOverflowed) {
       speaker.stt.close();
       return;
     }
 
     speaker.lastUsageAtMonotonic = performance.now();
-    speaker.opus.on("data", (packet: Buffer) => {
-      try {
-        if (
-          this.#stopping ||
-          !this.#participants.has(speaker.userId) ||
-          !this.#config.discord.allowedUserIds.has(speaker.userId)
-        ) {
-          return;
-        }
-        const monoPcm = decodeDiscordOpusPacketToMono(speaker.decoder, packet);
-        if (!monoPcm) {
-          this.#observeFlow("voice_packet_dropped");
-          return;
-        }
-        speaker.stt.sendAudio(monoPcm);
-        if (!speaker.burstHasPacket) {
-          speaker.burstHasPacket = true;
-          this.#observeFlow("voice_first_packet_received");
-        }
-        const receivedAt = performance.now();
-        speaker.lastAudioAtMonotonic = receivedAt;
-        this.#lastHumanAudioAt = receivedAt;
-      } catch (error) {
-        this.#fail("SONIOX_STREAM_FAILED", "音声の変換または送信に失敗しました。", error);
-      }
-    });
-    speaker.opus.on("error", (error) => {
-      this.#fail("VOICE_CONNECTION_LOST", "Discordの音声受信に失敗しました。", error);
-    });
+    speaker.sttConnected = true;
+    for (const packet of speaker.startupOpus.drain()) {
+      this.#handleOpusPacket(speaker, packet);
+    }
     speaker.keepaliveTimer = setInterval(() => {
       if (!speaker.closed) {
         try {
@@ -492,7 +491,47 @@ class DiscordTranslationRuntime implements SessionRuntime {
       }
     }, 30_000);
     speaker.usageTimer.unref();
-    speaker.opus.resume();
+  }
+
+  #handleOpusPacket(speaker: SpeakerStream, packet: Buffer): void {
+    try {
+      if (
+        this.#stopping ||
+        speaker.closed ||
+        speaker.startupBufferOverflowed ||
+        !this.#participants.has(speaker.userId) ||
+        !this.#config.discord.allowedUserIds.has(speaker.userId)
+      ) {
+        return;
+      }
+      if (!speaker.sttConnected) {
+        if (!speaker.startupOpus.enqueue(packet)) {
+          speaker.startupBufferOverflowed = true;
+          speaker.startupOpus.clear();
+          this.#observeFlow("voice_startup_buffer_overflow");
+          this.#fail(
+            "SONIOX_STREAM_FAILED",
+            "音声認識への接続待ちが長いため翻訳を停止します。",
+          );
+        }
+        return;
+      }
+      const monoPcm = decodeDiscordOpusPacketToMono(speaker.decoder, packet);
+      if (!monoPcm) {
+        this.#observeFlow("voice_packet_dropped");
+        return;
+      }
+      speaker.stt.sendAudio(monoPcm);
+      if (!speaker.burstHasPacket) {
+        speaker.burstHasPacket = true;
+        this.#observeFlow("voice_first_packet_received");
+      }
+      const receivedAt = performance.now();
+      speaker.lastAudioAtMonotonic = receivedAt;
+      this.#lastHumanAudioAt = receivedAt;
+    } catch (error) {
+      this.#fail("SONIOX_STREAM_FAILED", "音声の変換または送信に失敗しました。", error);
+    }
   }
 
   #handleSpeakingEnd(userId: string): void {
@@ -584,6 +623,7 @@ class DiscordTranslationRuntime implements SessionRuntime {
     if (!speaker || speaker.closed) return;
     speaker.closed = true;
     this.#speakers.delete(userId);
+    speaker.startupOpus.clear();
     speaker.utterance.discard();
     const cleanupErrors: unknown[] = [];
     if (speaker.keepaliveTimer) clearInterval(speaker.keepaliveTimer);

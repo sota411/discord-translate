@@ -10,6 +10,7 @@ import {
   downmixStereoS16leToMono,
 } from "../src/audio/pcm.js";
 import { ApplicationError } from "../src/domain/application-error.js";
+import type { Language, LanguagePair } from "../src/domain/language-pair.js";
 import type { TranslationLatencyRecorder } from "../src/observability/translation-latency.js";
 import { TranslationTokenAssembler } from "../src/translation/token-assembler.js";
 import { StreamingUtterance } from "../src/translation/streaming-utterance.js";
@@ -71,6 +72,49 @@ void test("確定した正しい方向の翻訳だけをendpointで1発話にす
     sourceDurationMs: 800,
   });
   assert.equal(assembler.flush(), undefined);
+});
+
+void test("3言語ペアの両方向で確定原文と確定翻訳を組み立てる", () => {
+  const pairs: readonly [LanguagePair, Language, string, Language, string][] = [
+    ["ja-ko", "ja", "こんにちは", "ko", "안녕하세요"],
+    ["ja-en", "ja", "こんにちは", "en", "Hello"],
+    ["ko-en", "ko", "안녕하세요", "en", "Hello"],
+  ];
+
+  for (const [pair, languageA, textA, languageB, textB] of pairs) {
+    for (const [sourceLanguage, originalText, targetLanguage, translatedText] of [
+      [languageA, textA, languageB, textB],
+      [languageB, textB, languageA, textA],
+    ] as const) {
+      const assembler = new TranslationTokenAssembler(pair, {
+        maxSourceDurationMs: 30_000,
+        maxInputCharacters: 300,
+      });
+      assembler.accept({
+        text: originalText,
+        is_final: true,
+        language: sourceLanguage,
+        translation_status: "original",
+        start_ms: 0,
+        end_ms: 500,
+      });
+      assembler.accept({
+        text: translatedText,
+        is_final: true,
+        language: targetLanguage,
+        source_language: sourceLanguage,
+        translation_status: "translation",
+      });
+
+      assert.deepEqual(assembler.flush(), {
+        sourceLanguage,
+        targetLanguage,
+        originalText,
+        translatedText,
+        sourceDurationMs: 500,
+      });
+    }
+  }
 });
 
 void test("確定原文の言語判定が揺れてもendpointまでは発話を確定しない", () => {
@@ -386,6 +430,27 @@ class DeferredTts implements TtsGateway {
         completed: Promise.resolve(),
         cancel: () => undefined,
       });
+    });
+  }
+}
+
+class HangingSynthesisTts implements TtsGateway {
+  public aborted = false;
+
+  public synthesize(
+    _input: { text: string },
+    signal?: AbortSignal,
+  ): Promise<SynthesizedSpeech> {
+    return new Promise<SynthesizedSpeech>((_resolve, reject) => {
+      const abort = (): void => {
+        this.aborted = true;
+        reject(new DOMException("TTS synthesis aborted", "AbortError"));
+      };
+      if (signal?.aborted) {
+        abort();
+        return;
+      }
+      signal?.addEventListener("abort", abort, { once: true });
     });
   }
 }
@@ -951,6 +1016,46 @@ void test("endpoint確定後の再生待ちが上限を超えた発話は再生�
   assert.equal(failures[0]?.code, "PLAYBACK_BACKLOG");
 });
 
+void test("先行再生が終わらなくても再生待ち上限の時点で後続発話を破棄する", {
+  timeout: 500,
+}, async () => {
+  const captions = new RecordingCaptions();
+  const playback = new BlockingPlayback();
+  const failures: ApplicationError[] = [];
+  const processor = new UtteranceProcessor({
+    captions,
+    tts: new RecordingTts(),
+    playback,
+    maxQueueWaitMs: 10,
+    maxSourceDurationMs: 30_000,
+    maxInputCharacters: 300,
+    onFatal: (error) => failures.push(error),
+  });
+
+  for (const [index, translatedText] of ["첫 번째", "두 번째"].entries()) {
+    processor.enqueue({
+      utteranceId: `u-real-deadline-${String(index + 1)}`,
+      sessionId: "s1",
+      speakerUserId: "user1",
+      speakerDisplayName: "sota",
+      sourceLanguage: "ja",
+      targetLanguage: "ko",
+      originalText: index === 0 ? "一つ目" : "二つ目",
+      translatedText,
+      sourceDurationMs: 500,
+    });
+  }
+
+  await new Promise<void>((resolve) => setTimeout(resolve, 30));
+  assert.equal(playback.releases.length, 1);
+  assert.equal(captions.records[1]?.state, "not_played");
+  assert.equal(failures[0]?.code, "PLAYBACK_BACKLOG");
+
+  playback.releases.shift()?.();
+  await processor.whenIdle();
+  assert.equal(failures.length, 1);
+});
+
 void test("長すぎる発話は字幕・TTSへ渡さず明示的に失敗する", async () => {
   const captions = new RecordingCaptions();
   const tts = new RecordingTts();
@@ -1066,6 +1171,37 @@ void test("字幕投稿が未完了でも明示停止は完了を待たない", 
   captions.releasePost?.();
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(captions.records[0]?.state, "not_played");
+});
+
+void test("TTS合成開始Promiseが未完了でも明示停止はキャンセルして完了する", {
+  timeout: 500,
+}, async () => {
+  const tts = new HangingSynthesisTts();
+  const processor = new UtteranceProcessor({
+    captions: new RecordingCaptions(),
+    tts,
+    playback: new StopAwarePlayback(),
+    maxQueueWaitMs: 10_000,
+    maxSourceDurationMs: 30_000,
+    maxInputCharacters: 300,
+    onFatal: () => assert.fail("利用者停止をfatal errorとして扱ってはいけません"),
+  });
+
+  processor.enqueue({
+    utteranceId: "u-stop-while-tts-synthesis-pending",
+    sessionId: "s1",
+    speakerUserId: "user1",
+    speakerDisplayName: "sota",
+    sourceLanguage: "ja",
+    targetLanguage: "ko",
+    originalText: "停止します",
+    translatedText: "중지합니다",
+    sourceDurationMs: 500,
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  await processor.stop();
+  assert.equal(tts.aborted, true);
 });
 
 void test("音声再生完了後に字幕投稿待ちで停止しても再生済みへ更新する", async () => {

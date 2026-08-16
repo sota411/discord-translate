@@ -2,6 +2,7 @@ export type TranslationFlowStage =
   | "voice_speaking_started"
   | "voice_first_packet_received"
   | "voice_packet_dropped"
+  | "voice_startup_buffer_overflow"
   | "voice_speaking_ended"
   | "stt_endpoint_empty"
   | "stt_endpoint_finalized";

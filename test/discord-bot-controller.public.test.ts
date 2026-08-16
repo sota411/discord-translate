@@ -149,6 +149,76 @@ void test("開始通知を投稿できなければ開始済みセッションを
   assert.match(harness.events.at(-1) ?? "", /翻訳を停止しました/u);
 });
 
+void test("CONNECTING中の音声参加者変更も認可検査へ渡す", async () => {
+  const participants: string[][] = [];
+  const voiceChannel = {
+    type: ChannelType.GuildVoice,
+    members: new Map([
+      [
+        "999999999999999999",
+        { id: "999999999999999999", user: { bot: false } },
+      ],
+    ]),
+  };
+  const guild = {
+    id: "223456789012345678",
+    channels: {
+      cache: new Map([["523456789012345678", voiceChannel]]),
+    },
+  };
+  const commands = {
+    execute: (): Promise<CommandResult> => Promise.resolve({
+      ok: false,
+      ephemeral: true,
+      interactionMessage: "",
+    }),
+    getSession: () => ({
+      sessionId: "session-1",
+      guildId: guild.id,
+      voiceChannelId: "523456789012345678",
+      voiceChannelName: "General",
+      textChannelId: "623456789012345678",
+      textChannelName: "translation",
+      startedByUserId: "323456789012345678",
+      pair: "ja-ko" as const,
+      state: "CONNECTING" as const,
+      startedAt: new Date("2026-08-16T00:00:00Z"),
+      participantIds: ["323456789012345678"],
+    }),
+    handleVoiceParticipantsChanged: (
+      _guildId: string,
+      participantIds: readonly string[],
+    ) => {
+      participants.push([...participantIds]);
+      return Promise.resolve({ stopped: false });
+    },
+    stopForFailure: () => Promise.resolve(false),
+  };
+  const controller = new DiscordBotController({
+    client: { user: { id: "723456789012345678" } } as unknown as Client,
+    commands,
+    logger: createSafeLogger(
+      "0123456789abcdef0123456789abcdef",
+      () => undefined,
+    ),
+  });
+
+  await controller.handleVoiceStateUpdate(
+    {
+      id: "999999999999999999",
+      channelId: null,
+      guild,
+    } as never,
+    {
+      id: "999999999999999999",
+      channelId: "523456789012345678",
+      guild,
+    } as never,
+  );
+
+  assert.deepEqual(participants, [["999999999999999999"]]);
+});
+
 void test("構造化ログはDiscord IDと例外メッセージをそのまま出力しない", () => {
   const lines: string[] = [];
   const logger = createSafeLogger(

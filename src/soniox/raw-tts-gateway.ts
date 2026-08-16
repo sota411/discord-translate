@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { PassThrough } from "node:stream";
 
 import WebSocket, { type RawData } from "ws";
+import { z } from "zod";
 
 import { ApplicationError } from "../domain/application-error.js";
 import type { Language } from "../domain/language-pair.js";
@@ -51,14 +52,22 @@ type RawSonioxTtsGatewayOptions = {
   now?: () => Date;
 };
 
-type TtsWireEvent = {
-  stream_id?: string;
-  audio?: string;
-  audio_end?: boolean;
-  terminated?: boolean;
-  error_code?: number;
-  error_type?: string;
-};
+const base64Pattern = /^(?:[A-Za-z\d+/]{4})*(?:[A-Za-z\d+/]{2}==|[A-Za-z\d+/]{3}=)?$/u;
+
+const ttsWireEventSchema = z.object({
+  stream_id: z.string().min(1).optional(),
+  audio: z.string().regex(base64Pattern).optional(),
+  audio_end: z.boolean().optional(),
+  terminated: z.boolean().optional(),
+  error_code: z.number().int().optional(),
+  error_type: z.string().optional(),
+  error_message: z.string().optional(),
+}).refine(
+  (event) => event.stream_id !== undefined || event.error_code !== undefined,
+  "stream_idまたはerror_codeが必要です",
+);
+
+type TtsWireEvent = z.infer<typeof ttsWireEventSchema>;
 
 type ActiveTtsStream = {
   socket?: WebSocket;
@@ -110,6 +119,35 @@ function rawDataToUtf8(data: RawData): string {
   return Buffer.from(data).toString("utf8");
 }
 
+function canceledTtsError(signal: AbortSignal): ApplicationError {
+  return new ApplicationError(
+    "SONIOX_STREAM_FAILED",
+    "Soniox TTSの生成を中止しました。",
+    { cause: signal.reason },
+  );
+}
+
+function awaitWithAbort<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return operation;
+  if (signal.aborted) return Promise.reject(canceledTtsError(signal));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(canceledTtsError(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+    void operation.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error instanceof Error
+          ? error
+          : new Error("Soniox TTS operation failed", { cause: error }));
+      },
+    );
+  });
+}
+
 export class RawSonioxTtsGateway implements TtsGateway {
   readonly #url: string;
   readonly #apiKey: string;
@@ -124,6 +162,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
   readonly #now: () => Date;
   readonly #streams = new Map<string, ActiveTtsStream>();
   #socket: WebSocket | undefined;
+  #connectingSocket: WebSocket | undefined;
   #connectPromise: Promise<WebSocket> | undefined;
   #keepaliveTimer: NodeJS.Timeout | undefined;
   #closed = false;
@@ -144,15 +183,19 @@ export class RawSonioxTtsGateway implements TtsGateway {
 
   public async synthesize(
     input: TtsSynthesisRequest & { text: string },
+    signal?: AbortSignal,
   ): Promise<SynthesizedSpeech> {
-    const stream = await this.#openStream(input);
+    if (signal?.aborted) throw canceledTtsError(signal);
+    const stream = await this.#openStream(input, signal);
     await stream.sendText(input.text);
     return stream;
   }
 
   async #openStream(
     input: TtsSynthesisRequest,
+    signal?: AbortSignal,
   ): Promise<WritableTtsStream> {
+    if (signal?.aborted) throw canceledTtsError(signal);
     if (this.#closed) {
       throw new ApplicationError(
         "SONIOX_STREAM_FAILED",
@@ -184,6 +227,8 @@ export class RawSonioxTtsGateway implements TtsGateway {
     let sentTextCharacterCount = 0;
     let textSent = false;
     let inactivityTimer: NodeJS.Timeout | undefined;
+    let socket: WebSocket | undefined;
+    let removeAbortListener = (): void => undefined;
     let resolveCompletion: (() => void) | undefined;
     let rejectCompletion: ((error: Error) => void) | undefined;
     const completed = new Promise<void>((resolve, reject) => {
@@ -195,6 +240,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
       if (settled) return;
       settled = true;
       if (inactivityTimer) clearTimeout(inactivityTimer);
+      removeAbortListener();
       if (!audioEnded) audio.end();
       if (this.#streams.get(input.utteranceId) === stream) {
         this.#streams.delete(input.utteranceId);
@@ -291,9 +337,24 @@ export class RawSonioxTtsGateway implements TtsGateway {
     };
     this.#streams.set(input.utteranceId, stream);
 
-    let socket: WebSocket;
+    if (signal) {
+      const onAbort = (): void => {
+        canceled = true;
+        if (socket?.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({
+            stream_id: input.utteranceId,
+            cancel: true,
+          }), () => undefined);
+        }
+        finish("failed", canceledTtsError(signal));
+      };
+      removeAbortListener = (): void => signal.removeEventListener("abort", onAbort);
+      signal.addEventListener("abort", onAbort, { once: true });
+      if (signal.aborted) onAbort();
+    }
+
     try {
-      socket = await this.#getSocket();
+      socket = await awaitWithAbort(this.#getSocket(), signal);
       stream.socket = socket;
       this.#latency?.mark(input.traceId ?? input.utteranceId, "tts_connection_ready");
     } catch (error) {
@@ -323,7 +384,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
         reduce_silence: true,
         stream_id: input.utteranceId,
         client_reference_id: requestRef,
-      });
+      }, signal);
       this.#ensureKeepalive(socket);
     } catch (error) {
       const mapped = new ApplicationError(
@@ -355,7 +416,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
             stream_id: input.utteranceId,
             text,
             text_end: true,
-          });
+          }, signal);
         } catch (error) {
           const mapped = new ApplicationError(
             "SONIOX_STREAM_FAILED",
@@ -414,6 +475,8 @@ export class RawSonioxTtsGateway implements TtsGateway {
       "Soniox TTS接続を終了しました。",
     );
     for (const stream of [...this.#streams.values()]) stream.fail(error);
+    this.#connectingSocket?.terminate();
+    this.#connectingSocket = undefined;
     this.#socket?.terminate();
     this.#socket = undefined;
   }
@@ -441,11 +504,12 @@ export class RawSonioxTtsGateway implements TtsGateway {
       perMessageDeflate: false,
       maxPayload: 8 * 1024 * 1024,
     });
+    this.#connectingSocket = socket;
     socket.on("message", (data: RawData, isBinary: boolean) => {
       if (isBinary) return;
-      let event: TtsWireEvent;
+      let parsed: unknown;
       try {
-        event = JSON.parse(rawDataToUtf8(data)) as TtsWireEvent;
+        parsed = JSON.parse(rawDataToUtf8(data)) as unknown;
       } catch {
         this.#failConnection(
           socket,
@@ -457,15 +521,41 @@ export class RawSonioxTtsGateway implements TtsGateway {
         socket.terminate();
         return;
       }
-      if (event.stream_id !== undefined) {
-        this.#streams.get(event.stream_id)?.handle(event);
+      const result = ttsWireEventSchema.safeParse(parsed);
+      if (!result.success) {
+        this.#failConnection(
+          socket,
+          new ApplicationError(
+            "SONIOX_STREAM_FAILED",
+            "Sonioxから不正なTTS応答を受信しました。",
+            { cause: result.error },
+          ),
+        );
+        socket.terminate();
         return;
       }
-      if (event.error_code !== undefined) {
-        const error = mapTtsError(event);
-        for (const stream of this.#streams.values()) {
-          if (stream.socket === socket) stream.fail(error);
+      const event = result.data;
+      try {
+        if (event.stream_id !== undefined) {
+          this.#streams.get(event.stream_id)?.handle(event);
+          return;
         }
+        if (event.error_code !== undefined) {
+          const error = mapTtsError(event);
+          for (const stream of this.#streams.values()) {
+            if (stream.socket === socket) stream.fail(error);
+          }
+        }
+      } catch (cause) {
+        this.#failConnection(
+          socket,
+          new ApplicationError(
+            "SONIOX_STREAM_FAILED",
+            "SonioxのTTS応答を処理できませんでした。",
+            { cause },
+          ),
+        );
+        socket.terminate();
       }
     });
     socket.on("error", (cause) => {
@@ -490,9 +580,13 @@ export class RawSonioxTtsGateway implements TtsGateway {
 
     return new Promise<WebSocket>((resolve, reject) => {
       let settled = false;
+      const clearConnectingSocket = (): void => {
+        if (this.#connectingSocket === socket) this.#connectingSocket = undefined;
+      };
       const timer = setTimeout(() => {
         if (settled) return;
         settled = true;
+        clearConnectingSocket();
         socket.terminate();
         reject(new ApplicationError(
           "SONIOX_STREAM_FAILED",
@@ -504,6 +598,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        clearConnectingSocket();
         if (this.#closed) {
           socket.terminate();
           reject(new ApplicationError(
@@ -519,6 +614,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        clearConnectingSocket();
         reject(new ApplicationError(
           "SONIOX_STREAM_FAILED",
           "Soniox TTSへ接続できませんでした。",
@@ -529,6 +625,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        clearConnectingSocket();
         reject(new ApplicationError(
           "SONIOX_STREAM_FAILED",
           "Soniox TTS接続が確立前に終了しました。",
@@ -537,12 +634,41 @@ export class RawSonioxTtsGateway implements TtsGateway {
     });
   }
 
-  #send(socket: WebSocket, payload: Record<string, unknown>): Promise<void> {
+  #send(
+    socket: WebSocket,
+    payload: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (signal?.aborted) return Promise.reject(canceledTtsError(signal));
     return new Promise((resolve, reject) => {
-      socket.send(JSON.stringify(payload), (error) => {
-        if (error) reject(error);
-        else resolve();
-      });
+      let settled = false;
+      const finish = (callback: () => void): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        callback();
+      };
+      const onAbort = (): void => finish(() => reject(
+        signal ? canceledTtsError(signal) : new Error("Soniox TTS send aborted"),
+      ));
+      const timer = setTimeout(() => {
+        finish(() => reject(new Error("Soniox TTS send timed out")));
+      }, this.#connectTimeoutMs);
+      timer.unref();
+      signal?.addEventListener("abort", onAbort, { once: true });
+      try {
+        socket.send(JSON.stringify(payload), (error) => {
+          finish(() => {
+            if (error) reject(error);
+            else resolve();
+          });
+        });
+      } catch (error) {
+        finish(() => reject(error instanceof Error
+          ? error
+          : new Error("Soniox TTS send failed", { cause: error })));
+      }
     });
   }
 

@@ -42,7 +42,10 @@ export type TtsSynthesisRequest = {
 
 export type TtsGateway = {
   warm?(): void;
-  synthesize(input: TtsSynthesisRequest & { text: string }): Promise<SynthesizedSpeech>;
+  synthesize(
+    input: TtsSynthesisRequest & { text: string },
+    signal?: AbortSignal,
+  ): Promise<SynthesizedSpeech>;
 };
 
 export type PlaybackGateway = {
@@ -126,6 +129,7 @@ export class UtteranceProcessor {
   readonly #tasks = new Set<ProcessingTask>();
   readonly #activeSpeeches = new Set<SynthesizedSpeech>();
   readonly #stopRequested = createSignal();
+  readonly #abortController = new AbortController();
   #drainPromise: Promise<void> | undefined;
   #queueWake: (() => void) | undefined;
   #stopped = false;
@@ -161,6 +165,9 @@ export class UtteranceProcessor {
   public async stop(): Promise<void> {
     this.#stopped = true;
     this.#stopRequested.resolve();
+    this.#abortController.abort(
+      new DOMException("TTS synthesis aborted", "AbortError"),
+    );
     this.#discardQueuedUtterances();
     this.#wakeDrain();
     for (const speech of this.#activeSpeeches) speech.cancel();
@@ -207,6 +214,15 @@ export class UtteranceProcessor {
       if (previous) await previous.done;
     } catch (error) {
       this.#discardQueuedUtterances();
+      const backlogError = error instanceof ApplicationError &&
+          error.code === "PLAYBACK_BACKLOG"
+        ? error
+        : undefined;
+      let fatalNotified = false;
+      if (!this.#hasStopped() && backlogError) {
+        this.#onFatal(backlogError);
+        fatalNotified = true;
+      }
       const cleanupResults = await Promise.allSettled([
         ...[...this.#tasks].map((task) => task.done),
       ]);
@@ -233,7 +249,7 @@ export class UtteranceProcessor {
             "翻訳音声の生成または再生に失敗しました。",
             { cause: effectiveError },
           );
-      this.#onFatal(applicationError);
+      if (!fatalNotified) this.#onFatal(applicationError);
     }
   }
 
@@ -340,7 +356,7 @@ export class UtteranceProcessor {
           speakerUserId: queued.utterance.speakerUserId,
           language: queued.utterance.targetLanguage,
           text: queued.utterance.translatedText,
-        }),
+        }, this.#abortController.signal),
       ).then((created) => {
         this.#activeSpeeches.add(created);
         void created.completed.catch(() => undefined);
@@ -368,7 +384,7 @@ export class UtteranceProcessor {
         (error: unknown) => generation.reject(error),
       );
 
-      const playbackSlot = previousPlayback.then(() => {
+      const playbackSlot = this.#waitForPlaybackSlot(previousPlayback, queued).then(() => {
         this.#latency?.mark(queued.utterance.utteranceId, "playback_slot_ready");
       });
       const [audio] = await Promise.all([
@@ -571,7 +587,52 @@ export class UtteranceProcessor {
 
   #assertQueueWaitWithinLimit(queued: QueuedUtterance): void {
     if (this.#now() - queued.enqueuedAt <= this.#maxQueueWaitMs) return;
-    throw new ApplicationError(
+    throw this.#playbackBacklogError();
+  }
+
+  #waitForPlaybackSlot(
+    previousPlayback: Promise<void>,
+    queued: QueuedUtterance,
+  ): Promise<void> {
+    this.#assertQueueWaitWithinLimit(queued);
+    const elapsed = this.#now() - queued.enqueuedAt;
+    const timeoutMs = Math.max(1, this.#maxQueueWaitMs - elapsed);
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const onAbort = (): void => settle(() => reject(
+        asError(this.#abortController.signal.reason, "再生待ちを中止しました。"),
+      ));
+      const settle = (callback: () => void): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        this.#abortController.signal.removeEventListener("abort", onAbort);
+        callback();
+      };
+      const timer = setTimeout(() => {
+        settle(() => reject(this.#playbackBacklogError()));
+      }, timeoutMs);
+      timer.unref();
+      this.#abortController.signal.addEventListener("abort", onAbort, { once: true });
+      void previousPlayback.then(
+        () => settle(() => {
+          try {
+            this.#assertQueueWaitWithinLimit(queued);
+            resolve();
+          } catch (error) {
+            reject(asError(error, "再生待ち上限を判定できませんでした。"));
+          }
+        }),
+        (error: unknown) => settle(() => reject(asError(
+          error,
+          "先行発話の再生に失敗しました。",
+        ))),
+      );
+    });
+  }
+
+  #playbackBacklogError(): ApplicationError {
+    return new ApplicationError(
       "PLAYBACK_BACKLOG",
       "PLAYBACK_BACKLOG: 翻訳音声の待ち時間が上限を超えました。",
     );

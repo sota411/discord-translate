@@ -71,13 +71,16 @@ class RecordingRuntime implements SessionRuntime {
 class RecordingDriver implements TranslationSessionDriver {
   public readonly starts: { guildId: string; participantIds: readonly string[] }[] = [];
   public readonly runtimes: RecordingRuntime[] = [];
+  public readonly signals: AbortSignal[] = [];
   public wait: Promise<void> = Promise.resolve();
 
   public async start(
     session: { guildId: string },
     participantIds: readonly string[],
+    signal: AbortSignal,
   ): Promise<SessionRuntime> {
     this.starts.push({ guildId: session.guildId, participantIds: [...participantIds] });
+    this.signals.push(signal);
     await this.wait;
     const runtime = new RecordingRuntime();
     this.runtimes.push(runtime);
@@ -358,12 +361,33 @@ void test("CONNECTING中に停止されたstartは、遅れて作成されたrun
     actorVoiceChannelId: "523456789012345678",
   });
   assert.equal(stopped.ok, true);
+  assert.equal(harness.driver.signals[0]?.aborted, true);
+
+  const immediateRestart = harness.service.execute(validStart());
+  const immediateRestartResult = await Promise.race([
+    immediateRestart,
+    new Promise<"pending">((resolve) => setImmediate(() => resolve("pending"))),
+  ]);
+  assert.notEqual(immediateRestartResult, "pending");
+  assert.equal(
+    immediateRestartResult === "pending" ? undefined : immediateRestartResult.ok,
+    false,
+  );
+  assert.equal(
+    immediateRestartResult === "pending" || immediateRestartResult.ok
+      ? undefined
+      : immediateRestartResult.code,
+    "SESSION_ALREADY_ACTIVE",
+  );
 
   releaseDriver?.();
   const startResult = await starting;
   assert.equal(startResult.ok, false);
   assert.equal(startResult.code, "SESSION_START_FAILED");
   assert.deepEqual(harness.driver.runtimes[0]?.stopReasons, ["START_ABORTED"]);
+
+  const restarted = await harness.service.execute(validStart());
+  assert.equal(restarted.ok, true);
 });
 
 void test("未許可Userの途中参加時はruntimeへ追加せずセッションを停止する", async () => {

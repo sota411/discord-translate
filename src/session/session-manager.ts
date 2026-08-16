@@ -56,12 +56,14 @@ export type TranslationSessionDriver = {
   start(
     session: Readonly<SessionDescriptor>,
     participantIds: readonly string[],
+    signal: AbortSignal,
   ): Promise<SessionRuntime>;
 };
 
 type ManagedSession = SessionDescriptor & {
   runtime?: SessionRuntime;
   participantRevision: number;
+  startController: AbortController;
 };
 
 type SessionManagerDependencies = {
@@ -112,6 +114,7 @@ export class SessionManager {
       state: "AUTHORIZING",
       startedAt,
       participantRevision: 0,
+      startController: new AbortController(),
     };
     this.#sessions.set(input.guildId, session);
 
@@ -129,7 +132,11 @@ export class SessionManager {
       });
       this.#assertCurrent(session);
       session.state = "CONNECTING";
-      session.runtime = await this.#driver.start(session, session.participantIds);
+      session.runtime = await this.#driver.start(
+        session,
+        session.participantIds,
+        session.startController.signal,
+      );
       this.#assertCurrent(session);
       session.state = "ACTIVE";
       return session;
@@ -206,13 +213,17 @@ export class SessionManager {
       return false;
     }
     session.state = "STOPPING";
+    session.startController.abort(new ApplicationError(
+      "SESSION_START_FAILED",
+      "開始処理中に翻訳セッションが停止されました。",
+    ));
     const errors: unknown[] = [];
     try {
       await session.runtime?.stop(reason);
     } catch (error) {
       errors.push(error);
     } finally {
-      if (this.#sessions.get(guildId) === session) {
+      if (session.runtime && this.#sessions.get(guildId) === session) {
         this.#sessions.delete(guildId);
       }
     }

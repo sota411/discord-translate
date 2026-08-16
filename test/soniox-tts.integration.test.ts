@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createServer, type Socket } from "node:net";
 import { test } from "node:test";
 
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
@@ -680,4 +681,141 @@ void test("TTS接続前に失敗した本文は送信済み利用量へ加算し
   assert.ok(request);
   assert.equal(request.status, "failed");
   assert.equal(request.textCharacterCount, 0);
+});
+
+const invalidTtsResponses: readonly [
+  name: string,
+  response: (streamId: unknown) => unknown,
+][] = [
+  ["null", () => null],
+  ["audioが文字列ではない応答", (streamId) => ({ stream_id: streamId, audio: {} })],
+  ["audioが不正なbase64の応答", (streamId) => ({ stream_id: streamId, audio: "%%%" })],
+];
+
+for (const [name, response] of invalidTtsResponses) {
+  void test(`不正なTTS wire応答（${name}）をprocess例外にせずstream失敗へ変換する`, async () => {
+    await withServer((socket) => {
+      socket.on("message", (data) => {
+        const message = JSON.parse(rawDataToUtf8(data)) as Record<string, unknown>;
+        if (message.text_end === true) {
+          socket.send(JSON.stringify(response(message.stream_id)));
+        }
+      });
+    }, async (url) => {
+      const ledger = new RecordingLedger();
+      const gateway = new RawSonioxTtsGateway({
+        url,
+        apiKey: "test-api-key",
+        model: "tts-rt-v2",
+        voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
+        terminationTimeoutMs: 1_000,
+        ledger,
+      });
+      const speech = await gateway.synthesize({
+        utteranceId: `invalid-wire-${name}`,
+        sessionId: "session-1",
+        speakerUserId: "323456789012345678",
+        language: "ko",
+        text: "잘못된 응답",
+      });
+      speech.audio.resume();
+
+      let deadline: NodeJS.Timeout | undefined;
+      try {
+        await Promise.race([
+          assert.rejects(
+            speech.completed,
+            (error: unknown) =>
+              error instanceof ApplicationError && error.code === "SONIOX_STREAM_FAILED",
+          ),
+          new Promise<never>((_resolve, reject) => {
+            deadline = setTimeout(
+              () => reject(new Error("不正応答を即時に拒否しませんでした")),
+              200,
+            );
+          }),
+        ]);
+      } finally {
+        clearTimeout(deadline);
+      }
+      assert.equal(ledger.requests[0]?.status, "failed");
+      gateway.close();
+    });
+  });
+}
+
+void test("TTS WebSocket接続待ちでもAbortSignalで合成開始を終了する", {
+  timeout: 500,
+}, async () => {
+  const sockets = new Set<Socket>();
+  let resolveConnected = (): void => undefined;
+  const connected = new Promise<void>((resolve) => {
+    resolveConnected = resolve;
+  });
+  let resolveSocketClosed = (): void => undefined;
+  const socketClosed = new Promise<void>((resolve) => {
+    resolveSocketClosed = resolve;
+  });
+  const server = createServer((socket) => {
+    sockets.add(socket);
+    socket.once("close", () => {
+      sockets.delete(socket);
+      resolveSocketClosed();
+    });
+    resolveConnected();
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const ledger = new RecordingLedger();
+  const gateway = new RawSonioxTtsGateway({
+    url: `ws://127.0.0.1:${String(address.port)}`,
+    apiKey: "test-api-key",
+    model: "tts-rt-v2",
+    voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
+    terminationTimeoutMs: 10_000,
+    connectTimeoutMs: 10_000,
+    ledger,
+  });
+
+  try {
+    const controller = new AbortController();
+    const synthesis = gateway.synthesize({
+      utteranceId: "abort-while-connecting",
+      sessionId: "session-1",
+      speakerUserId: "323456789012345678",
+      language: "ko",
+      text: "연결 중 취소",
+    }, controller.signal);
+    await connected;
+    controller.abort();
+
+    await assert.rejects(
+      synthesis,
+      (error: unknown) =>
+        error instanceof ApplicationError && error.code === "SONIOX_STREAM_FAILED",
+    );
+    assert.equal(ledger.requests[0]?.status, "failed");
+    gateway.close();
+    let closeDeadline: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        socketClosed,
+        new Promise<never>((_resolve, reject) => {
+          closeDeadline = setTimeout(
+            () => reject(new Error("終了時に接続中のTTS socketを閉じませんでした")),
+            100,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(closeDeadline);
+    }
+  } finally {
+    gateway.close();
+    for (const socket of sockets) socket.destroy();
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
 });

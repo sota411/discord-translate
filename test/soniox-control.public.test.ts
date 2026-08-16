@@ -41,6 +41,40 @@ void test("STTはSoniox公式の低遅延推奨値を送る", () => {
   assert.equal(received.endpoint_sensitivity, 0.3);
 });
 
+void test("3言語ペアをSonioxの双方向翻訳設定へ正しく変換する", () => {
+  const received: Record<string, unknown>[] = [];
+  const factory = new SonioxSttFactory(
+    {
+      realtime: {
+        stt: (input: Record<string, unknown>) => {
+          received.push(input);
+          return {};
+        },
+      },
+    } as never,
+    "stt-rt-v5",
+    { "ja-ko": [], "ja-en": [], "ko-en": [] },
+  );
+  const cases = [
+    ["ja-ko", "ja", "ko"],
+    ["ja-en", "ja", "en"],
+    ["ko-en", "ko", "en"],
+  ] as const;
+
+  for (const [pair] of cases) factory.create(pair, `request-ref-${pair}`);
+
+  for (const [index, [pair, languageA, languageB]] of cases.entries()) {
+    const input = received[index];
+    assert.ok(input);
+    assert.deepEqual(input.language_hints, [languageA, languageB], pair);
+    assert.deepEqual(input.translation, {
+      type: "two_way",
+      language_a: languageA,
+      language_b: languageB,
+    }, pair);
+  }
+});
+
 function withTestDeadline<T>(operation: Promise<T>, timeoutMs = 50): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("test operation did not settle")), timeoutMs);
