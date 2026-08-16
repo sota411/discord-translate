@@ -126,7 +126,7 @@ function supportsPair(model: SonioxModel, pair: LanguagePair): boolean {
 
 export async function verifySonioxConfiguration(
   client: PreflightClient,
-  config: Pick<AppConfig["soniox"], "sttModel" | "ttsModel" | "voices">,
+  config: Pick<AppConfig["soniox"], "sttModel" | "ttsModel" | "ttsSpeed" | "voices">,
   timeoutMs = 30_000,
 ): Promise<void> {
   const deadline = createRequestDeadline(timeoutMs);
@@ -165,6 +165,16 @@ export async function verifySonioxConfiguration(
       }
       if (!ttsModel.supports_silence_reduction) {
         issues.push("TTS modelが無音短縮に未対応です");
+      }
+      if (!ttsModel.supports_speed_adjustment) {
+        issues.push("TTS modelが速度調整に未対応です");
+      } else if (
+        config.ttsSpeed < ttsModel.speed_min ||
+        config.ttsSpeed > ttsModel.speed_max
+      ) {
+        issues.push(
+          `SONIOX_TTS_SPEED「${String(config.ttsSpeed)}」はTTS modelの対応範囲${String(ttsModel.speed_min)}〜${String(ttsModel.speed_max)}外です`,
+        );
       }
     }
     if (issues.length > 0) {

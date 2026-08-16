@@ -282,7 +282,7 @@ void test("定期照合は最新1件へ集約しセッション終了照合を�
   ]);
 });
 
-void test("TTSモデルの対応言語またはvoiceが不正なら起動前検証で拒否する", async () => {
+void test("TTSモデルの対応言語、voice、無音短縮、速度範囲が不正なら起動前検証で拒否する", async () => {
   const sttModel: SonioxModel = {
     id: "stt-rt-v4",
     aliased_model_id: null,
@@ -307,7 +307,7 @@ void test("TTSモデルの対応言語またはvoiceが不正なら起動前検�
     languages: [{ code: "en", name: "English" }],
     voices: [{ id: "shared-voice", description: "Test", gender: "neutral" }],
     supports_speed_adjustment: true,
-    speed_min: 0.7,
+    speed_min: 1.2,
     speed_max: 1.3,
     supports_silence_reduction: false,
   };
@@ -321,6 +321,7 @@ void test("TTSモデルの対応言語またはvoiceが不正なら起動前検�
       {
         sttModel: "stt-rt-v4",
         ttsModel: "tts-rt-v2",
+        ttsSpeed: 1.15,
         voices: { ja: "Mima", ko: "shared-voice", en: "shared-voice" },
       },
     ),
@@ -329,6 +330,9 @@ void test("TTSモデルの対応言語またはvoiceが不正なら起動前検�
       error.issues.includes("TTS modelがjaに未対応です") &&
       error.issues.includes("TTS modelがkoに未対応です") &&
       error.issues.includes("TTS modelが無音短縮に未対応です") &&
+      error.issues.includes(
+        "SONIOX_TTS_SPEED「1.15」はTTS modelの対応範囲1.2〜1.3外です",
+      ) &&
       error.issues.includes("SONIOX_VOICE_JA「Mima」を利用できません"),
   );
 });
@@ -346,6 +350,7 @@ void test("モデル事前確認と利用ログ照合は応答期限を超えて
         {
           sttModel: "stt-rt-v4",
           ttsModel: "tts-rt-v2",
+          ttsSpeed: 1.15,
           voices: { ja: "voice", ko: "voice", en: "voice" },
         },
         5,

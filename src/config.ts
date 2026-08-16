@@ -8,6 +8,9 @@ const positiveInteger = z.coerce.number()
   .int("整数を指定してください")
   .positive("1以上の整数を指定してください");
 const requiredString = z.string().min(1, "値が必要です");
+const ttsSpeed = z.coerce.number()
+  .min(0.7, "0.7以上を指定してください")
+  .max(1.3, "1.3以下を指定してください");
 
 const rawConfigSchema = z.object({
   DISCORD_TOKEN: requiredString,
@@ -41,6 +44,7 @@ const rawConfigSchema = z.object({
   SONIOX_LIMIT_CHECK_MAX_STALENESS_SECONDS: positiveInteger,
   SONIOX_STT_MODEL: requiredString,
   SONIOX_TTS_MODEL: requiredString,
+  SONIOX_TTS_SPEED: ttsSpeed.default(1.15),
   SONIOX_VOICE_JA: requiredString,
   SONIOX_VOICE_KO: requiredString,
   SONIOX_VOICE_EN: requiredString,
@@ -67,6 +71,7 @@ export type AppConfig = {
     ttsWebSocketUrl: string;
     sttModel: string;
     ttsModel: string;
+    ttsSpeed: number;
     voices: Readonly<Record<"ja" | "ko" | "en", string>>;
     terminationTimeoutMs: number;
     projectMonthlyBudgetMicrousd: number;
@@ -237,6 +242,7 @@ export function loadConfig(
       ...endpoints,
       sttModel: raw.SONIOX_STT_MODEL,
       ttsModel: raw.SONIOX_TTS_MODEL,
+      ttsSpeed: raw.SONIOX_TTS_SPEED,
       voices: {
         ja: raw.SONIOX_VOICE_JA,
         ko: raw.SONIOX_VOICE_KO,

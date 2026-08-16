@@ -13,9 +13,29 @@ void test("有効な環境変数を型付き設定と固定リージョンURLへ
   assert.equal(config.soniox.restBaseUrl, "https://api.soniox.com");
   assert.equal(config.soniox.sttWebSocketUrl, "wss://stt-rt.soniox.com/transcribe-websocket");
   assert.equal(config.soniox.ttsWebSocketUrl, "wss://tts-rt.soniox.com/tts-websocket");
+  assert.equal(config.soniox.ttsSpeed, 1.15);
   assert.deepEqual([...config.discord.allowedGuildIds], ["223456789012345678"]);
   assert.equal(config.limits.maxSpeakersPerSession, 2);
   assert.equal(config.pricing.safetyPercent, 125);
+});
+
+void test("TTS速度はSoniox対応範囲外を起動前に拒否する", () => {
+  assert.throws(
+    () => loadConfig(
+      validEnv({ SONIOX_TTS_SPEED: "1.31" }),
+      new Date("2026-08-15T00:00:00Z"),
+    ),
+    /SONIOX_TTS_SPEED/u,
+  );
+});
+
+void test("TTS速度を省略した場合は1.15倍を製品既定値にする", () => {
+  const config = loadConfig(
+    validEnv({ SONIOX_TTS_SPEED: undefined }),
+    new Date("2026-08-15T00:00:00Z"),
+  );
+
+  assert.equal(config.soniox.ttsSpeed, 1.15);
 });
 
 void test("同時話者数を3人に設定できる", () => {

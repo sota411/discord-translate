@@ -42,6 +42,7 @@ type RawSonioxTtsGatewayOptions = {
   url: string;
   apiKey: string;
   model: string;
+  speed?: number;
   voices: Readonly<Record<Language, string>>;
   terminationTimeoutMs: number;
   ledger: TtsUsageLedger;
@@ -152,6 +153,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
   readonly #url: string;
   readonly #apiKey: string;
   readonly #model: string;
+  readonly #speed: number;
   readonly #voices: Readonly<Record<Language, string>>;
   readonly #terminationTimeoutMs: number;
   readonly #connectTimeoutMs: number;
@@ -171,6 +173,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
     this.#url = options.url;
     this.#apiKey = options.apiKey;
     this.#model = options.model;
+    this.#speed = options.speed ?? 1;
     this.#voices = options.voices;
     this.#terminationTimeoutMs = options.terminationTimeoutMs;
     this.#connectTimeoutMs = options.connectTimeoutMs ?? 20_000;
@@ -381,6 +384,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
         voice: this.#voices[input.language],
         audio_format: "pcm_s16le",
         sample_rate: 48_000,
+        speed: this.#speed,
         reduce_silence: true,
         stream_id: input.utteranceId,
         client_reference_id: requestRef,

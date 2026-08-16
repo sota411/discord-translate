@@ -105,6 +105,7 @@ export async function startApplication(
       url: config.soniox.ttsWebSocketUrl,
       apiKey: config.soniox.apiKey,
       model: config.soniox.ttsModel,
+      speed: config.soniox.ttsSpeed,
       voices: config.soniox.voices,
       terminationTimeoutMs: config.soniox.terminationTimeoutMs,
       ledger,

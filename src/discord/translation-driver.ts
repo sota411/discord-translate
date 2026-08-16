@@ -29,10 +29,17 @@ import {
 import type { AppConfig } from "../config.js";
 import { decodeDiscordOpusPacketToMono } from "../audio/pcm.js";
 import { OpusStartupBuffer } from "../audio/opus-startup-buffer.js";
+import {
+  SttTurnFinalizer,
+  type SttBoundaryKind,
+} from "../audio/stt-turn-finalizer.js";
 import { ApplicationError } from "../domain/application-error.js";
 import { languagesForPair } from "../domain/language-pair.js";
 import type { TranslationLatencyRecorder } from "../observability/translation-latency.js";
-import type { TranslationFlowObserver } from "../observability/translation-flow.js";
+import {
+  sttFinalizeFlowStage,
+  type TranslationFlowObserver,
+} from "../observability/translation-flow.js";
 import type {
   SessionDescriptor,
   SessionRuntime,
@@ -49,6 +56,9 @@ import { DiscordPlaybackGateway } from "./playback-gateway.js";
 const { OpusEncoder } = opus;
 const maxStartupOpusPackets = 250;
 const maxStartupOpusBytes = 512 * 1024;
+const speakingEndFinalizeDelayMs = 100;
+const transcriptInactivityFinalizeMs = 3_000;
+const manualFinalizeTrailingSilenceMs = 200;
 
 export type RuntimeFailureHandler = (
   guildId: string,
@@ -74,6 +84,7 @@ type SpeakerStream = {
   opus: AudioReceiveStream;
   decoder: InstanceType<typeof OpusEncoder>;
   stt: RealtimeSttSession;
+  turnFinalizer: SttTurnFinalizer;
   utterance: StreamingUtterance;
   burstHasPacket: boolean;
   lastUsageAtMonotonic?: number;
@@ -84,8 +95,23 @@ type SpeakerStream = {
   startupBufferOverflowed: boolean;
   keepaliveTimer?: NodeJS.Timeout;
   usageTimer?: NodeJS.Timeout;
+  lastTranscriptFingerprint?: string;
   closed: boolean;
 };
+
+function transcriptFingerprint(result: RealtimeResult): string | undefined {
+  const tokens = result.tokens.filter((token) => token.text.trim().length > 0);
+  if (tokens.length === 0) return undefined;
+  return JSON.stringify(tokens.map((token) => [
+    token.text,
+    token.is_final,
+    token.start_ms,
+    token.end_ms,
+    token.language,
+    token.source_language,
+    token.translation_status,
+  ]));
+}
 
 function mapSttError(error: unknown): ApplicationError {
   if (error instanceof AuthError) {
@@ -404,6 +430,7 @@ class DiscordTranslationRuntime implements SessionRuntime {
     this.#tts.warm?.();
     const existing = this.#speakers.get(userId);
     if (existing) {
+      existing.turnFinalizer.speakingStarted();
       existing.burstHasPacket = false;
       return;
     }
@@ -413,12 +440,28 @@ class DiscordTranslationRuntime implements SessionRuntime {
     });
     const requestRef = randomUUID();
     const stt = this.#sttFactory.create(this.#session.pair, requestRef);
+    const turnFinalizer = new SttTurnFinalizer({
+      session: stt.session,
+      speakingEndDelayMs: speakingEndFinalizeDelayMs,
+      transcriptInactivityMs: transcriptInactivityFinalizeMs,
+      maxTurnMs: this.#config.limits.utteranceMaxSourceSeconds * 1_000,
+      trailingSilenceMs: manualFinalizeTrailingSilenceMs,
+      onFinalize: (reason) => {
+        this.#observeFlow(sttFinalizeFlowStage(reason));
+      },
+      onError: (error) => {
+        const mapped = mapSttError(error);
+        this.#fail(mapped.code, mapped.publicMessage, error);
+      },
+    });
+    turnFinalizer.speakingStarted();
     const speaker: SpeakerStream = {
       userId,
       requestRef,
       opus,
       decoder: new OpusEncoder(48_000, 2),
       stt: stt.session,
+      turnFinalizer,
       utterance: new StreamingUtterance({
         pair: this.#session.pair,
         maxSourceDurationMs: this.#config.limits.utteranceMaxSourceSeconds * 1_000,
@@ -455,7 +498,10 @@ class DiscordTranslationRuntime implements SessionRuntime {
     });
     speaker.stt.on("result", (result) => this.#handleSttResult(speaker, result));
     speaker.stt.on("endpoint", () => {
-      this.#handleEndpoint(speaker);
+      this.#handleSttBoundary(speaker, "endpoint");
+    });
+    speaker.stt.on("finalized", () => {
+      this.#handleSttBoundary(speaker, "finalized");
     });
     speaker.stt.on("error", (error) => {
       const mapped = mapSttError(error);
@@ -522,6 +568,7 @@ class DiscordTranslationRuntime implements SessionRuntime {
         return;
       }
       speaker.stt.sendAudio(monoPcm);
+      speaker.turnFinalizer.audioReceived();
       if (!speaker.burstHasPacket) {
         speaker.burstHasPacket = true;
         this.#observeFlow("voice_first_packet_received");
@@ -535,11 +582,19 @@ class DiscordTranslationRuntime implements SessionRuntime {
   }
 
   #handleSpeakingEnd(userId: string): void {
-    if (this.#speakers.has(userId)) this.#observeFlow("voice_speaking_ended");
+    const speaker = this.#speakers.get(userId);
+    if (!speaker) return;
+    this.#observeFlow("voice_speaking_ended");
+    speaker.turnFinalizer.speakingEnded();
   }
 
   #handleSttResult(speaker: SpeakerStream, result: RealtimeResult): void {
     try {
+      const fingerprint = transcriptFingerprint(result);
+      if (fingerprint !== undefined && fingerprint !== speaker.lastTranscriptFingerprint) {
+        speaker.lastTranscriptFingerprint = fingerprint;
+        speaker.turnFinalizer.transcriptProgressed();
+      }
       const pairLanguages = new Set(languagesForPair(this.#session.pair));
       for (const token of result.tokens) {
         speaker.pendingTextCharacters += Array.from(token.text).length;
@@ -564,6 +619,12 @@ class DiscordTranslationRuntime implements SessionRuntime {
       const mapped = mapSttError(error);
       this.#fail(mapped.code, mapped.publicMessage, error);
     }
+  }
+
+  #handleSttBoundary(speaker: SpeakerStream, kind: SttBoundaryKind): void {
+    if (!speaker.turnFinalizer.boundaryReceived(kind)) return;
+    delete speaker.lastTranscriptFingerprint;
+    this.#handleEndpoint(speaker);
   }
 
   #handleEndpoint(speaker: SpeakerStream): void {
@@ -625,6 +686,7 @@ class DiscordTranslationRuntime implements SessionRuntime {
     this.#speakers.delete(userId);
     speaker.startupOpus.clear();
     speaker.utterance.discard();
+    speaker.turnFinalizer.close();
     const cleanupErrors: unknown[] = [];
     if (speaker.keepaliveTimer) clearInterval(speaker.keepaliveTimer);
     if (speaker.usageTimer) clearInterval(speaker.usageTimer);

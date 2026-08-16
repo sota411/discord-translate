@@ -92,6 +92,7 @@ void test("TTS wireへ不透明request refを送り、PCMと正常終端を公�
       url,
       apiKey: "test-api-key",
       model: "tts-rt-v2",
+      speed: 1.15,
       voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
       terminationTimeoutMs: 1_000,
       ledger,
@@ -117,6 +118,7 @@ void test("TTS wireへ不透明request refを送り、PCMと正常終端を公�
     assert.equal(config.client_reference_id, "00000000-0000-4000-8000-000000000100");
     assert.equal(config.stream_id, "00000000-0000-4000-8000-000000000101");
     assert.equal(config.reduce_silence, true);
+    assert.equal(config.speed, 1.15);
     assert.deepEqual(received[1], {
       stream_id: "00000000-0000-4000-8000-000000000101",
       text: "안녕하세요",
