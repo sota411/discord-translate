@@ -18,7 +18,7 @@ import {
   verifySonioxConfiguration,
 } from "../src/soniox/control.js";
 
-void test("STTはSoniox公式の低遅延推奨値を送る", () => {
+void test("STTは認識精度を優先してendpoint調整をSoniox既定値へ委ねる", () => {
   let received: Record<string, unknown> | undefined;
   const factory = new SonioxSttFactory(
     {
@@ -36,9 +36,10 @@ void test("STTはSoniox公式の低遅延推奨値を送る", () => {
   factory.create("ja-ko", "request-ref");
 
   assert.ok(received);
-  assert.equal(received.max_endpoint_delay_ms, 1_500);
-  assert.equal(received.endpoint_latency_adjustment_level, 2);
-  assert.equal(received.endpoint_sensitivity, 0.3);
+  assert.equal(received.enable_endpoint_detection, true);
+  assert.equal("max_endpoint_delay_ms" in received, false);
+  assert.equal("endpoint_latency_adjustment_level" in received, false);
+  assert.equal("endpoint_sensitivity" in received, false);
 });
 
 void test("3言語ペアをSonioxの双方向翻訳設定へ正しく変換する", () => {
@@ -327,7 +328,6 @@ void test("TTSモデルの対応言語またはvoiceが不正なら起動前検�
       error instanceof ConfigError &&
       error.issues.includes("TTS modelがjaに未対応です") &&
       error.issues.includes("TTS modelがkoに未対応です") &&
-      error.issues.includes("STT modelがendpoint低遅延level 2に未対応です") &&
       error.issues.includes("TTS modelが無音短縮に未対応です") &&
       error.issues.includes("SONIOX_VOICE_JA「Mima」を利用できません"),
   );

@@ -6,7 +6,7 @@
 
 ## 現在の状態
 
-- 実装済み: Guild/User許可リスト、Discord Voice受信・再生、Soniox STT/TTS、字幕、Soniox endpoint後だけのTTS生成、本文を送らないTTS接続ウォームアップ、endpoint順のFIFO再生、実時間の再生待ち上限、接続・合成のキャンセル、STT接続待ちの有界音声buffer、TTS wire応答検証、破損Opus packetの局所破棄、区間遅延ログ、SQLite利用量台帳、費用上限、利用ログ照合、graceful shutdown
+- 実装済み: Guild/User許可リスト、Discord Voice受信・再生、Soniox STT/TTS、字幕、精度優先のendpoint検出、同一発話内の少数方向揺れの局所除外、Soniox endpoint後だけのTTS生成、本文を送らないTTS接続ウォームアップ、endpoint順のFIFO再生、実時間の再生待ち上限、接続・合成のキャンセル、STT接続待ちの有界音声buffer、TTS wire応答検証、破損Opus packetの局所破棄、区間遅延ログ、SQLite利用量台帳、費用上限、利用ログ照合、graceful shutdown
 - 自動確認済み: lint、型検査、公開境界・統合テスト、production build、production依存監査、native module smoke、Compose設定検証、Docker build
 - 実機確認済み: 実Discordと実Sonioxの日韓1人通話、字幕、読み上げ、8発話の区間遅延計測。発話中にTTSへ確定翻訳を送るPoCも実施したが、通常操作と安定性を優先し、現行実装には採用していない
 - 未確認: endpoint後にTTSを開始する現行版の実Discord遅延、複数人通話（3人を含む）、日英・韓英、3言語ペアの30分E2Eと料金受入。300 msは発話中TTSを採用しない現行方針と実測値が両立しないため、MVPの必須受入条件にはしない

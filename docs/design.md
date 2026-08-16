@@ -315,9 +315,6 @@ Sonioxにはraw PCMとして次を指定する。
   "language_hints": ["ja", "ko"],
   "enable_language_identification": true,
   "enable_endpoint_detection": true,
-  "max_endpoint_delay_ms": 1500,
-  "endpoint_latency_adjustment_level": 2,
-  "endpoint_sensitivity": 0.3,
   "translation": {
     "type": "two_way",
     "language_a": "ja",
@@ -331,8 +328,8 @@ Sonioxにはraw PCMとして次を指定する。
 `language_hints_strict`は有効にしない。
 ペア外の言語も識別できる状態を残し、翻訳対象は`two_way`の2言語だけに限定する。
 対応ペア外の言語を検出した場合、Sonioxの`translation_status: "none"`をTTSへ送らず、同じUserに対する警告を字幕チャンネルへ1回だけ投稿する。
-`max_endpoint_delay_ms: 1500`、`endpoint_latency_adjustment_level: 2`、`endpoint_sensitivity: 0.3`は、Sonioxが多くの低遅延voice applicationの開始値として推奨する構成である。過去のPoCで使った`500 / 3 / 0.5`はより攻めた設定であり、endpointの増加、長い発話の分割、認識精度の低下を招き得るため現行版では使わない。
-起動時にモデル一覧を確認し、この3設定とlevel 2に対応しないモデルではReadyにしない。
+`max_endpoint_delay_ms`、`endpoint_latency_adjustment_level`、`endpoint_sensitivity`は送らず、Sonioxの精度優先の既定値へ委ねる。`1500 / 2 / 0.3`は応答を早める一方、発話を早期確定して認識精度を下げることが実通話で確認されたため使用しない。
+起動時には、選択したSTTモデルが対象言語と3つの双方向翻訳ペアへ対応することを確認する。使用しないendpoint調整項目への対応はReady条件にしない。
 
 ### 翻訳確定と読み上げ
 
@@ -344,11 +341,13 @@ Botは次の条件をすべて満たすトークンだけを、endpoint後にTTS
 - `source_language`がその反対側である
 - `is_final`が`true`である
 
+リアルタイム言語判定は同じ発話内でも一時的に揺れるため、翻訳方向ごとに候補を保持する。endpointでは、確定原文tokenの文字数が多いsource languageを優先し、同数なら確定翻訳の文字数が多い方向を採用する。採用しなかった方向の翻訳tokenは読み上げず、方向の揺れだけを理由にセッション全体を停止しない。
+
 Sonioxのwire protocolには`<end>`などの制御トークンがあるが、`@soniox/node` 2.3.0はそれらをtoken配列から除外する。
 そのためBotは本文から`<end>`を探さず、SDKの`endpoint` eventを発話境界として扱う。
-`is_final: false`の暫定トークンは画面表示にもTTS本文にも使わない。確定原文トークンは言語別に分割せず、1発話の本文として受信順に単一bufferへ保持する。確定原文の言語ラベルは認識中に揺れるため、本文の採否とTTS方向には使わない。
+`is_final: false`の暫定トークンは画面表示にもTTS本文にも使わない。確定原文トークンは言語別に分割せず、1発話の本文として受信順に単一bufferへ保持する。確定原文の言語ラベルは本文の採否には使わず、発話全体で方向を選ぶときの集計根拠としてだけ使う。
 
-確定翻訳トークンは受信順に連結する。最初の確定翻訳トークンの`source_language`と`language`を発話方向のSSOTとし、同じendpoint内で後続の翻訳方向が変わった場合は`SONIOX_STREAM_FAILED`でFail Fastとする。原文と翻訳の確定組が成立するまで、TTS stream設定、TTS本文、TTS PCMは作らない。
+確定翻訳トークンは方向別に受信順で連結し、endpointで採用した方向の本文だけを使う。不採用方向の候補は読み上げずに破棄する。原文と翻訳の確定組が成立するまで、TTS stream設定、TTS本文、TTS PCMは作らない。
 
 `endpoint` eventを受けるとassemblerをflushし、原文、翻訳文、翻訳方向、発話時間を1発話として確定する。原文または翻訳が空ならTTS要求を作らず、`stt_endpoint_empty`を記録する。確定組がある場合だけFIFOへ入れ、翻訳文全体を1本のTTS streamへ`text_end: true`で送る。独自の形態素解析やLLMによる意味区切り判定は追加しない。
 

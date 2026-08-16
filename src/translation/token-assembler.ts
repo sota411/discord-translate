@@ -35,6 +35,13 @@ type OriginalBuffer = {
   endMs?: number;
 };
 
+type TranslationBuffer = {
+  sourceLanguage: Language;
+  targetLanguage: Language;
+  text: string[];
+  characters: number;
+};
+
 type TranslationTokenAssemblerLimits = {
   maxSourceDurationMs: number;
   maxInputCharacters: number;
@@ -45,10 +52,8 @@ export class TranslationTokenAssembler {
   readonly #maxSourceDurationMs: number;
   readonly #maxInputCharacters: number;
   #original: OriginalBuffer = { text: [] };
-  #sourceLanguage: Language | undefined;
-  #targetLanguage: Language | undefined;
-  #translation: string[] = [];
-  #translationCharacters = 0;
+  readonly #originalCharactersByLanguage = new Map<Language, number>();
+  readonly #translationsBySource = new Map<Language, TranslationBuffer>();
 
   public constructor(pair: LanguagePair, limits: TranslationTokenAssemblerLimits) {
     this.#languages = new Set(languagesForPair(pair));
@@ -78,6 +83,13 @@ export class TranslationTokenAssembler {
       ) {
         this.#throwTooLong();
       }
+      if (this.#isPairLanguage(token.language)) {
+        this.#originalCharactersByLanguage.set(
+          token.language,
+          (this.#originalCharactersByLanguage.get(token.language) ?? 0) +
+            Array.from(token.text).length,
+        );
+      }
       return undefined;
     }
 
@@ -89,58 +101,41 @@ export class TranslationTokenAssembler {
     ) {
       return undefined;
     }
-    if (
-      this.#sourceLanguage !== undefined &&
-      this.#targetLanguage !== undefined &&
-      (
-        token.source_language !== this.#sourceLanguage ||
-        token.language !== this.#targetLanguage
-      )
-    ) {
-      throw new ApplicationError(
-        "SONIOX_STREAM_FAILED",
-        "同じ発話内で翻訳方向が変化したため、翻訳を停止します。",
-      );
+    const translation = this.#translationsBySource.get(token.source_language) ?? {
+      sourceLanguage: token.source_language,
+      targetLanguage: token.language,
+      text: [],
+      characters: 0,
+    };
+    translation.characters += Array.from(token.text).length;
+    if (translation.characters > this.#maxInputCharacters) {
+      this.#throwTooLong();
     }
-    if (!this.#sourceLanguage) {
-      this.#sourceLanguage = token.source_language;
-      this.#targetLanguage = token.language;
-    }
-    if (
-      token.source_language === this.#sourceLanguage &&
-      token.language === this.#targetLanguage
-    ) {
-      this.#translationCharacters += Array.from(token.text).length;
-      if (this.#translationCharacters > this.#maxInputCharacters) {
-        this.#throwTooLong();
-      }
-      this.#translation.push(token.text);
-      return {
-        sourceLanguage: token.source_language,
-        targetLanguage: token.language,
-        text: token.text,
-      };
-    }
-    return undefined;
+    translation.text.push(token.text);
+    this.#translationsBySource.set(token.source_language, translation);
+    return {
+      sourceLanguage: token.source_language,
+      targetLanguage: token.language,
+      text: token.text,
+    };
   }
 
   public flush(): FinalizedUtterance | undefined {
-    const sourceLanguage = this.#sourceLanguage;
-    const targetLanguage = this.#targetLanguage;
+    const translation = this.#selectTranslation();
     const original = this.#original;
     const originalText = original.text.join("");
-    const translatedText = this.#translation.join("");
+    const translatedText = translation?.text.join("") ?? "";
     const sourceDurationMs = original.startMs !== undefined && original.endMs !== undefined
       ? Math.max(0, original.endMs - original.startMs)
       : 0;
     this.#reset();
 
-    if (!sourceLanguage || !targetLanguage || !originalText || !translatedText) {
+    if (!translation || !originalText || !translatedText) {
       return undefined;
     }
     return {
-      sourceLanguage,
-      targetLanguage,
+      sourceLanguage: translation.sourceLanguage,
+      targetLanguage: translation.targetLanguage,
       originalText,
       translatedText,
       sourceDurationMs,
@@ -153,10 +148,32 @@ export class TranslationTokenAssembler {
 
   #reset(): void {
     this.#original = { text: [] };
-    this.#sourceLanguage = undefined;
-    this.#targetLanguage = undefined;
-    this.#translation = [];
-    this.#translationCharacters = 0;
+    this.#originalCharactersByLanguage.clear();
+    this.#translationsBySource.clear();
+  }
+
+  #selectTranslation(): TranslationBuffer | undefined {
+    let selected: TranslationBuffer | undefined;
+    for (const candidate of this.#translationsBySource.values()) {
+      if (!selected) {
+        selected = candidate;
+        continue;
+      }
+      const candidateOriginalCharacters =
+        this.#originalCharactersByLanguage.get(candidate.sourceLanguage) ?? 0;
+      const selectedOriginalCharacters =
+        this.#originalCharactersByLanguage.get(selected.sourceLanguage) ?? 0;
+      if (
+        candidateOriginalCharacters > selectedOriginalCharacters ||
+        (
+          candidateOriginalCharacters === selectedOriginalCharacters &&
+          candidate.characters > selected.characters
+        )
+      ) {
+        selected = candidate;
+      }
+    }
+    return selected;
   }
 
   #throwTooLong(): never {

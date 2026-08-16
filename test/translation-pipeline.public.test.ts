@@ -150,7 +150,7 @@ void test("確定原文の言語判定が揺れてもendpointまでは発話を�
   });
 });
 
-void test("同じ発話で確定翻訳の方向が反転したら黙って破棄しない", () => {
+void test("方向が反転しても確定原文の言語別文字数を優先して継続する", () => {
   const streaming = new StreamingUtterance({
     pair: "ja-ko",
     maxSourceDurationMs: 30_000,
@@ -166,7 +166,14 @@ void test("同じ発話で確定翻訳の方向が反転したら黙って破棄
       end_ms: 500,
     },
     {
-      text: "안녕하세요",
+      text: "これは逆方向へ誤判定された長い翻訳です",
+      is_final: true,
+      language: "ja",
+      source_language: "ko",
+      translation_status: "translation",
+    },
+    {
+      text: "안녕",
       is_final: true,
       language: "ko",
       source_language: "ja",
@@ -174,17 +181,61 @@ void test("同じ発話で確定翻訳の方向が反転したら黙って破棄
     },
   ]);
 
-  assert.throws(
-    () => streaming.accept([{
-      text: "逆方向",
+  assert.deepEqual(streaming.takeAtEndpoint(), {
+    sourceLanguage: "ja",
+    targetLanguage: "ko",
+    originalText: "こんにちは",
+    translatedText: "안녕",
+    sourceDurationMs: 500,
+  });
+});
+
+void test("確定原文の言語別文字数が同じなら長い翻訳方向を採用する", () => {
+  const streaming = new StreamingUtterance({
+    pair: "ja-ko",
+    maxSourceDurationMs: 30_000,
+    maxInputCharacters: 300,
+  });
+  streaming.accept([
+    {
+      text: "日",
+      is_final: true,
+      language: "ja",
+      translation_status: "original",
+      start_ms: 0,
+      end_ms: 250,
+    },
+    {
+      text: "한",
+      is_final: true,
+      language: "ko",
+      translation_status: "original",
+      start_ms: 250,
+      end_ms: 500,
+    },
+    {
+      text: "短",
       is_final: true,
       language: "ja",
       source_language: "ko",
       translation_status: "translation",
-    }]),
-    /翻訳方向/,
-  );
-  streaming.discard();
+    },
+    {
+      text: "더 긴 번역",
+      is_final: true,
+      language: "ko",
+      source_language: "ja",
+      translation_status: "translation",
+    },
+  ]);
+
+  assert.deepEqual(streaming.takeAtEndpoint(), {
+    sourceLanguage: "ja",
+    targetLanguage: "ko",
+    originalText: "日한",
+    translatedText: "더 긴 번역",
+    sourceDurationMs: 500,
+  });
 });
 
 void test("endpointが来なくても確定トークン時点で発話上限を拒否する", () => {

@@ -151,18 +151,6 @@ export async function verifySonioxConfiguration(
       for (const pair of languagePairs) {
         if (!supportsPair(sttModel, pair)) issues.push(`STT modelが${pair}の双方向翻訳に未対応です`);
       }
-      if (!sttModel.supports_max_endpoint_delay) {
-        issues.push("STT modelがendpoint最大遅延設定に未対応です");
-      }
-      if (!sttModel.supports_endpoint_sensitivity) {
-        issues.push("STT modelがendpoint感度設定に未対応です");
-      }
-      if (
-        !sttModel.supports_endpoint_latency_adjustment ||
-        sttModel.endpoint_latency_adjustment_max_level < 2
-      ) {
-        issues.push("STT modelがendpoint低遅延level 2に未対応です");
-      }
     }
     if (!ttsModel) {
       issues.push(`TTS model「${config.ttsModel}」を利用できません`);
@@ -212,9 +200,6 @@ export class SonioxSttFactory {
       language_hints: [languageA, languageB],
       enable_language_identification: true,
       enable_endpoint_detection: true,
-      max_endpoint_delay_ms: 1_500,
-      endpoint_latency_adjustment_level: 2,
-      endpoint_sensitivity: 0.3,
       translation: {
         type: "two_way",
         language_a: languageA,
