@@ -34,7 +34,6 @@ import {
   type SttBoundaryKind,
 } from "../audio/stt-turn-finalizer.js";
 import { ApplicationError } from "../domain/application-error.js";
-import { languagesForPair } from "../domain/language-pair.js";
 import type { TranslationLatencyRecorder } from "../observability/translation-latency.js";
 import {
   sttFinalizeFlowStage,
@@ -52,6 +51,7 @@ import { UtteranceProcessor } from "../translation/utterance-processor.js";
 import type { UsageLedger } from "../usage/usage-ledger.js";
 import { DiscordCaptionGateway } from "./caption-gateway.js";
 import { DiscordPlaybackGateway } from "./playback-gateway.js";
+import { UnsupportedLanguageWarning } from "./unsupported-language-warning.js";
 
 const { OpusEncoder } = opus;
 const maxStartupOpusPackets = 250;
@@ -256,7 +256,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
   }
 }
 
-type TranslationRuntimeOptions = {
+export type TranslationRuntimeOptions = {
   session: Readonly<SessionDescriptor>;
   participantIds: readonly string[];
   guild: Guild;
@@ -272,11 +272,11 @@ type TranslationRuntimeOptions = {
   onFailure: RuntimeFailureHandler;
 };
 
-class DiscordTranslationRuntime implements SessionRuntime {
+export class DiscordTranslationRuntime implements SessionRuntime {
   readonly #session: Readonly<SessionDescriptor>;
   readonly #guild: Guild;
   readonly #voiceChannel: VoiceChannel;
-  readonly #textChannel: TextChannel;
+  readonly #captions: DiscordCaptionGateway;
   readonly #connection: VoiceConnection;
   readonly #config: AppConfig;
   readonly #ledger: UsageLedger;
@@ -287,9 +287,9 @@ class DiscordTranslationRuntime implements SessionRuntime {
   readonly #onFailure: RuntimeFailureHandler;
   readonly #player: AudioPlayer;
   readonly #processor: UtteranceProcessor;
+  readonly #unsupportedLanguageWarning: UnsupportedLanguageWarning;
   readonly #participants: Set<string>;
   readonly #speakers = new Map<string, SpeakerStream>();
-  readonly #warnedUnsupported = new Set<string>();
   readonly #speakingListener: (userId: string) => void;
   readonly #speakingEndListener: (userId: string) => void;
   readonly #maxSessionTimer: NodeJS.Timeout;
@@ -302,7 +302,7 @@ class DiscordTranslationRuntime implements SessionRuntime {
     this.#session = options.session;
     this.#guild = options.guild;
     this.#voiceChannel = options.voiceChannel;
-    this.#textChannel = options.textChannel;
+    this.#captions = new DiscordCaptionGateway(options.textChannel);
     this.#connection = options.connection;
     this.#config = options.config;
     this.#ledger = options.ledger;
@@ -316,10 +316,9 @@ class DiscordTranslationRuntime implements SessionRuntime {
     this.#participants = new Set(options.participantIds);
     this.#player = createAudioPlayer();
     this.#connection.subscribe(this.#player);
-    const captions = new DiscordCaptionGateway(this.#textChannel);
     const playback = new DiscordPlaybackGateway(this.#player, options.latency);
     this.#processor = new UtteranceProcessor({
-      captions,
+      captions: this.#captions,
       playback,
       tts: options.tts,
       maxQueueWaitMs: options.config.limits.playbackQueueMaxMs,
@@ -327,6 +326,13 @@ class DiscordTranslationRuntime implements SessionRuntime {
       maxInputCharacters: options.config.limits.ttsMaxInputCharacters,
       latency: options.latency,
       onFatal: (error) => this.#fail(error.code, error.publicMessage),
+    });
+    this.#unsupportedLanguageWarning = new UnsupportedLanguageWarning({
+      pair: options.session.pair,
+      captions: this.#captions,
+      onFailure: (reason, publicMessage, cause) => {
+        this.#fail(reason, publicMessage, cause);
+      },
     });
 
     this.#speakingListener = (userId) => this.#handleSpeakingStart(userId);
@@ -595,25 +601,10 @@ class DiscordTranslationRuntime implements SessionRuntime {
         speaker.lastTranscriptFingerprint = fingerprint;
         speaker.turnFinalizer.transcriptProgressed();
       }
-      const pairLanguages = new Set(languagesForPair(this.#session.pair));
       for (const token of result.tokens) {
         speaker.pendingTextCharacters += Array.from(token.text).length;
-        if (
-          token.is_final &&
-          token.translation_status === "none" &&
-          token.language !== undefined &&
-          !pairLanguages.has(token.language as "ja" | "ko" | "en") &&
-          !this.#warnedUnsupported.has(speaker.userId)
-        ) {
-          this.#warnedUnsupported.add(speaker.userId);
-          void this.#textChannel.send({
-            content: "選択した言語ペア以外の発話を検出したため、この発話は読み上げません。",
-            allowedMentions: { parse: [] },
-          }).catch((error: unknown) => {
-            this.#fail("CAPTION_SEND_FAILED", "警告を字幕チャンネルへ投稿できませんでした。", error);
-          });
-        }
       }
+      void this.#unsupportedLanguageWarning.handle(speaker.userId, result);
       speaker.utterance.accept(result.tokens);
     } catch (error) {
       const mapped = mapSttError(error);

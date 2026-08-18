@@ -1,3 +1,5 @@
+import { escapeMarkdown } from "discord.js";
+
 import {
   ApplicationError,
   type ErrorCode,
@@ -271,7 +273,7 @@ export class TranslationCommandService {
       interactionMessage: "翻訳セッションを停止しました。",
       publicMessage: {
         channelId: session.textChannelId,
-        content: "翻訳セッションを停止しました。理由: 利用者による停止",
+        content: "**⏹ Translation stopped**\n-# Stopped by user · `USER_REQUEST`",
       },
     };
   }
@@ -308,15 +310,13 @@ export class TranslationCommandService {
     textChannelName: string,
   ): string {
     return [
-      "翻訳を開始しました",
-      `音声チャンネル: ${voiceChannelName}`,
-      `言語: ${languagePairLabels[pair]}`,
-      `字幕: #${textChannelName}`,
-      "終了条件: /translate stop、時間上限、無音上限、参加者不在、利用上限",
+      `**🟢 Translation live** · \`${languagePairLabels[pair]}\``,
+      `🔊 ${escapeMarkdown(voiceChannelName)} · 💬 #${escapeMarkdown(textChannelName)}`,
+      "Stop · `/translate stop`",
       "",
-      "同時発話では翻訳音声が順番待ちになります。",
-      "このセッションの会話音声は、リアルタイム処理のためSonioxへ送信されます。",
-      "Botサーバーは音声と字幕本文を保存しません。字幕はDiscord上に残ります。",
+      "-# Simultaneous speech is played in order.",
+      "-# Speech → Soniox (real-time).",
+      "-# Bot storage: no audio or caption text. Captions remain in Discord.",
     ].join("\n");
   }
 }

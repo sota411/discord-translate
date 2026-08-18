@@ -214,19 +214,18 @@ Sonioxには`two_way`を指定し、実際の入力言語に応じて反対側�
 途中で別チャンネルへ切り替えない。
 
 ```text
-翻訳を開始しました
-音声チャンネル: General
-言語: 日本語 ⇄ 韓国語
-字幕: #translation
-終了条件: /translate stop、30分、無音上限、参加者不在、利用上限
+🟢 Translation live · JA ⇄ KO
+🔊 General · 💬 #translation
+Stop · /translate stop
 
-このセッションの会話音声は、リアルタイム処理のためSonioxへ送信されます。
-Botサーバーは音声と字幕本文を保存しません。
+Simultaneous speech is played in order.
+Speech → Soniox (real-time).
+Bot storage: no audio or caption text. Captions remain in Discord.
 ```
 
 Discord Interactionは3秒以内の応答が必要なため、最初にephemeralで`deferReply`する。
 認可失敗はそのephemeral応答を編集して理由を返す。
-開始成功時だけ、字幕チャンネルへ上記の通常メッセージを別途投稿し、ephemeral応答には開始済みであることを返す。
+開始成功時だけ、字幕チャンネルへ上記のComponents V2カードを別途投稿し、ephemeral応答には開始済みであることを返す。
 1つのInteraction応答を途中でephemeralから通常投稿へ変更しない。
 
 ### 停止権限
@@ -278,7 +277,7 @@ Discord Interactionは3秒以内の応答が必要なため、最初にephemeral
 - SQLiteへの利用量記録を継続できない
 - Discord VoiceまたはSonioxで復旧不能なエラーが発生した
 
-自動終了時は、字幕チャンネルへ終了理由と再実行可否を投稿する。
+自動終了時は、字幕チャンネルへ短い英語の終了理由と内部理由コードをComponents V2カードで投稿する。
 
 ## 音声処理
 
@@ -329,7 +328,7 @@ Sonioxにはraw PCMとして次を指定する。
 `language_hints`と`translation`は選択したペアから生成する。
 `language_hints_strict`は有効にしない。
 ペア外の言語も識別できる状態を残し、翻訳対象は`two_way`の2言語だけに限定する。
-対応ペア外の言語を検出した場合、Sonioxの`translation_status: "none"`をTTSへ送らず、同じUserに対する警告を字幕チャンネルへ1回だけ投稿する。
+対応ペア外の言語を検出した場合、Sonioxの`translation_status: "none"`をTTSへ送らず、同じUserにつき`Speech not translated`の英語Components V2カードを字幕チャンネルへ1回だけ投稿する。
 `max_endpoint_delay_ms`、`endpoint_latency_adjustment_level`、`endpoint_sensitivity`は送らず、Sonioxの精度優先の既定値へ委ねる。`1500 / 2 / 0.3`は応答を早める一方、発話を早期確定して認識精度を下げることが実通話で確認されたため使用しない。低遅延化はmodel全体を攻撃的にする設定ではなく、入力側が把握できる発話終了と認識停滞上限からmanual finalizeする。
 起動時には、選択したSTTモデルが対象言語と3つの双方向翻訳ペアへ対応することを確認する。使用しないendpoint調整項目への対応はReady条件にしない。
 
@@ -361,7 +360,7 @@ Discordのspeaking startでTTS WebSocketの接続だけを開始し、TLSとWebS
 
 FIFO processorは同時のTTS生成を1本に制限する。先行発話のTTS生成が完了し、その音声がDiscordで再生中な場合は、発話境界が確定した後続1件だけをTTS生成する。これは未確定tokenの先読みではなく、確定済みFIFOの待機処理である。
 
-再生待ちの後続音声は48 kHz mono PCMをメモリへ読み切り、1発話あたり最大2分、11,520,000 byteに制限する。超過時は`TTS_OUTPUT_LIMIT_REACHED`で停止する。再生待ちがない発話は最初のPCMが届き次第再生し、字幕の`再生待ち`投稿の完了は待たない。
+再生待ちの後続音声は48 kHz mono PCMをメモリへ読み切り、1発話あたり最大2分、11,520,000 byteに制限する。超過時は`TTS_OUTPUT_LIMIT_REACHED`で停止する。再生待ちがない発話は最初のPCMが届き次第再生し、字幕の`QUEUED`カード投稿の完了は待たない。
 再生直前に字幕POSTの失敗が確定済みであれば音声を再生せず、再生開始後に判明した場合はその音声を停止し、いずれもセッションを復旧不能な障害として終了する。
 AudioPlayerの`Idle`だけを再生成功と見なさず、`Playing`を観測した後の自然な`Idle`だけを完了とする。再生開始前のstream終了と明示停止は失敗として区別する。
 前発話のAudioPlayer完了を字幕POST・状態編集を含む全処理完了とは別のPromiseで管理し、次発話の再生順序には前者だけを使う。
@@ -402,7 +401,7 @@ TTS streamは、`text_end: true`の送信後に`audio_end: true`と`terminated: 
 最後に何らかのTTS応答を受けてから`SONIOX_TERMINATION_TIMEOUT_MS`内に次の応答が届かなければ、TTS WebSocketを閉じ、要求を`failed`として記録する。
 
 事前上限を通過してもSonioxが`max_audio_duration_reached`を返した場合、すでにDiscordへ再生した音声は取り消せない。
-字幕へ`一部再生後に失敗`と表示し、`TTS_OUTPUT_LIMIT_REACHED`でセッションを停止する。
+字幕を`INTERRUPTED`へ更新し、`TTS_OUTPUT_LIMIT_REACHED`でセッションを停止する。
 
 ### 1発話の処理順
 
@@ -444,24 +443,33 @@ Bot音声の再入力を検出した後で捨てるのではなく、音声購�
 ## 字幕設計
 
 字幕は、TTSへ渡した翻訳と、聞こえた翻訳音声を照合するための観測境界である。
-暫定トークンを逐次編集するライブ字幕にはせず、Sonioxが発話終端を確定した時点で1発話につき1件を`再生待ち`として投稿する。
+暫定トークンを逐次編集するライブ字幕にはせず、Sonioxが発話終端を確定した時点で1発話につき1件を`QUEUED`として投稿する。
 この初回POSTはTTS要求と並行して開始し、POST完了前でも最初のTTS PCMを受信した時点でDiscord音声を再生する。
 POST失敗が判明した場合は、再生前なら音声を開始せず、再生中なら停止してセッションを終了する。
 再生完了、停止、または失敗時に同じメッセージの音声状態だけを編集し、別メッセージを追加しない。
 
 ```text
-[日本語 → 韓国語] sota
-原文: 今日、学校が終わったらVALORANTやらない？
-翻訳: 오늘 학교 끝나고 발로란트 할래?
-音声: 再生済み
+sota · JA → KO
+
+JA
+今日、学校が終わったらVALORANTやらない？
+
+────────────────
+
+KO
+오늘 학교 끝나고 발로란트 할래?
+
+🔊 PLAYED
 ```
 
 字幕には次のルールを適用する。
 
-- Discordの表示名を文字列として表示し、User mentionへ変換しない
-- 初回投稿と状態編集の両方で`allowed_mentions: { parse: [] }`を明示し、字幕内の文字列から通知を発生させない
+- Components V2の`Container`、`Text Display`、`Separator`で1発話を視覚的にまとめ、国旗や日本語固定の構造ラベルは使わない
+- Discordの表示名、原文、翻訳文をMarkdown escapeして文字列として表示し、User mentionや見出しへ変換しない
+- 初回投稿と状態編集の両方で`IS_COMPONENTS_V2`と`allowed_mentions: { parse: [] }`を明示し、字幕内の文字列から通知を発生させない
 - 原文と翻訳文には確定済みトークンだけを使う
-- 初回投稿は`再生待ち`とし、音声再生が完了した場合は`再生済み`、再生前にセッションが停止した場合は`未再生`、音声の一部を再生した後で失敗した場合は`一部再生後に失敗`へ更新する
+- 初回投稿は`⏳ QUEUED`とし、音声再生が完了した場合は`🔊 PLAYED`、再生前にセッションが停止した場合は`⚠ NOT PLAYED`、音声の一部を再生した後で失敗した場合は`⚠ INTERRUPTED`へ更新する
+- 1字幕カード内の`Text Display`合計は4,000文字を上限とし、初回投稿時から最長の状態表示へ更新できる文字数を確保する。超過時はプレーンテキストへフォールバックせず`CAPTION_SEND_FAILED`で停止する
 - APIキー、内部例外、Sonioxの生レスポンス、音声データを含めない
 - BotサーバーのDBやログへ字幕本文を保存しない
 
@@ -835,7 +843,7 @@ private betaでは、Guild管理者が参加者へこの処理を事前に説明
 | `stt_endpoint` | 最後のDiscord音声packetからSonioxの`endpoint`または`finalized` eventまで。stage名はログ互換性のため維持する |
 | `queue_enqueued` | 発話境界の確定後、FIFOへ投入した時点 |
 | `queue_started` | FIFOから処理を開始した時点 |
-| `caption_posted` | Discordの`再生待ち`字幕POST完了。音声開始の待機条件ではない |
+| `caption_posted` | Discordの`QUEUED`字幕カードPOST完了。音声開始の待機条件ではない |
 | `tts_requested` | TTS要求開始 |
 | `tts_connection_ready` | 新規または再利用WebSocketを送信可能と確認 |
 | `tts_text_sent` | 発話境界で確定した翻訳文全体と`text_end`送信完了 |
@@ -970,7 +978,7 @@ stableの`@discordjs/voice` 0.19.2が公開する受信streamはOpus payloadの`
 期待:
   韓国語の確定翻訳だけがSoniox TTSへ渡る
   同じVCで韓国語音声が再生される
-  字幕チャンネルに発話者、原文、韓国語訳、再生状態が1件投稿される
+  字幕チャンネルに発話者、JA → KO、JA原文、KO翻訳、PLAYEDが1件投稿される
   Botの韓国語音声は再度STTへ送られない
   session_usageとmonthly_usageへ利用量が加算される
 ```

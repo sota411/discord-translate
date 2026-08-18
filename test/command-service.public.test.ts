@@ -202,7 +202,11 @@ void test("許可条件を満たすと利用量・容量を確認して1セッ�
   assert.equal(result.ephemeral, true);
   assert.equal(result.publicMessage?.channelId, "623456789012345678");
   assert.ok(result.publicMessage);
-  assert.match(result.publicMessage.content, /音声は.*Soniox/u);
+  assert.match(result.publicMessage.content, /Translation live/u);
+  assert.match(result.publicMessage.content, /JA ⇄ KO/u);
+  assert.match(result.publicMessage.content, /Speech → Soniox \(real-time\)/u);
+  assert.match(result.publicMessage.content, /Bot storage: no audio or caption text/u);
+  assert.doesNotMatch(result.publicMessage.content, /日本語|韓国語|翻訳を開始/u);
   assert.equal(harness.usageGate.calls, 1);
   assert.equal(harness.capacityGate.calls, 1);
   assert.equal(harness.driver.starts.length, 1);
@@ -429,6 +433,9 @@ void test("開始者、対象VC参加者、ManageGuild保持者だけが停止�
     actorVoiceChannelId: "523456789012345678",
   });
   assert.equal(stopped.ok, true);
+  assert.match(stopped.publicMessage?.content ?? "", /Translation stopped/u);
+  assert.match(stopped.publicMessage?.content ?? "", /Stopped by user/u);
+  assert.match(stopped.publicMessage?.content ?? "", /USER_REQUEST/u);
   assert.deepEqual(harness.driver.runtimes[0]?.stopReasons, ["USER_REQUEST"]);
   assert.equal(harness.reconciliation.calls, 1);
 });

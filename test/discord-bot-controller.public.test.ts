@@ -3,6 +3,8 @@ import { test } from "node:test";
 
 import {
   ChannelType,
+  ComponentType,
+  MessageFlags,
   type ChatInputCommandInteraction,
   type Client,
 } from "discord.js";
@@ -12,9 +14,27 @@ import { DiscordBotController } from "../src/discord/bot-controller.js";
 import { createSafeLogger } from "../src/observability/logger.js";
 
 type SentPayload = {
-  content: string;
+  content?: string;
+  components?: { toJSON(): SerializedComponent }[];
+  flags?: number;
   allowedMentions: { parse: [] };
 };
+
+type SerializedComponent = {
+  type: ComponentType;
+  content?: string;
+  components?: SerializedComponent[];
+};
+
+function textContents(payload: SentPayload): string[] {
+  const visit = (component: SerializedComponent): string[] => [
+    ...(component.type === ComponentType.TextDisplay && component.content
+      ? [component.content]
+      : []),
+    ...(component.components?.flatMap(visit) ?? []),
+  ];
+  return payload.components?.flatMap((component) => visit(component.toJSON())) ?? [];
+}
 
 function createHarness(options: { publicSendFails?: boolean } = {}) {
   const events: string[] = [];
@@ -133,10 +153,13 @@ void test("Discordへ先にephemeral ACKし、認可後だけ通常の開始通�
     "public",
     "edit:翻訳を開始しました。",
   ]);
-  assert.deepEqual(harness.sent, [{
-    content: "通常の開始通知",
-    allowedMentions: { parse: [] },
-  }]);
+  assert.equal(harness.sent.length, 1);
+  const message = harness.sent[0];
+  assert.ok(message);
+  assert.equal(message.flags, MessageFlags.IsComponentsV2);
+  assert.equal("content" in message, false);
+  assert.deepEqual(message.allowedMentions, { parse: [] });
+  assert.deepEqual(textContents(message), ["通常の開始通知"]);
   assert.deepEqual(harness.stopped, []);
 });
 
@@ -147,6 +170,65 @@ void test("開始通知を投稿できなければ開始済みセッションを
 
   assert.deepEqual(harness.stopped, ["CAPTION_SEND_FAILED"]);
   assert.match(harness.events.at(-1) ?? "", /翻訳を停止しました/u);
+});
+
+void test("実行時停止通知を日本語本文ではなく英語の理由付きカードで投稿する", async () => {
+  const sent: SentPayload[] = [];
+  const session = {
+    sessionId: "session-1",
+    guildId: "223456789012345678",
+    voiceChannelId: "523456789012345678",
+    voiceChannelName: "General",
+    textChannelId: "623456789012345678",
+    textChannelName: "translation",
+    startedByUserId: "323456789012345678",
+    pair: "ja-ko" as const,
+    state: "ACTIVE" as const,
+    startedAt: new Date("2026-08-16T00:00:00Z"),
+    participantIds: ["323456789012345678"],
+  };
+  const client = {
+    channels: {
+      fetch: () => Promise.resolve({
+        isTextBased: () => true,
+        send: (payload: SentPayload) => {
+          sent.push(payload);
+          return Promise.resolve();
+        },
+      }),
+    },
+  } as unknown as Client;
+  const controller = new DiscordBotController({
+    client,
+    commands: {
+      execute: () => Promise.resolve({
+        ok: false,
+        ephemeral: true,
+        interactionMessage: "",
+      }),
+      getSession: () => session,
+      handleVoiceParticipantsChanged: () => Promise.resolve({ stopped: false }),
+      stopForFailure: () => Promise.resolve(true),
+    },
+    logger: createSafeLogger(
+      "0123456789abcdef0123456789abcdef",
+      () => undefined,
+    ),
+  });
+
+  await controller.handleRuntimeFailure(
+    session.guildId,
+    "SESSION_IDLE",
+    "無音時間の上限へ達したため翻訳を停止します。",
+  );
+
+  const message = sent[0];
+  assert.ok(message);
+  assert.equal(message.flags, MessageFlags.IsComponentsV2);
+  assert.deepEqual(textContents(message), [
+    "**⚠ Translation stopped**\n-# No speech detected · `SESSION_IDLE`",
+  ]);
+  assert.doesNotMatch(JSON.stringify(message), /無音|翻訳/u);
 });
 
 void test("CONNECTING中の音声参加者変更も認可検査へ渡す", async () => {

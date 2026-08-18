@@ -4,9 +4,9 @@ export type Language = "ja" | "ko" | "en";
 export type LanguagePair = (typeof languagePairs)[number];
 
 export const languagePairLabels: Readonly<Record<LanguagePair, string>> = {
-  "ja-ko": "日本語 ⇄ 韓国語",
-  "ja-en": "日本語 ⇄ 英語",
-  "ko-en": "韓国語 ⇄ 英語",
+  "ja-ko": "JA ⇄ KO",
+  "ja-en": "JA ⇄ EN",
+  "ko-en": "KO ⇄ EN",
 };
 
 export function languagesForPair(pair: LanguagePair): readonly [Language, Language] {

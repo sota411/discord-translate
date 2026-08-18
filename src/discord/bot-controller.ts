@@ -16,6 +16,10 @@ import type {
   TranslationCommandService,
 } from "../commands/translation-command-service.js";
 import type { SafeLogger } from "../observability/logger.js";
+import {
+  createStopMessagePayload,
+  createTextCardMessagePayload,
+} from "./message-payload.js";
 
 type CommandService = Pick<
   TranslationCommandService,
@@ -26,16 +30,6 @@ type DiscordBotControllerOptions = {
   client: Client;
   commands: CommandService;
   logger: SafeLogger;
-};
-
-const automaticStopMessages: Readonly<Record<string, string>> = {
-  SPEAKER_NOT_ALLOWED: "許可されていない利用者が参加したため、翻訳を停止しました。",
-  TOO_MANY_SPEAKERS: "参加者が設定された上限を超えたため、翻訳を停止しました。",
-  VOICE_EMPTY: "音声チャンネルから参加者がいなくなったため、翻訳を停止しました。",
-  USAGE_LIMIT_REACHED: "参加者が月間利用上限へ達しているため、翻訳を停止しました。",
-  USAGE_LEDGER_UNAVAILABLE: "利用量を確認できないため、翻訳を停止しました。",
-  USAGE_RECONCILIATION_STALE: "Sonioxの利用量照合が古いため、翻訳を停止しました。",
-  BOT_VOICE_REMOVED: "Botが対象音声チャンネルから退出したため、翻訳を停止しました。",
 };
 
 export class DiscordBotController {
@@ -189,7 +183,7 @@ export class DiscordBotController {
   public async handleRuntimeFailure(
     guildId: string,
     reason: string,
-    publicMessage: string,
+    _publicMessage: string,
     cause?: unknown,
   ): Promise<void> {
     const session = this.#commands.getSession(guildId);
@@ -200,12 +194,13 @@ export class DiscordBotController {
       reason,
     });
     if (await this.#commands.stopForFailure(guildId, reason)) {
-      await this.#postMessage(session.textChannelId, publicMessage).catch((error: unknown) => {
-        this.#logger.error("automatic_stop_notification_failed", error, {
-          guild_id: this.#logger.pseudonymize(guildId),
-          reason,
+      await this.#postStopMessage(session.textChannelId, reason)
+        .catch((error: unknown) => {
+          this.#logger.error("automatic_stop_notification_failed", error, {
+            guild_id: this.#logger.pseudonymize(guildId),
+            reason,
+          });
         });
-      });
     }
   }
 
@@ -311,14 +306,10 @@ export class DiscordBotController {
     channelId: string,
     reason: string,
   ): Promise<void> {
-    const content = automaticStopMessages[reason] ?? `翻訳を停止しました。理由: ${reason}`;
     try {
       const channel = await guild.channels.fetch(channelId);
       if (!channel?.isTextBased()) throw new Error("字幕チャンネルが見つかりません");
-      await channel.send({
-        content,
-        allowedMentions: { parse: [] },
-      });
+      await channel.send(createStopMessagePayload(reason));
     } catch (error) {
       this.#logger.error("automatic_stop_notification_failed", error, {
         guild_id: this.#logger.pseudonymize(guild.id),
@@ -330,10 +321,13 @@ export class DiscordBotController {
   async #postMessage(channelId: string, content: string): Promise<void> {
     const channel = await this.#client.channels.fetch(channelId);
     if (!channel?.isTextBased()) throw new Error("字幕チャンネルが見つかりません");
-    await (channel as GuildTextBasedChannel).send({
-      content,
-      allowedMentions: { parse: [] },
-    });
+    await (channel as GuildTextBasedChannel).send(createTextCardMessagePayload(content));
+  }
+
+  async #postStopMessage(channelId: string, reason: string): Promise<void> {
+    const channel = await this.#client.channels.fetch(channelId);
+    if (!channel?.isTextBased()) throw new Error("字幕チャンネルが見つかりません");
+    await (channel as GuildTextBasedChannel).send(createStopMessagePayload(reason));
   }
 
   #guildLogId(guildId: string | null): string {
