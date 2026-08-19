@@ -3,16 +3,38 @@ import { Readable } from "node:stream";
 import { ApplicationError } from "../domain/application-error.js";
 import type { Language } from "../domain/language-pair.js";
 import type { TranslationLatencyRecorder } from "../observability/translation-latency.js";
+import {
+  conversationAudioMaxDelayMs,
+  type PlaybackMode,
+} from "../session/session-settings.js";
 
 const maxTtsAudioBytes = 48_000 * 2 * 120;
 
-export type CaptionState = "pending" | "played" | "not_played" | "partial_failure";
+export type CaptionState =
+  | "pending"
+  | "played"
+  | "not_played"
+  | "partial_failure"
+  | "skipped_delay"
+  | "interrupted_for_conversation"
+  | "captions_only";
+
+type ControlledInterruptionState = Extract<
+  CaptionState,
+  "skipped_delay" | "interrupted_for_conversation" | "captions_only"
+>;
+
+type IntentionalInterruptionState = Exclude<
+  ControlledInterruptionState,
+  "skipped_delay"
+>;
 
 export type TranslationUtterance = {
   utteranceId: string;
   sessionId: string;
   speakerUserId: string;
   speakerDisplayName: string;
+  voiceId: string;
   sourceLanguage: Language;
   targetLanguage: Language;
   originalText: string;
@@ -21,7 +43,7 @@ export type TranslationUtterance = {
 };
 
 export type CaptionGateway = {
-  post(input: TranslationUtterance & { state: CaptionState }): Promise<number>;
+  post(input: TranslationUtterance & { state: CaptionState }): Promise<number | undefined>;
   update(reference: number, state: CaptionState): Promise<void>;
 };
 
@@ -37,6 +59,7 @@ export type TtsSynthesisRequest = {
   traceId?: string;
   sessionId: string;
   speakerUserId: string;
+  voiceId: string;
   language: Language;
 };
 
@@ -56,7 +79,17 @@ export type PlaybackGateway = {
 type QueuedUtterance = {
   utterance: TranslationUtterance;
   enqueuedAt: number;
+  interruptionState?: IntentionalInterruptionState;
 };
+
+class ExpectedPlaybackInterruption extends Error {
+  public constructor(
+    public readonly state: ControlledInterruptionState,
+    cause: unknown,
+  ) {
+    super("翻訳音声を会話制御によって中断しました。", { cause });
+  }
+}
 
 type Signal = {
   promise: Promise<void>;
@@ -108,10 +141,13 @@ type UtteranceProcessorOptions = {
   tts: TtsGateway;
   playback: PlaybackGateway;
   maxQueueWaitMs: number;
+  playbackMode?: PlaybackMode;
+  conversationQueueMaxWaitMs?: number;
   maxSourceDurationMs: number;
   maxInputCharacters: number;
   latency?: TranslationLatencyRecorder;
   now?: () => number;
+  onQueueDelay?: (delayMs: number) => void;
   onFatal(error: ApplicationError): void;
 };
 
@@ -120,36 +156,57 @@ export class UtteranceProcessor {
   readonly #tts: TtsGateway;
   readonly #playback: PlaybackGateway;
   readonly #maxQueueWaitMs: number;
+  readonly #conversationQueueMaxWaitMs: number;
   readonly #maxSourceDurationMs: number;
   readonly #maxInputCharacters: number;
   readonly #now: () => number;
   readonly #latency: TranslationLatencyRecorder | undefined;
   readonly #onFatal: (error: ApplicationError) => void;
+  readonly #onQueueDelay: (delayMs: number) => void;
   readonly #queue: QueuedUtterance[] = [];
+  readonly #waitingSince = new Map<string, number>();
   readonly #tasks = new Set<ProcessingTask>();
   readonly #activeSpeeches = new Set<SynthesizedSpeech>();
+  readonly #canceledSpeeches = new WeakSet<SynthesizedSpeech>();
+  readonly #trackedSpeechSettlements = new WeakSet<SynthesizedSpeech>();
+  readonly #pendingSpeechSettlements = new Set<Promise<void>>();
+  readonly #activeTaskControllers = new Map<AbortController, QueuedUtterance>();
+  readonly #playbackDeadlinePending = new Set<AbortController>();
+  readonly #conversationDeadlineTimers = new Map<AbortController, NodeJS.Timeout>();
   readonly #stopRequested = createSignal();
   readonly #abortController = new AbortController();
   #drainPromise: Promise<void> | undefined;
   #queueWake: (() => void) | undefined;
+  #playbackMode: PlaybackMode;
+  #audioEnabled = true;
   #stopped = false;
+  #usageFailure: ApplicationError | undefined;
 
   public constructor(options: UtteranceProcessorOptions) {
     this.#captions = options.captions;
     this.#tts = options.tts;
     this.#playback = options.playback;
     this.#maxQueueWaitMs = options.maxQueueWaitMs;
+    this.#conversationQueueMaxWaitMs =
+      options.conversationQueueMaxWaitMs ?? conversationAudioMaxDelayMs;
+    this.#playbackMode = options.playbackMode ?? "conversation";
     this.#maxSourceDurationMs = options.maxSourceDurationMs;
     this.#maxInputCharacters = options.maxInputCharacters;
     this.#now = options.now ?? (() => Date.now());
     this.#latency = options.latency;
+    this.#onQueueDelay = options.onQueueDelay ?? (() => undefined);
     this.#onFatal = (error) => options.onFatal(error);
   }
 
   public enqueue(utterance: TranslationUtterance): void {
     if (this.#stopped) return;
     this.#latency?.mark(utterance.utteranceId, "queue_enqueued");
-    this.#queue.push({ utterance, enqueuedAt: this.#now() });
+    const enqueuedAt = this.#now();
+    this.#queue.push({
+      utterance,
+      enqueuedAt,
+    });
+    this.#waitingSince.set(utterance.utteranceId, enqueuedAt);
     this.#wakeDrain();
     if (!this.#drainPromise) {
       this.#drainPromise = this.#drain().finally(() => {
@@ -162,19 +219,62 @@ export class UtteranceProcessor {
     await this.#drainPromise;
   }
 
+  public setPlaybackMode(mode: PlaybackMode): void {
+    if (this.#playbackMode === mode) return;
+    this.#playbackMode = mode;
+    if (mode === "accuracy") {
+      this.#clearAllConversationDeadlines();
+      return;
+    }
+    for (const [controller, queued] of this.#activeTaskControllers) {
+      if (this.#playbackDeadlinePending.has(controller)) {
+        this.#armConversationDeadline(queued, controller);
+      }
+    }
+  }
+
+  public setAudioEnabled(enabled: boolean): void {
+    if (this.#audioEnabled === enabled) return;
+    this.#audioEnabled = enabled;
+    if (!enabled) this.#interruptQueuedPlayback("captions_only");
+  }
+
+  public interruptForNewSpeech(): void {
+    if (this.#playbackMode !== "conversation" || !this.#audioEnabled) return;
+    this.#interruptQueuedPlayback("interrupted_for_conversation");
+  }
+
+  public currentQueueWaitMs(): number {
+    let oldest: number | undefined;
+    for (const enqueuedAt of this.#waitingSince.values()) {
+      oldest = oldest === undefined ? enqueuedAt : Math.min(oldest, enqueuedAt);
+    }
+    return oldest === undefined ? 0 : Math.max(0, this.#now() - oldest);
+  }
+
+  public isQueueWarningActive(): boolean {
+    return this.currentQueueWaitMs() > this.#maxQueueWaitMs;
+  }
+
   public async stop(): Promise<void> {
     this.#stopped = true;
+    this.#clearAllConversationDeadlines();
     this.#stopRequested.resolve();
     this.#abortController.abort(
       new DOMException("TTS synthesis aborted", "AbortError"),
     );
     this.#discardQueuedUtterances();
     this.#wakeDrain();
-    for (const speech of this.#activeSpeeches) speech.cancel();
+    for (const speech of this.#activeSpeeches) this.#cancelSpeech(speech);
     this.#playback.stop();
-    const cleanupResults = await Promise.allSettled([
+    const drainResults = await Promise.allSettled([
       this.#drainPromise ?? Promise.resolve(),
     ]);
+    const settlementResults = await Promise.allSettled([
+      ...this.#pendingSpeechSettlements,
+    ]);
+    const cleanupResults = [...drainResults, ...settlementResults];
+    if (this.#usageFailure) throw this.#usageFailure;
     const usageFailure = cleanupResults.find(
       (result): result is PromiseRejectedResult =>
         result.status === "rejected" && isUsageAccountingError(result.reason),
@@ -214,15 +314,6 @@ export class UtteranceProcessor {
       if (previous) await previous.done;
     } catch (error) {
       this.#discardQueuedUtterances();
-      const backlogError = error instanceof ApplicationError &&
-          error.code === "PLAYBACK_BACKLOG"
-        ? error
-        : undefined;
-      let fatalNotified = false;
-      if (!this.#hasStopped() && backlogError) {
-        this.#onFatal(backlogError);
-        fatalNotified = true;
-      }
       const cleanupResults = await Promise.allSettled([
         ...[...this.#tasks].map((task) => task.done),
       ]);
@@ -249,7 +340,7 @@ export class UtteranceProcessor {
             "翻訳音声の生成または再生に失敗しました。",
             { cause: effectiveError },
           );
-      if (!fatalNotified) this.#onFatal(applicationError);
+      this.#onFatal(applicationError);
     }
   }
 
@@ -315,7 +406,6 @@ export class UtteranceProcessor {
     playbackDone: Signal,
     markPlaybackFinished: () => void,
   ): Promise<void> {
-    this.#assertQueueWaitWithinLimit(queued);
     const inputCharacters = Array.from(queued.utterance.translatedText).length;
     if (
       queued.utterance.sourceDurationMs > this.#maxSourceDurationMs ||
@@ -327,21 +417,56 @@ export class UtteranceProcessor {
       );
     }
 
+    const initialSkipState = this.#skipState(queued);
+    if (initialSkipState) {
+      this.#waitingSince.delete(queued.utterance.utteranceId);
+      const captionWork = this.#captions.post({
+        ...queued.utterance,
+        state: initialSkipState,
+      });
+      generation.resolve();
+      playback.resolve();
+      this.#inheritPreviousPlayback(
+        previousPlayback,
+        markPlaybackFinished,
+        playbackDone,
+      );
+      await this.#awaitOrStop(captionWork);
+      return;
+    }
+
     let caption: number | undefined;
-    let captionPromise: Promise<number> | undefined;
+    let captionPromise: Promise<number | undefined> | undefined;
     let captionFailure: Error | undefined;
     let speech: SynthesizedSpeech | undefined;
     const playbackState = { wasStarted: false };
     let playbackRequested = false;
     let playbackCompleted = false;
     let playbackStopRequested = false;
+    let playbackWork: Promise<void> | undefined;
+    let generationCancellationExpected = false;
+    const taskController = new AbortController();
+    this.#activeTaskControllers.set(taskController, queued);
+    this.#playbackDeadlinePending.add(taskController);
+    const onControlledAbort = (): void => {
+      if (this.#interruptionState(taskController) !== "skipped_delay") return;
+      this.#cancelSpeech(speech);
+      if (playbackRequested && !playbackState.wasStarted) {
+        playbackStopRequested = true;
+        this.#playback.stop();
+      }
+    };
+    taskController.signal.addEventListener("abort", onControlledAbort, { once: true });
+    this.#armConversationDeadline(queued, taskController);
     try {
       captionPromise = this.#captions.post({
         ...queued.utterance,
         state: "pending",
       }).then((reference) => {
         caption = reference;
-        this.#latency?.mark(queued.utterance.utteranceId, "caption_posted");
+        if (reference !== undefined) {
+          this.#latency?.mark(queued.utterance.utteranceId, "caption_posted");
+        }
         return reference;
       });
       void captionPromise.catch((error: unknown) => {
@@ -354,9 +479,13 @@ export class UtteranceProcessor {
           traceId: queued.utterance.utteranceId,
           sessionId: queued.utterance.sessionId,
           speakerUserId: queued.utterance.speakerUserId,
+          voiceId: queued.utterance.voiceId,
           language: queued.utterance.targetLanguage,
           text: queued.utterance.translatedText,
-        }, this.#abortController.signal),
+        }, AbortSignal.any([
+          this.#abortController.signal,
+          taskController.signal,
+        ])),
       ).then((created) => {
         this.#activeSpeeches.add(created);
         void created.completed.catch(() => undefined);
@@ -381,20 +510,28 @@ export class UtteranceProcessor {
         : createdSpeech.completed.then(() => createdSpeech.audio);
       void generationWork.then(
         () => generation.resolve(),
-        (error: unknown) => generation.reject(error),
+        (error: unknown) => {
+          if (
+            generationCancellationExpected ||
+            this.#interruptionState(taskController) !== undefined
+          ) {
+            return;
+          }
+          generation.reject(error);
+        },
       );
 
-      const playbackSlot = this.#waitForPlaybackSlot(previousPlayback, queued).then(() => {
-        this.#latency?.mark(queued.utterance.utteranceId, "playback_slot_ready");
-      });
-      const [audio] = await Promise.all([
-        mustBufferWhileWaiting
-          ? generationWork
-          : Promise.resolve(createdSpeech.audio),
-        playbackSlot,
-      ]);
+      const audioWork = mustBufferWhileWaiting
+        ? generationWork
+        : Promise.resolve(createdSpeech.audio);
+      const audio = await this.#awaitPlaybackReadiness(
+        audioWork,
+        previousPlayback,
+        taskController,
+      );
+      this.#latency?.mark(queued.utterance.utteranceId, "playback_slot_ready");
       if (this.#hasStopped()) {
-        speech.cancel();
+        this.#cancelSpeech(speech);
         const [completion] = await Promise.allSettled([speech.completed]);
         playback.resolve();
         markPlaybackFinished();
@@ -409,16 +546,45 @@ export class UtteranceProcessor {
         return;
       }
 
-      this.#assertQueueWaitWithinLimit(queued);
+      const queueWaitMs = Math.max(0, this.#now() - queued.enqueuedAt);
+      if (
+        this.#playbackMode === "accuracy" &&
+        queueWaitMs > this.#conversationQueueMaxWaitMs
+      ) {
+        this.#onQueueDelay(queueWaitMs);
+      }
+
+      const skipState = this.#skipState(queued, taskController);
+      if (skipState) {
+        generationCancellationExpected = true;
+        this.#cancelSpeech(speech);
+        this.#trackSpeechSettlement(speech);
+        playback.resolve();
+        this.#inheritPreviousPlayback(
+          previousPlayback,
+          markPlaybackFinished,
+          playbackDone,
+        );
+        this.#waitingSince.delete(queued.utterance.utteranceId);
+        generation.resolve();
+        const captionReference = await this.#awaitOrStop(captionPromise);
+        if (captionReference !== undefined) {
+          await this.#awaitOrStop(this.#captions.update(captionReference, skipState));
+        }
+        return;
+      }
       if (captionFailure) throw captionFailure;
       const previousError = previousFailure();
       if (previousError) throw previousError;
       playbackRequested = true;
-      const playbackWork = this.#playback.play(
+      playbackWork = this.#playback.play(
         audio,
         queued.utterance.utteranceId,
         () => {
+          this.#playbackDeadlinePending.delete(taskController);
+          this.#clearConversationDeadline(taskController);
           playbackState.wasStarted = true;
+          this.#waitingSince.delete(queued.utterance.utteranceId);
         },
       ).then(
         () => {
@@ -429,6 +595,14 @@ export class UtteranceProcessor {
         (error: unknown) => {
           const normalized = asError(error, "翻訳音声の再生に失敗しました。");
           markPlaybackFinished();
+          const interruptionState = this.#controlledInterruptionState(
+            queued,
+            taskController,
+          );
+          if (interruptionState) {
+            playbackDone.resolve();
+            throw new ExpectedPlaybackInterruption(interruptionState, normalized);
+          }
           playbackDone.reject(normalized);
           throw normalized;
         },
@@ -451,18 +625,47 @@ export class UtteranceProcessor {
           ),
         );
       } else {
-        if (captionReference === undefined) {
-          throw new Error("字幕POSTの完了状態を判定できませんでした。");
+        if (captionReference !== undefined) {
+          caption = captionReference;
+          await this.#awaitOrStop(this.#captions.update(caption, "played"));
         }
-        caption = captionReference;
-        await this.#captions.update(caption, "played");
       }
     } catch (error) {
+      const interruptionState = error instanceof ExpectedPlaybackInterruption
+        ? error.state
+        : this.#controlledInterruptionState(queued, taskController);
+      const mustPreserveFailure =
+        isUsageAccountingError(error) ||
+        (error instanceof ApplicationError && error.code === "CAPTION_SEND_FAILED");
+      if (interruptionState && !mustPreserveFailure) {
+        generationCancellationExpected = true;
+        this.#cancelSpeech(speech);
+        this.#trackSpeechSettlement(speech);
+        this.#waitingSince.delete(queued.utterance.utteranceId);
+        generation.resolve();
+        playback.resolve();
+        if (playbackRequested && playbackWork) {
+          await Promise.allSettled([playbackWork]);
+        } else {
+          this.#inheritPreviousPlayback(
+            previousPlayback,
+            markPlaybackFinished,
+            playbackDone,
+          );
+        }
+        if (caption === undefined && captionPromise) {
+          caption = await this.#awaitOrStop(captionPromise);
+        }
+        if (caption !== undefined) {
+          await this.#awaitOrStop(this.#captions.update(caption, interruptionState));
+        }
+        return;
+      }
       generation.reject(error);
       playback.reject(error);
       markPlaybackFinished();
       playbackDone.reject(error);
-      speech?.cancel();
+      this.#cancelSpeech(speech);
       if (playbackRequested) {
         playbackStopRequested = true;
         this.#playback.stop();
@@ -489,16 +692,20 @@ export class UtteranceProcessor {
         return;
       }
       if (caption === undefined && captionPromise) {
-        const [captionResult] = await Promise.allSettled([captionPromise]);
+        const [captionResult] = await Promise.allSettled([
+          this.#awaitOrStop(captionPromise),
+        ]);
         if (captionResult.status === "fulfilled") caption = captionResult.value;
       }
       if (caption !== undefined) {
-        await this.#captions.update(
-          caption,
-          captionStateAfterPlayback(
-            playbackState.wasStarted,
-            playbackCompleted,
-            speech,
+        await this.#awaitOrStop(
+          this.#captions.update(
+            caption,
+            captionStateAfterPlayback(
+              playbackState.wasStarted,
+              playbackCompleted,
+              speech,
+            ),
           ),
         );
       }
@@ -506,6 +713,11 @@ export class UtteranceProcessor {
       throw error;
     } finally {
       if (speech) this.#activeSpeeches.delete(speech);
+      taskController.signal.removeEventListener("abort", onControlledAbort);
+      this.#playbackDeadlinePending.delete(taskController);
+      this.#clearConversationDeadline(taskController);
+      this.#activeTaskControllers.delete(taskController);
+      this.#waitingSince.delete(queued.utterance.utteranceId);
     }
   }
 
@@ -537,13 +749,13 @@ export class UtteranceProcessor {
   }
 
   #updateCaptionAfterStop(
-    captionPromise: Promise<number>,
+    captionPromise: Promise<number | undefined>,
     caption: number | undefined,
     state: CaptionState,
   ): void {
     void Promise.resolve().then(async () => {
       const reference = caption ?? await captionPromise;
-      await this.#captions.update(reference, state);
+      if (reference !== undefined) await this.#captions.update(reference, state);
     }).catch(() => undefined);
   }
 
@@ -581,61 +793,209 @@ export class UtteranceProcessor {
   #discardQueuedUtterances(): void {
     for (const queued of this.#queue) {
       this.#latency?.finish(queued.utterance.utteranceId);
+      this.#waitingSince.delete(queued.utterance.utteranceId);
     }
     this.#queue.length = 0;
   }
 
-  #assertQueueWaitWithinLimit(queued: QueuedUtterance): void {
-    if (this.#now() - queued.enqueuedAt <= this.#maxQueueWaitMs) return;
-    throw this.#playbackBacklogError();
-  }
-
-  #waitForPlaybackSlot(
+  async #awaitPlaybackReadiness(
+    audio: Promise<Readable>,
     previousPlayback: Promise<void>,
-    queued: QueuedUtterance,
-  ): Promise<void> {
-    this.#assertQueueWaitWithinLimit(queued);
-    const elapsed = this.#now() - queued.enqueuedAt;
-    const timeoutMs = Math.max(1, this.#maxQueueWaitMs - elapsed);
-    return new Promise<void>((resolve, reject) => {
-      let settled = false;
-      const onAbort = (): void => settle(() => reject(
-        asError(this.#abortController.signal.reason, "再生待ちを中止しました。"),
+    controller: AbortController,
+  ): Promise<Readable> {
+    if (controller.signal.aborted) {
+      return Promise.reject(asError(
+        controller.signal.reason,
+        "翻訳音声の再生準備を中止しました。",
       ));
+    }
+    const ready = Promise.all([
+      audio,
+      this.#awaitPreviousPlayback(previousPlayback),
+    ]).then(([preparedAudio]) => preparedAudio);
+    return new Promise<Readable>((resolve, reject) => {
+      let settled = false;
+      const onAbort = (): void => settle(() => reject(asError(
+        controller.signal.reason,
+        "翻訳音声の再生準備を中止しました。",
+      )));
       const settle = (callback: () => void): void => {
         if (settled) return;
         settled = true;
-        clearTimeout(timer);
-        this.#abortController.signal.removeEventListener("abort", onAbort);
+        controller.signal.removeEventListener("abort", onAbort);
         callback();
       };
-      const timer = setTimeout(() => {
-        settle(() => reject(this.#playbackBacklogError()));
-      }, timeoutMs);
-      timer.unref();
-      this.#abortController.signal.addEventListener("abort", onAbort, { once: true });
-      void previousPlayback.then(
-        () => settle(() => {
-          try {
-            this.#assertQueueWaitWithinLimit(queued);
-            resolve();
-          } catch (error) {
-            reject(asError(error, "再生待ち上限を判定できませんでした。"));
-          }
-        }),
+      controller.signal.addEventListener("abort", onAbort, { once: true });
+      void ready.then(
+        (value) => settle(() => resolve(value)),
         (error: unknown) => settle(() => reject(asError(
           error,
-          "先行発話の再生に失敗しました。",
+          "翻訳音声の再生準備に失敗しました。",
         ))),
       );
     });
   }
 
-  #playbackBacklogError(): ApplicationError {
-    return new ApplicationError(
-      "PLAYBACK_BACKLOG",
-      "PLAYBACK_BACKLOG: 翻訳音声の待ち時間が上限を超えました。",
+  #armConversationDeadline(
+    queued: QueuedUtterance,
+    controller: AbortController,
+  ): void {
+    this.#clearConversationDeadline(controller);
+    if (
+      this.#playbackMode !== "conversation" ||
+      this.#hasStopped() ||
+      !this.#playbackDeadlinePending.has(controller) ||
+      controller.signal.aborted
+    ) {
+      return;
+    }
+    const elapsed = this.#now() - queued.enqueuedAt;
+    if (elapsed > this.#conversationQueueMaxWaitMs) {
+      controller.abort(new ExpectedPlaybackInterruption("skipped_delay", undefined));
+      return;
+    }
+    const timeoutMs = Math.max(
+      1,
+      this.#conversationQueueMaxWaitMs - elapsed + 1,
     );
+    const timer = setTimeout(() => {
+      this.#conversationDeadlineTimers.delete(controller);
+      if (
+        this.#playbackMode === "conversation" &&
+        !this.#hasStopped() &&
+        !controller.signal.aborted
+      ) {
+        controller.abort(new ExpectedPlaybackInterruption("skipped_delay", undefined));
+      }
+    }, timeoutMs);
+    timer.unref();
+    this.#conversationDeadlineTimers.set(controller, timer);
+  }
+
+  #clearConversationDeadline(controller: AbortController): void {
+    const timer = this.#conversationDeadlineTimers.get(controller);
+    if (timer) clearTimeout(timer);
+    this.#conversationDeadlineTimers.delete(controller);
+  }
+
+  #clearAllConversationDeadlines(): void {
+    for (const timer of this.#conversationDeadlineTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.#conversationDeadlineTimers.clear();
+  }
+
+  #awaitPreviousPlayback(previousPlayback: Promise<void>): Promise<void> {
+    if (this.#abortController.signal.aborted) {
+      return Promise.reject(asError(
+        this.#abortController.signal.reason,
+        "再生待ちを中止しました。",
+      ));
+    }
+    return new Promise<void>((resolve, reject) => {
+      const onAbort = (): void => {
+        this.#abortController.signal.removeEventListener("abort", onAbort);
+        reject(asError(this.#abortController.signal.reason, "再生待ちを中止しました。"));
+      };
+      this.#abortController.signal.addEventListener("abort", onAbort, { once: true });
+      void previousPlayback.then(
+        () => {
+          this.#abortController.signal.removeEventListener("abort", onAbort);
+          resolve();
+        },
+        (error: unknown) => {
+          this.#abortController.signal.removeEventListener("abort", onAbort);
+          reject(asError(error, "先行発話の再生に失敗しました。"));
+        },
+      );
+    });
+  }
+
+  #inheritPreviousPlayback(
+    previousPlayback: Promise<void>,
+    markPlaybackFinished: () => void,
+    playbackDone: Signal,
+  ): void {
+    void previousPlayback.then(
+      () => {
+        markPlaybackFinished();
+        playbackDone.resolve();
+      },
+      (error: unknown) => {
+        markPlaybackFinished();
+        playbackDone.reject(asError(error, "先行発話の再生に失敗しました。"));
+      },
+    );
+  }
+
+  #interruptionState(
+    controller: AbortController,
+  ): ControlledInterruptionState | undefined {
+    const reason: unknown = controller.signal.reason;
+    return reason instanceof ExpectedPlaybackInterruption ? reason.state : undefined;
+  }
+
+  #skipState(
+    queued: QueuedUtterance,
+    controller?: AbortController,
+  ): Exclude<
+    CaptionState,
+    "pending" | "played" | "not_played" | "partial_failure"
+  > | undefined {
+    if (!this.#audioEnabled) return "captions_only";
+    const interruptionState = queued.interruptionState ??
+      (controller ? this.#interruptionState(controller) : undefined);
+    if (interruptionState) return interruptionState;
+    if (
+      this.#playbackMode === "conversation" &&
+      this.#now() - queued.enqueuedAt > this.#conversationQueueMaxWaitMs
+    ) {
+      return "skipped_delay";
+    }
+    return undefined;
+  }
+
+  #controlledInterruptionState(
+    queued: QueuedUtterance,
+    controller: AbortController,
+  ): ControlledInterruptionState | undefined {
+    return queued.interruptionState ?? this.#interruptionState(controller);
+  }
+
+  #interruptQueuedPlayback(state: IntentionalInterruptionState): void {
+    for (const queued of this.#queue) queued.interruptionState ??= state;
+    for (const controller of this.#activeTaskControllers.keys()) {
+      if (!controller.signal.aborted) {
+        controller.abort(new ExpectedPlaybackInterruption(state, undefined));
+      }
+    }
+    for (const speech of this.#activeSpeeches) this.#cancelSpeech(speech);
+    this.#playback.stop();
+  }
+
+  #cancelSpeech(speech: SynthesizedSpeech | undefined): void {
+    if (!speech || this.#canceledSpeeches.has(speech)) return;
+    this.#canceledSpeeches.add(speech);
+    speech.cancel();
+  }
+
+  #trackSpeechSettlement(speech: SynthesizedSpeech | undefined): void {
+    if (!speech || this.#trackedSpeechSettlements.has(speech)) return;
+    this.#trackedSpeechSettlements.add(speech);
+    const remove = (): void => {
+      this.#pendingSpeechSettlements.delete(settlement);
+    };
+    const settlement = speech.completed.then(
+      remove,
+      (error: unknown) => {
+        remove();
+        if (!isUsageAccountingError(error)) return;
+        if (this.#usageFailure) return;
+        this.#usageFailure = error;
+        if (!this.#hasStopped()) this.#onFatal(error);
+      },
+    );
+    this.#pendingSpeechSettlements.add(settlement);
   }
 
   #hasStopped(): boolean {

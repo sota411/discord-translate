@@ -4,10 +4,10 @@ import {
   MessageFlags,
   PermissionFlagsBits,
   type ChatInputCommandInteraction,
+  type ButtonInteraction,
   type Client,
-  type Guild,
-  type GuildTextBasedChannel,
   type Interaction,
+  type StringSelectMenuInteraction,
   type VoiceState,
 } from "discord.js";
 
@@ -16,10 +16,7 @@ import type {
   TranslationCommandService,
 } from "../commands/translation-command-service.js";
 import type { SafeLogger } from "../observability/logger.js";
-import {
-  createStopMessagePayload,
-  createTextCardMessagePayload,
-} from "./message-payload.js";
+import { createSessionSettingsMessagePayload } from "./message-payload.js";
 
 type CommandService = Pick<
   TranslationCommandService,
@@ -49,6 +46,14 @@ export class DiscordBotController {
       if (interaction.isChatInputCommand()) {
         void this.handleInteraction(interaction).catch((error: unknown) => {
           this.#logger.error("discord_interaction_response_failed", error, {
+            guild_id: this.#guildLogId(interaction.guildId),
+          });
+        });
+        return;
+      }
+      if (interaction.isButton() || interaction.isStringSelectMenu()) {
+        void this.handleComponentInteraction(interaction).catch((error: unknown) => {
+          this.#logger.error("discord_component_response_failed", error, {
             guild_id: this.#guildLogId(interaction.guildId),
           });
         });
@@ -98,7 +103,7 @@ export class DiscordBotController {
       const result = subcommand === "start"
         ? await this.#commands.execute(this.#startInput(interaction))
         : await this.#commands.execute(this.#stopInput(interaction));
-      await this.#completeInteraction(interaction, result, subcommand);
+      await this.#completeInteraction(interaction, result);
     } catch (error) {
       this.#logger.error("discord_interaction_failed", error, {
         guild_id: this.#guildLogId(interaction.guildId),
@@ -107,6 +112,78 @@ export class DiscordBotController {
         "コマンドを処理できませんでした。時間を置いて再実行してください。",
       );
     }
+  }
+
+  public async handleComponentInteraction(
+    interaction: ButtonInteraction | StringSelectMenuInteraction,
+  ): Promise<void> {
+    const parsed = /^translate:([^:]+):(stop|toggle_audio|settings|playback_mode|caption_failure_policy)$/u
+      .exec(interaction.customId);
+    if (!parsed) return;
+    const sessionId = parsed[1];
+    const action = parsed[2];
+    if (!sessionId || !action) return;
+    if (!this.#acceptingCommands) {
+      await interaction.reply({
+        content: "Botを停止中です。起動後に再実行してください。",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const actor = interaction.guild?.members.cache.get(interaction.user.id);
+    const common = {
+      guildId: interaction.guildId ?? undefined,
+      actorId: interaction.user.id,
+      actorCanManageGuild:
+        interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ?? false,
+      actorVoiceChannelId: actor?.voice.channelId ?? undefined,
+      sessionId,
+    };
+
+    if (action === "settings") {
+      const result = await this.#commands.execute({
+        kind: "control",
+        action: "show_settings",
+        ...common,
+      });
+      const session = interaction.guildId
+        ? this.#commands.getSession(interaction.guildId)
+        : undefined;
+      if (!result.ok || session?.sessionId !== sessionId) {
+        await interaction.reply({
+          content: result.interactionMessage,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      const settings = createSessionSettingsMessagePayload({
+        sessionId,
+        playbackMode: session.playbackMode,
+        captionFailurePolicy: session.captionFailurePolicy,
+      });
+      await interaction.reply({
+        ...settings,
+        flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
+      });
+      return;
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const result = action === "stop"
+      ? await this.#commands.execute({ kind: "stop", ...common })
+      : await this.#commands.execute({
+          kind: "control",
+          action: action === "toggle_audio"
+            ? "toggle_audio"
+            : action === "playback_mode"
+              ? "set_playback_mode"
+              : "set_caption_failure_policy",
+          ...(interaction.isStringSelectMenu() && interaction.values[0] !== undefined
+            ? { value: interaction.values[0] }
+            : {}),
+          ...common,
+        });
+    await interaction.editReply(result.interactionMessage);
   }
 
   public async handleVoiceStateUpdate(
@@ -134,13 +211,7 @@ export class DiscordBotController {
         session.state === "ACTIVE" &&
         newState.channelId !== session.voiceChannelId
       ) {
-        if (await this.#commands.stopForFailure(guildId, "BOT_VOICE_REMOVED")) {
-          await this.#postAutomaticStop(
-            newState.guild,
-            session.textChannelId,
-            "BOT_VOICE_REMOVED",
-          );
-        }
+        await this.#commands.stopForFailure(guildId, "BOT_VOICE_REMOVED");
         return;
       }
 
@@ -161,11 +232,7 @@ export class DiscordBotController {
         participantIds,
       );
       if (result.stopped && result.reason) {
-        await this.#postAutomaticStop(
-          newState.guild,
-          session.textChannelId,
-          result.reason,
-        );
+        return;
       }
     } catch (error) {
       this.#logger.error("voice_state_update_failed", error, {
@@ -193,15 +260,7 @@ export class DiscordBotController {
       session_id: session.sessionId,
       reason,
     });
-    if (await this.#commands.stopForFailure(guildId, reason)) {
-      await this.#postStopMessage(session.textChannelId, reason)
-        .catch((error: unknown) => {
-          this.#logger.error("automatic_stop_notification_failed", error, {
-            guild_id: this.#logger.pseudonymize(guildId),
-            reason,
-          });
-        });
-    }
+    await this.#commands.stopForFailure(guildId, reason);
   }
 
   #startInput(interaction: ChatInputCommandInteraction) {
@@ -217,9 +276,11 @@ export class DiscordBotController {
       ? textChannel.permissionsFor(bot)
       : undefined;
     const isGuildText = textChannel?.type === ChannelType.GuildText;
+    const mode = interaction.options.getString("mode");
     return {
       kind: "start" as const,
       pair: interaction.options.getString("pair", true),
+      ...(mode === null ? {} : { mode }),
       guildId: interaction.guildId ?? undefined,
       actorId: interaction.user.id,
       actorCanManageGuild:
@@ -246,6 +307,12 @@ export class DiscordBotController {
         text: {
           viewChannel: textPermissions?.has(PermissionFlagsBits.ViewChannel) ?? false,
           sendMessages: textPermissions?.has(PermissionFlagsBits.SendMessages) ?? false,
+          createPublicThreads:
+            textPermissions?.has(PermissionFlagsBits.CreatePublicThreads) ?? false,
+          sendMessagesInThreads:
+            textPermissions?.has(PermissionFlagsBits.SendMessagesInThreads) ?? false,
+          manageThreads:
+            textPermissions?.has(PermissionFlagsBits.ManageThreads) ?? false,
         },
       },
     };
@@ -266,68 +333,8 @@ export class DiscordBotController {
   async #completeInteraction(
     interaction: ChatInputCommandInteraction,
     result: CommandResult,
-    subcommand: string,
   ): Promise<void> {
-    if (!result.ok || !result.publicMessage) {
-      await interaction.editReply(result.interactionMessage);
-      return;
-    }
-    try {
-      await this.#postMessage(
-        result.publicMessage.channelId,
-        result.publicMessage.content,
-      );
-      await interaction.editReply(result.interactionMessage);
-    } catch (error) {
-      if (subcommand === "start" && interaction.guildId) {
-        this.#logger.error("start_notification_failed", error, {
-          guild_id: this.#logger.pseudonymize(interaction.guildId),
-        });
-        await this.#commands.stopForFailure(
-          interaction.guildId,
-          "CAPTION_SEND_FAILED",
-        );
-        await interaction.editReply(
-          "開始通知を字幕チャンネルへ投稿できないため、翻訳を停止しました。権限を確認してください。",
-        );
-        return;
-      }
-      this.#logger.error("public_command_notification_failed", error, {
-        guild_id: this.#guildLogId(interaction.guildId),
-      });
-      await interaction.editReply(
-        `${result.interactionMessage} ただし、終了通知をチャンネルへ投稿できませんでした。`,
-      );
-    }
-  }
-
-  async #postAutomaticStop(
-    guild: Guild,
-    channelId: string,
-    reason: string,
-  ): Promise<void> {
-    try {
-      const channel = await guild.channels.fetch(channelId);
-      if (!channel?.isTextBased()) throw new Error("字幕チャンネルが見つかりません");
-      await channel.send(createStopMessagePayload(reason));
-    } catch (error) {
-      this.#logger.error("automatic_stop_notification_failed", error, {
-        guild_id: this.#logger.pseudonymize(guild.id),
-        reason,
-      });
-    }
-  }
-
-  async #postMessage(channelId: string, content: string): Promise<void> {
-    const channel = await this.#client.channels.fetch(channelId);
-    if (!channel?.isTextBased()) throw new Error("字幕チャンネルが見つかりません");
-    await (channel as GuildTextBasedChannel).send(createTextCardMessagePayload(content));
-  }
-
-  async #postStopMessage(channelId: string, reason: string): Promise<void> {
-    const channel = await this.#client.channels.fetch(channelId);
-    if (!channel?.isTextBased()) throw new Error("字幕チャンネルが見つかりません");
-    await (channel as GuildTextBasedChannel).send(createStopMessagePayload(reason));
+    await interaction.editReply(result.interactionMessage);
   }
 
   #guildLogId(guildId: string | null): string {

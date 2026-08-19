@@ -2,6 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import { ApplicationError } from "../domain/application-error.js";
 import type { LanguagePair } from "../domain/language-pair.js";
+import type {
+  CaptionFailurePolicy,
+  PlaybackMode,
+} from "./session-settings.js";
 
 export type SessionState =
   | "AUTHORIZING"
@@ -22,6 +26,9 @@ export type SessionDescriptor = {
   state: SessionState;
   startedAt: Date;
   participantIds: readonly string[];
+  playbackMode: PlaybackMode;
+  audioEnabled: boolean;
+  captionFailurePolicy: CaptionFailurePolicy;
 };
 
 export type StartSessionInput = Omit<
@@ -49,6 +56,9 @@ export type CapacityGate = {
 
 export type SessionRuntime = {
   updateParticipants(participantIds: readonly string[]): Promise<void>;
+  setPlaybackMode(mode: PlaybackMode): Promise<void>;
+  setAudioEnabled(enabled: boolean): Promise<void>;
+  setCaptionFailurePolicy(policy: CaptionFailurePolicy): Promise<void>;
   stop(reason: string): Promise<void>;
 };
 
@@ -207,6 +217,27 @@ export class SessionManager {
     }
   }
 
+  public async setPlaybackMode(guildId: string, mode: PlaybackMode): Promise<void> {
+    const session = this.#requireActiveRuntime(guildId);
+    await session.runtime.setPlaybackMode(mode);
+    session.playbackMode = mode;
+  }
+
+  public async setAudioEnabled(guildId: string, enabled: boolean): Promise<void> {
+    const session = this.#requireActiveRuntime(guildId);
+    await session.runtime.setAudioEnabled(enabled);
+    session.audioEnabled = enabled;
+  }
+
+  public async setCaptionFailurePolicy(
+    guildId: string,
+    policy: CaptionFailurePolicy,
+  ): Promise<void> {
+    const session = this.#requireActiveRuntime(guildId);
+    await session.runtime.setCaptionFailurePolicy(policy);
+    session.captionFailurePolicy = policy;
+  }
+
   public async stop(guildId: string, reason: string): Promise<boolean> {
     const session = this.#sessions.get(guildId);
     if (!session) {
@@ -263,5 +294,16 @@ export class SessionManager {
         "開始処理中に翻訳セッションが停止されました。",
       );
     }
+  }
+
+  #requireActiveRuntime(guildId: string): ManagedSession & { runtime: SessionRuntime } {
+    const session = this.#sessions.get(guildId);
+    if (session?.state !== "ACTIVE" || !session.runtime) {
+      throw new ApplicationError(
+        "SESSION_NOT_ACTIVE",
+        "翻訳セッションは実行されていません。",
+      );
+    }
+    return session as ManagedSession & { runtime: SessionRuntime };
   }
 }

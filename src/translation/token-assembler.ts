@@ -4,16 +4,18 @@ import {
   type LanguagePair,
 } from "../domain/language-pair.js";
 import { ApplicationError } from "../domain/application-error.js";
+import type { RealtimeToken } from "@soniox/node";
 
-export type TranslationToken = {
-  text: string;
-  is_final: boolean;
-  language?: string | undefined;
-  source_language?: string | undefined;
-  translation_status?: "none" | "original" | "translation" | undefined;
-  start_ms?: number | undefined;
-  end_ms?: number | undefined;
-};
+export type TranslationToken = Pick<
+  RealtimeToken,
+  | "text"
+  | "is_final"
+  | "language"
+  | "source_language"
+  | "translation_status"
+  | "start_ms"
+  | "end_ms"
+>;
 
 export type FinalizedUtterance = {
   sourceLanguage: Language;
@@ -22,6 +24,11 @@ export type FinalizedUtterance = {
   translatedText: string;
   sourceDurationMs: number;
 };
+
+export type InterimUtterance = Pick<
+  FinalizedUtterance,
+  "originalText" | "translatedText"
+>;
 
 export type AcceptedTranslationToken = {
   sourceLanguage: Language;
@@ -142,6 +149,62 @@ export class TranslationTokenAssembler {
     };
   }
 
+  public preview(tokens: readonly TranslationToken[]): InterimUtterance | undefined {
+    const originalText = [...this.#original.text];
+    const originalCharactersByLanguage = new Map(this.#originalCharactersByLanguage);
+    const translationsBySource = new Map<Language, TranslationBuffer>();
+    for (const [sourceLanguage, translation] of this.#translationsBySource) {
+      translationsBySource.set(sourceLanguage, {
+        ...translation,
+        text: [...translation.text],
+      });
+    }
+
+    for (const token of tokens) {
+      if (token.is_final) continue;
+      if (token.translation_status === "original") {
+        originalText.push(token.text);
+        if (this.#isPairLanguage(token.language)) {
+          originalCharactersByLanguage.set(
+            token.language,
+            (originalCharactersByLanguage.get(token.language) ?? 0) +
+              Array.from(token.text).length,
+          );
+        }
+        continue;
+      }
+      if (
+        token.translation_status !== "translation" ||
+        !this.#isPairLanguage(token.language) ||
+        !this.#isPairLanguage(token.source_language) ||
+        token.language === token.source_language
+      ) {
+        continue;
+      }
+      const translation = translationsBySource.get(token.source_language) ?? {
+        sourceLanguage: token.source_language,
+        targetLanguage: token.language,
+        text: [],
+        characters: 0,
+      };
+      translation.text.push(token.text);
+      translation.characters += Array.from(token.text).length;
+      translationsBySource.set(token.source_language, translation);
+    }
+
+    const translation = this.#selectTranslation(
+      translationsBySource,
+      originalCharactersByLanguage,
+    );
+    const translatedText = translation?.text.join("") ?? "";
+    const joinedOriginalText = originalText.join("");
+    if (!joinedOriginalText && !translatedText) return undefined;
+    return {
+      originalText: joinedOriginalText,
+      translatedText,
+    };
+  }
+
   #isPairLanguage(language: string | undefined): language is Language {
     return language !== undefined && this.#languages.has(language as Language);
   }
@@ -152,17 +215,22 @@ export class TranslationTokenAssembler {
     this.#translationsBySource.clear();
   }
 
-  #selectTranslation(): TranslationBuffer | undefined {
+  #selectTranslation(
+    translationsBySource: ReadonlyMap<Language, TranslationBuffer> =
+      this.#translationsBySource,
+    originalCharactersByLanguage: ReadonlyMap<Language, number> =
+      this.#originalCharactersByLanguage,
+  ): TranslationBuffer | undefined {
     let selected: TranslationBuffer | undefined;
-    for (const candidate of this.#translationsBySource.values()) {
+    for (const candidate of translationsBySource.values()) {
       if (!selected) {
         selected = candidate;
         continue;
       }
       const candidateOriginalCharacters =
-        this.#originalCharactersByLanguage.get(candidate.sourceLanguage) ?? 0;
+        originalCharactersByLanguage.get(candidate.sourceLanguage) ?? 0;
       const selectedOriginalCharacters =
-        this.#originalCharactersByLanguage.get(selected.sourceLanguage) ?? 0;
+        originalCharactersByLanguage.get(selected.sourceLanguage) ?? 0;
       if (
         candidateOriginalCharacters > selectedOriginalCharacters ||
         (

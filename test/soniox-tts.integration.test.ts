@@ -93,7 +93,6 @@ void test("TTS wireへ不透明request refを送り、PCMと正常終端を公�
       apiKey: "test-api-key",
       model: "tts-rt-v2",
       speed: 1.15,
-      voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
       terminationTimeoutMs: 1_000,
       ledger,
       createRequestRef: () => "00000000-0000-4000-8000-000000000100",
@@ -104,6 +103,7 @@ void test("TTS wireへ不透明request refを送り、PCMと正常終端を公�
       utteranceId: "00000000-0000-4000-8000-000000000101",
       sessionId: "00000000-0000-4000-8000-000000000001",
       speakerUserId: "323456789012345678",
+      voiceId: "speaker-voice",
       language: "ko",
       text: "안녕하세요",
     });
@@ -134,7 +134,7 @@ void test("TTS wireへ不透明request refを送り、PCMと正常終端を公�
   });
 });
 
-void test("確定した翻訳本文のTTS configとtextを同じstreamへ順に送る", async () => {
+void test("翻訳先言語ではなく話者へ割り当てたvoiceをTTS configへ送る", async () => {
   const received: Record<string, unknown>[] = [];
   await withServer((socket) => {
     socket.on("message", (data) => {
@@ -154,7 +154,6 @@ void test("確定した翻訳本文のTTS configとtextを同じstreamへ順に�
       url,
       apiKey: "test-api-key",
       model: "tts-rt-v2",
-      voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
       terminationTimeoutMs: 1_000,
       ledger: new RecordingLedger(),
       createRequestRef: () => "00000000-0000-4000-8000-000000000150",
@@ -164,6 +163,7 @@ void test("確定した翻訳本文のTTS configとtextを同じstreamへ順に�
       utteranceId: "00000000-0000-4000-8000-000000000151",
       sessionId: "00000000-0000-4000-8000-000000000001",
       speakerUserId: "323456789012345678",
+      voiceId: "speaker-voice",
       language: "ko",
       text: "안녕하세요",
     });
@@ -175,7 +175,7 @@ void test("確定した翻訳本文のTTS configとtextを同じstreamへ順に�
     const config = received[0];
     assert.ok(config);
     assert.equal(config.stream_id, "00000000-0000-4000-8000-000000000151");
-    assert.equal(config.voice, "ko-voice");
+    assert.equal(config.voice, "speaker-voice");
     assert.deepEqual(Buffer.concat(audio), Buffer.from([1, 0, 2, 0]));
     assert.deepEqual(received[1], {
       stream_id: "00000000-0000-4000-8000-000000000151",
@@ -213,7 +213,6 @@ void test("本文を送らない接続ウォームアップ後も連続TTSが同
       url,
       apiKey: "test-api-key",
       model: "tts-rt-v2",
-      voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
       terminationTimeoutMs: 1_000,
       ledger: new RecordingLedger(),
     });
@@ -227,6 +226,7 @@ void test("本文を送らない接続ウォームアップ後も連続TTSが同
         utteranceId,
         sessionId: "session-1",
         speakerUserId: "323456789012345678",
+      voiceId: "speaker-voice",
         language: "ko",
         text: "연속",
       });
@@ -261,7 +261,6 @@ void test("最初のstream後は同じTTS接続へkeepaliveを送る", async () 
       url,
       apiKey: "test-api-key",
       model: "tts-rt-v2",
-      voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
       terminationTimeoutMs: 1_000,
       keepaliveIntervalMs: 5,
       ledger: new RecordingLedger(),
@@ -270,6 +269,7 @@ void test("最初のstream後は同じTTS接続へkeepaliveを送る", async () 
       utteranceId: "keepalive-1",
       sessionId: "session-1",
       speakerUserId: "323456789012345678",
+      voiceId: "speaker-voice",
       language: "ko",
       text: "연결 유지",
     });
@@ -313,7 +313,6 @@ void test("待機中に閉じたTTS接続は次のstream開始時に再接続す
       url,
       apiKey: "test-api-key",
       model: "tts-rt-v2",
-      voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
       terminationTimeoutMs: 1_000,
       ledger: new RecordingLedger(),
     });
@@ -322,6 +321,7 @@ void test("待機中に閉じたTTS接続は次のstream開始時に再接続す
       utteranceId: "reconnect-1",
       sessionId: "session-1",
       speakerUserId: "323456789012345678",
+      voiceId: "speaker-voice",
       language: "ko",
       text: "첫 번째",
     });
@@ -334,6 +334,7 @@ void test("待機中に閉じたTTS接続は次のstream開始時に再接続す
       utteranceId: "reconnect-2",
       sessionId: "session-1",
       speakerUserId: "323456789012345678",
+      voiceId: "speaker-voice",
       language: "ko",
       text: "두 번째",
     });
@@ -372,7 +373,6 @@ void test("stream応答timeoutでは接続を破棄し、次のstreamで再接�
       url,
       apiKey: "test-api-key",
       model: "tts-rt-v2",
-      voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
       terminationTimeoutMs: 10,
       ledger,
     });
@@ -381,6 +381,7 @@ void test("stream応答timeoutでは接続を破棄し、次のstreamで再接�
       utteranceId: "timeout-1",
       sessionId: "session-1",
       speakerUserId: "323456789012345678",
+      voiceId: "speaker-voice",
       language: "ko",
       text: "응답 없음",
     });
@@ -396,6 +397,7 @@ void test("stream応答timeoutでは接続を破棄し、次のstreamで再接�
       utteranceId: "timeout-2",
       sessionId: "session-1",
       speakerUserId: "323456789012345678",
+      voiceId: "speaker-voice",
       language: "ko",
       text: "재연결",
     });
@@ -438,7 +440,6 @@ void test("max_audio_duration_reachedを安定したエラーコードへ変換�
       url,
       apiKey: "test-api-key",
       model: "tts-rt-v2",
-      voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
       terminationTimeoutMs: 1_000,
       ledger,
       createRequestRef: () => "00000000-0000-4000-8000-000000000110",
@@ -447,6 +448,7 @@ void test("max_audio_duration_reachedを安定したエラーコードへ変換�
       utteranceId: "00000000-0000-4000-8000-000000000111",
       sessionId: "00000000-0000-4000-8000-000000000001",
       speakerUserId: "323456789012345678",
+      voiceId: "speaker-voice",
       language: "ko",
       text: "긴 문장",
     });
@@ -484,7 +486,6 @@ void test("stream IDのない認証エラーも待機せず安定したエラー
       url,
       apiKey: "invalid-test-api-key",
       model: "tts-rt-v2",
-      voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
       terminationTimeoutMs: 1_000,
       ledger,
       createRequestRef: () => "00000000-0000-4000-8000-000000000115",
@@ -493,6 +494,7 @@ void test("stream IDのない認証エラーも待機せず安定したエラー
       utteranceId: "00000000-0000-4000-8000-000000000116",
       sessionId: "00000000-0000-4000-8000-000000000001",
       speakerUserId: "323456789012345678",
+      voiceId: "speaker-voice",
       language: "ko",
       text: "인증 오류",
     });
@@ -533,7 +535,6 @@ void test("cancelはterminatedを受信してから要求をfailedへ確定す�
       url,
       apiKey: "test-api-key",
       model: "tts-rt-v2",
-      voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
       terminationTimeoutMs: 1_000,
       ledger,
       createRequestRef: () => "00000000-0000-4000-8000-000000000120",
@@ -542,6 +543,7 @@ void test("cancelはterminatedを受信してから要求をfailedへ確定す�
       utteranceId: "00000000-0000-4000-8000-000000000121",
       sessionId: "00000000-0000-4000-8000-000000000001",
       speakerUserId: "323456789012345678",
+      voiceId: "speaker-voice",
       language: "ko",
       text: "취소",
     });
@@ -556,6 +558,64 @@ void test("cancelはterminatedを受信してから要求をfailedへ確定す�
 
     assert.equal(ledger.requests[0]?.status, "failed");
     assert.ok(received.some((message) => message.cancel === true));
+  });
+});
+
+void test("AbortSignalの取消もterminated受信前に要求をfailedへ確定しない", async () => {
+  let cancelCount = 0;
+  let terminateCanceledStream = (): void => undefined;
+  let resolveCancelReceived = (): void => undefined;
+  const cancelReceived = new Promise<void>((resolve) => {
+    resolveCancelReceived = resolve;
+  });
+  await withServer((socket) => {
+    socket.on("message", (data) => {
+      const message = JSON.parse(rawDataToUtf8(data)) as Record<string, unknown>;
+      if (message.cancel === true) {
+        cancelCount += 1;
+        terminateCanceledStream = () => {
+          socket.send(JSON.stringify({
+            stream_id: message.stream_id,
+            terminated: true,
+          }));
+        };
+        resolveCancelReceived();
+      }
+    });
+  }, async (url) => {
+    const ledger = new RecordingLedger();
+    const gateway = new RawSonioxTtsGateway({
+      url,
+      apiKey: "test-api-key",
+      model: "tts-rt-v2",
+      terminationTimeoutMs: 1_000,
+      ledger,
+      createRequestRef: () => "00000000-0000-4000-8000-000000000152",
+    });
+    const controller = new AbortController();
+    const speech = await gateway.synthesize({
+      utteranceId: "00000000-0000-4000-8000-000000000153",
+      sessionId: "00000000-0000-4000-8000-000000000001",
+      speakerUserId: "323456789012345678",
+      voiceId: "speaker-voice",
+      language: "ko",
+      text: "신호로 취소",
+    }, controller.signal);
+    const completion = speech.completed.then(
+      () => undefined,
+      () => undefined,
+    );
+
+    controller.abort();
+    speech.cancel();
+    await cancelReceived;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(cancelCount, 1);
+    assert.equal(ledger.requests[0]?.status, undefined);
+
+    terminateCanceledStream();
+    await completion;
+    assert.equal(ledger.requests[0]?.status, "failed");
   });
 });
 
@@ -584,7 +644,6 @@ void test("音声受信後のcancelで利用台帳へ書き込めなければ失
       url,
       apiKey: "test-api-key",
       model: "tts-rt-v2",
-      voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
       terminationTimeoutMs: 1_000,
       ledger,
       createRequestRef: () => "00000000-0000-4000-8000-000000000125",
@@ -593,6 +652,7 @@ void test("音声受信後のcancelで利用台帳へ書き込めなければ失
       utteranceId: "00000000-0000-4000-8000-000000000126",
       sessionId: "00000000-0000-4000-8000-000000000001",
       speakerUserId: "323456789012345678",
+      voiceId: "speaker-voice",
       language: "ko",
       text: "취소 중 오류",
     });
@@ -632,7 +692,6 @@ void test("利用上限エラーでもprovider requestをopenのまま残さな�
       url,
       apiKey: "test-api-key",
       model: "tts-rt-v2",
-      voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
       terminationTimeoutMs: 1_000,
       ledger,
       createRequestRef: () => "00000000-0000-4000-8000-000000000130",
@@ -641,6 +700,7 @@ void test("利用上限エラーでもprovider requestをopenのまま残さな�
       utteranceId: "00000000-0000-4000-8000-000000000131",
       sessionId: "00000000-0000-4000-8000-000000000001",
       speakerUserId: "323456789012345678",
+      voiceId: "speaker-voice",
       language: "ko",
       text: "한도",
     });
@@ -660,7 +720,6 @@ void test("TTS接続前に失敗した本文は送信済み利用量へ加算し
     url: "ws://127.0.0.1:1",
     apiKey: "test-api-key",
     model: "tts-rt-v2",
-    voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
     terminationTimeoutMs: 1_000,
     connectTimeoutMs: 100,
     ledger,
@@ -672,6 +731,7 @@ void test("TTS接続前に失敗した本文は送信済み利用量へ加算し
       utteranceId: "00000000-0000-4000-8000-000000000141",
       sessionId: "00000000-0000-4000-8000-000000000001",
       speakerUserId: "323456789012345678",
+      voiceId: "speaker-voice",
       language: "ko",
       text: "未送信本文",
     }),
@@ -709,7 +769,6 @@ for (const [name, response] of invalidTtsResponses) {
         url,
         apiKey: "test-api-key",
         model: "tts-rt-v2",
-        voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
         terminationTimeoutMs: 1_000,
         ledger,
       });
@@ -717,6 +776,7 @@ for (const [name, response] of invalidTtsResponses) {
         utteranceId: `invalid-wire-${name}`,
         sessionId: "session-1",
         speakerUserId: "323456789012345678",
+      voiceId: "speaker-voice",
         language: "ko",
         text: "잘못된 응답",
       });
@@ -774,7 +834,6 @@ void test("TTS WebSocket接続待ちでもAbortSignalで合成開始を終了す
     url: `ws://127.0.0.1:${String(address.port)}`,
     apiKey: "test-api-key",
     model: "tts-rt-v2",
-    voices: { ja: "ja-voice", ko: "ko-voice", en: "en-voice" },
     terminationTimeoutMs: 10_000,
     connectTimeoutMs: 10_000,
     ledger,
@@ -786,6 +845,7 @@ void test("TTS WebSocket接続待ちでもAbortSignalで合成開始を終了す
       utteranceId: "abort-while-connecting",
       sessionId: "session-1",
       speakerUserId: "323456789012345678",
+      voiceId: "speaker-voice",
       language: "ko",
       text: "연결 중 취소",
     }, controller.signal);

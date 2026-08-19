@@ -5,6 +5,7 @@ import {
   ChannelType,
   ComponentType,
   MessageFlags,
+  type ButtonInteraction,
   type ChatInputCommandInteraction,
   type Client,
 } from "discord.js";
@@ -142,7 +143,7 @@ function createHarness(options: { publicSendFails?: boolean } = {}) {
   return { controller, interaction, events, sent, stopped };
 }
 
-void test("Discordへ先にephemeral ACKし、認可後だけ通常の開始通知をmention無効で投稿する", async () => {
+void test("Discordへ先にephemeral ACKし、Driverが作成したセッションカードを二重投稿しない", async () => {
   const harness = createHarness();
 
   await harness.controller.handleInteraction(harness.interaction);
@@ -150,30 +151,24 @@ void test("Discordへ先にephemeral ACKし、認可後だけ通常の開始通�
   assert.deepEqual(harness.events, [
     "defer",
     "execute",
-    "public",
     "edit:翻訳を開始しました。",
   ]);
-  assert.equal(harness.sent.length, 1);
-  const message = harness.sent[0];
-  assert.ok(message);
-  assert.equal(message.flags, MessageFlags.IsComponentsV2);
-  assert.equal("content" in message, false);
-  assert.deepEqual(message.allowedMentions, { parse: [] });
-  assert.deepEqual(textContents(message), ["通常の開始通知"]);
+  assert.equal(harness.sent.length, 0);
   assert.deepEqual(harness.stopped, []);
 });
 
-void test("開始通知を投稿できなければ開始済みセッションを即時停止する", async () => {
+void test("Controllerは親チャンネルへ開始通知を投稿せず、Driverの開始結果だけを返す", async () => {
   const harness = createHarness({ publicSendFails: true });
 
   await harness.controller.handleInteraction(harness.interaction);
 
-  assert.deepEqual(harness.stopped, ["CAPTION_SEND_FAILED"]);
-  assert.match(harness.events.at(-1) ?? "", /翻訳を停止しました/u);
+  assert.deepEqual(harness.stopped, []);
+  assert.equal(harness.events.includes("public"), false);
+  assert.match(harness.events.at(-1) ?? "", /翻訳を開始しました/u);
 });
 
-void test("実行時停止通知を日本語本文ではなく英語の理由付きカードで投稿する", async () => {
-  const sent: SentPayload[] = [];
+void test("実行時失敗ではRuntimeのセッションカード終了処理に任せ、親へ通知を追加投稿しない", async () => {
+  const stopReasons: string[] = [];
   const session = {
     sessionId: "session-1",
     guildId: "223456789012345678",
@@ -186,18 +181,11 @@ void test("実行時停止通知を日本語本文ではなく英語の理由付
     state: "ACTIVE" as const,
     startedAt: new Date("2026-08-16T00:00:00Z"),
     participantIds: ["323456789012345678"],
+    playbackMode: "conversation" as const,
+    audioEnabled: true,
+    captionFailurePolicy: "continue_audio" as const,
   };
-  const client = {
-    channels: {
-      fetch: () => Promise.resolve({
-        isTextBased: () => true,
-        send: (payload: SentPayload) => {
-          sent.push(payload);
-          return Promise.resolve();
-        },
-      }),
-    },
-  } as unknown as Client;
+  const client = {} as Client;
   const controller = new DiscordBotController({
     client,
     commands: {
@@ -208,7 +196,10 @@ void test("実行時停止通知を日本語本文ではなく英語の理由付
       }),
       getSession: () => session,
       handleVoiceParticipantsChanged: () => Promise.resolve({ stopped: false }),
-      stopForFailure: () => Promise.resolve(true),
+      stopForFailure: (_guildId, reason) => {
+        stopReasons.push(reason);
+        return Promise.resolve(true);
+      },
     },
     logger: createSafeLogger(
       "0123456789abcdef0123456789abcdef",
@@ -222,13 +213,86 @@ void test("実行時停止通知を日本語本文ではなく英語の理由付
     "無音時間の上限へ達したため翻訳を停止します。",
   );
 
-  const message = sent[0];
-  assert.ok(message);
-  assert.equal(message.flags, MessageFlags.IsComponentsV2);
-  assert.deepEqual(textContents(message), [
-    "**⚠ Translation stopped**\n-# No speech detected · `SESSION_IDLE`",
-  ]);
-  assert.doesNotMatch(JSON.stringify(message), /無音|翻訳/u);
+  assert.deepEqual(stopReasons, ["SESSION_IDLE"]);
+});
+
+void test("セッションカードの設定ボタンを同じ認可経路へ渡し、現在値入り選択メニューをephemeral表示する", async () => {
+  const executions: unknown[] = [];
+  const replies: SentPayload[] = [];
+  const session = {
+    sessionId: "session-1",
+    guildId: "223456789012345678",
+    voiceChannelId: "523456789012345678",
+    voiceChannelName: "General",
+    textChannelId: "623456789012345678",
+    textChannelName: "translation",
+    startedByUserId: "323456789012345678",
+    pair: "ja-ko" as const,
+    state: "ACTIVE" as const,
+    startedAt: new Date("2026-08-19T00:00:00Z"),
+    participantIds: ["323456789012345678"],
+    playbackMode: "conversation" as const,
+    audioEnabled: true,
+    captionFailurePolicy: "continue_audio" as const,
+  };
+  const controller = new DiscordBotController({
+    client: {} as Client,
+    commands: {
+      execute: (input) => {
+        executions.push(input);
+        return Promise.resolve({
+          ok: true,
+          ephemeral: true,
+          interactionMessage: "セッション設定を表示します。",
+        });
+      },
+      getSession: () => session,
+      handleVoiceParticipantsChanged: () => Promise.resolve({ stopped: false }),
+      stopForFailure: () => Promise.resolve(false),
+    },
+    logger: createSafeLogger(
+      "0123456789abcdef0123456789abcdef",
+      () => undefined,
+    ),
+  });
+  const interaction = {
+    customId: "translate:session-1:settings",
+    guildId: session.guildId,
+    user: { id: session.startedByUserId },
+    memberPermissions: { has: () => false },
+    guild: {
+      members: {
+        cache: new Map([[session.startedByUserId, {
+          voice: { channelId: session.voiceChannelId },
+        }]]),
+      },
+    },
+    reply: (payload: SentPayload) => {
+      replies.push(payload);
+      return Promise.resolve();
+    },
+  } as unknown as ButtonInteraction;
+
+  await controller.handleComponentInteraction(interaction);
+
+  assert.deepEqual(executions, [{
+    kind: "control",
+    action: "show_settings",
+    guildId: session.guildId,
+    actorId: session.startedByUserId,
+    actorCanManageGuild: false,
+    actorVoiceChannelId: session.voiceChannelId,
+    sessionId: session.sessionId,
+  }]);
+  const reply = replies[0];
+  assert.ok(reply);
+  assert.equal(
+    reply.flags,
+    MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
+  );
+  assert.match(textContents(reply).join("\n"), /セッション設定/u);
+  assert.match(JSON.stringify(reply), /playback_mode/u);
+  assert.match(JSON.stringify(reply), /caption_failure_policy/u);
 });
 
 void test("CONNECTING中の音声参加者変更も認可検査へ渡す", async () => {
@@ -266,6 +330,9 @@ void test("CONNECTING中の音声参加者変更も認可検査へ渡す", async
       state: "CONNECTING" as const,
       startedAt: new Date("2026-08-16T00:00:00Z"),
       participantIds: ["323456789012345678"],
+      playbackMode: "conversation" as const,
+      audioEnabled: true,
+      captionFailurePolicy: "continue_audio" as const,
     }),
     handleVoiceParticipantsChanged: (
       _guildId: string,

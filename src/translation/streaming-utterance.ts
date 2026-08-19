@@ -2,6 +2,7 @@ import type { LanguagePair } from "../domain/language-pair.js";
 import {
   TranslationTokenAssembler,
   type FinalizedUtterance,
+  type InterimUtterance,
   type TranslationToken,
 } from "./token-assembler.js";
 
@@ -21,10 +22,11 @@ export class StreamingUtterance {
     });
   }
 
-  public accept(tokens: readonly TranslationToken[]): void {
+  public accept(tokens: readonly TranslationToken[]): InterimUtterance | undefined {
     for (const token of tokens) {
       this.#assembler.accept(token);
     }
+    return this.#assembler.preview(tokens);
   }
 
   public takeAtEndpoint(): FinalizedUtterance | undefined {

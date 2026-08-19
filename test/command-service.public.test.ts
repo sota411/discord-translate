@@ -56,6 +56,9 @@ class RecordingRuntime implements SessionRuntime {
   public readonly updates: string[][] = [];
   public readonly stopReasons: string[] = [];
   public stopError: Error | undefined;
+  public readonly playbackModes: string[] = [];
+  public readonly audioStates: boolean[] = [];
+  public readonly captionFailurePolicies: string[] = [];
 
   public updateParticipants(participantIds: readonly string[]): Promise<void> {
     this.updates.push([...participantIds]);
@@ -65,6 +68,23 @@ class RecordingRuntime implements SessionRuntime {
   public stop(reason: string): Promise<void> {
     this.stopReasons.push(reason);
     return this.stopError ? Promise.reject(this.stopError) : Promise.resolve();
+  }
+
+  public setPlaybackMode(mode: "conversation" | "accuracy"): Promise<void> {
+    this.playbackModes.push(mode);
+    return Promise.resolve();
+  }
+
+  public setAudioEnabled(enabled: boolean): Promise<void> {
+    this.audioStates.push(enabled);
+    return Promise.resolve();
+  }
+
+  public setCaptionFailurePolicy(
+    policy: "continue_audio" | "stop_session",
+  ): Promise<void> {
+    this.captionFailurePolicies.push(policy);
+    return Promise.resolve();
   }
 }
 
@@ -137,7 +157,13 @@ function validStart(overrides: Partial<StartCommandInput> = {}): StartCommandInp
     },
     botPermissions: {
       voice: { viewChannel: true, connect: true, speak: true },
-      text: { viewChannel: true, sendMessages: true },
+      text: {
+        viewChannel: true,
+        sendMessages: true,
+        createPublicThreads: true,
+        sendMessagesInThreads: true,
+        manageThreads: true,
+      },
     },
     ...overrides,
   };
@@ -181,7 +207,13 @@ void test("必要権限が不足していれば、不足箇所を示して接続
     validStart({
       botPermissions: {
         voice: { viewChannel: true, connect: false, speak: true },
-        text: { viewChannel: true, sendMessages: false },
+        text: {
+          viewChannel: true,
+          sendMessages: false,
+          createPublicThreads: true,
+          sendMessagesInThreads: true,
+          manageThreads: true,
+        },
       },
     }),
   );
@@ -193,6 +225,29 @@ void test("必要権限が不足していれば、不足箇所を示して接続
   assert.equal(harness.driver.starts.length, 0);
 });
 
+void test("専用スレッドの作成・送信・終了時アーカイブ権限を開始前に確認する", async () => {
+  const harness = createHarness();
+  const result = await harness.service.execute(validStart({
+    botPermissions: {
+      voice: { viewChannel: true, connect: true, speak: true },
+      text: {
+        viewChannel: true,
+        sendMessages: true,
+        createPublicThreads: false,
+        sendMessagesInThreads: false,
+        manageThreads: false,
+      },
+    },
+  }));
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "BOT_PERMISSION_MISSING");
+  assert.match(result.interactionMessage, /CreatePublicThreads/u);
+  assert.match(result.interactionMessage, /SendMessagesInThreads/u);
+  assert.match(result.interactionMessage, /ManageThreads/u);
+  assert.equal(harness.driver.starts.length, 0);
+});
+
 void test("許可条件を満たすと利用量・容量を確認して1セッションだけ開始する", async () => {
   const harness = createHarness();
 
@@ -200,13 +255,14 @@ void test("許可条件を満たすと利用量・容量を確認して1セッ�
 
   assert.equal(result.ok, true);
   assert.equal(result.ephemeral, true);
-  assert.equal(result.publicMessage?.channelId, "623456789012345678");
-  assert.ok(result.publicMessage);
-  assert.match(result.publicMessage.content, /Translation live/u);
-  assert.match(result.publicMessage.content, /JA ⇄ KO/u);
-  assert.match(result.publicMessage.content, /Speech → Soniox \(real-time\)/u);
-  assert.match(result.publicMessage.content, /Bot storage: no audio or caption text/u);
-  assert.doesNotMatch(result.publicMessage.content, /日本語|韓国語|翻訳を開始/u);
+  assert.equal(result.publicMessage, undefined);
+  assert.match(result.interactionMessage, /専用スレッド/u);
+  assert.equal(harness.service.getSession("223456789012345678")?.playbackMode, "conversation");
+  assert.equal(harness.service.getSession("223456789012345678")?.audioEnabled, true);
+  assert.equal(
+    harness.service.getSession("223456789012345678")?.captionFailurePolicy,
+    "continue_audio",
+  );
   assert.equal(harness.usageGate.calls, 1);
   assert.equal(harness.capacityGate.calls, 1);
   assert.equal(harness.driver.starts.length, 1);
@@ -433,11 +489,57 @@ void test("開始者、対象VC参加者、ManageGuild保持者だけが停止�
     actorVoiceChannelId: "523456789012345678",
   });
   assert.equal(stopped.ok, true);
-  assert.match(stopped.publicMessage?.content ?? "", /Translation stopped/u);
-  assert.match(stopped.publicMessage?.content ?? "", /Stopped by user/u);
-  assert.match(stopped.publicMessage?.content ?? "", /USER_REQUEST/u);
+  assert.equal(stopped.publicMessage, undefined);
   assert.deepEqual(harness.driver.runtimes[0]?.stopReasons, ["USER_REQUEST"]);
   assert.equal(harness.reconciliation.calls, 1);
+});
+
+void test("実行中のカード操作は同じ停止認可を使い、設定と字幕のみをセッションへ反映する", async () => {
+  const harness = createHarness();
+  assert.equal((await harness.service.execute(validStart({ mode: "accuracy" }))).ok, true);
+  const session = harness.service.getSession("223456789012345678");
+  assert.ok(session);
+  assert.equal(session.playbackMode, "accuracy");
+
+  const common = {
+    kind: "control" as const,
+    guildId: session.guildId,
+    sessionId: session.sessionId,
+    actorId: "423456789012345678",
+    actorCanManageGuild: false,
+    actorVoiceChannelId: session.voiceChannelId,
+  };
+  assert.equal((await harness.service.execute({
+    ...common,
+    action: "toggle_audio",
+  })).ok, true);
+  assert.equal((await harness.service.execute({
+    ...common,
+    action: "set_playback_mode",
+    value: "conversation",
+  })).ok, true);
+  assert.equal((await harness.service.execute({
+    ...common,
+    action: "set_caption_failure_policy",
+    value: "stop_session",
+  })).ok, true);
+
+  const runtime = harness.driver.runtimes[0];
+  assert.ok(runtime);
+  assert.deepEqual(runtime.audioStates, [false]);
+  assert.deepEqual(runtime.playbackModes, ["conversation"]);
+  assert.deepEqual(runtime.captionFailurePolicies, ["stop_session"]);
+  assert.equal(session.audioEnabled, false);
+  assert.equal(session.playbackMode, "conversation");
+  assert.equal(session.captionFailurePolicy, "stop_session");
+
+  const stale = await harness.service.execute({
+    ...common,
+    sessionId: "old-session",
+    action: "toggle_audio",
+  });
+  assert.equal(stale.ok, false);
+  assert.equal(stale.code, "SESSION_NOT_ACTIVE");
 });
 
 void test("runtimeの停止処理が失敗しても停止後の利用ログ照合を実行する", async () => {

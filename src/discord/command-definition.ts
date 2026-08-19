@@ -3,7 +3,14 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 
-import { languagePairs } from "../domain/language-pair.js";
+import {
+  languagePairLabels,
+  languagePairs,
+} from "../domain/language-pair.js";
+import {
+  playbackModeLabels,
+  playbackModes,
+} from "../session/session-settings.js";
 
 export const translateCommand = new SlashCommandBuilder()
   .setName("translate")
@@ -20,7 +27,22 @@ export const translateCommand = new SlashCommandBuilder()
           .setDescription("翻訳する言語ペア")
           .setRequired(true)
           .addChoices(
-            ...languagePairs.map((pair) => ({ name: pair, value: pair })),
+            ...languagePairs.map((pair) => ({
+              name: languagePairLabels[pair],
+              value: pair,
+            })),
+          ),
+      )
+      .addStringOption((option) =>
+        option
+          .setName("mode")
+          .setDescription("読み上げが遅れたときの動作")
+          .setRequired(false)
+          .addChoices(
+            ...playbackModes.map((mode) => ({
+              name: playbackModeLabels[mode],
+              value: mode,
+            })),
           ),
       ),
   )

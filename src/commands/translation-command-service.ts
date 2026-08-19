@@ -1,16 +1,18 @@
-import { escapeMarkdown } from "discord.js";
-
 import {
   ApplicationError,
   type ErrorCode,
 } from "../domain/application-error.js";
 import {
   isLanguagePair,
-  languagePairLabels,
-  type LanguagePair,
 } from "../domain/language-pair.js";
 import type { SessionManager } from "../session/session-manager.js";
 import type { SessionDescriptor } from "../session/session-manager.js";
+import {
+  isCaptionFailurePolicy,
+  isPlaybackMode,
+  type CaptionFailurePolicy,
+  type PlaybackMode,
+} from "../session/session-settings.js";
 
 type VoiceChannelInput = {
   id: string;
@@ -32,12 +34,16 @@ type BotPermissions = {
   text: {
     viewChannel: boolean;
     sendMessages: boolean;
+    createPublicThreads: boolean;
+    sendMessagesInThreads: boolean;
+    manageThreads: boolean;
   };
 };
 
 export type StartCommandInput = {
   kind: "start";
   pair: string;
+  mode?: string;
   guildId: string | undefined;
   actorId: string;
   actorCanManageGuild: boolean;
@@ -48,13 +54,32 @@ export type StartCommandInput = {
 
 export type StopCommandInput = {
   kind: "stop";
+  sessionId?: string;
   guildId: string | undefined;
   actorId: string;
   actorCanManageGuild: boolean;
   actorVoiceChannelId: string | undefined;
 };
 
-export type TranslationCommandInput = StartCommandInput | StopCommandInput;
+export type SessionControlInput = {
+  kind: "control";
+  action:
+    | "show_settings"
+    | "toggle_audio"
+    | "set_playback_mode"
+    | "set_caption_failure_policy";
+  value?: string;
+  sessionId: string;
+  guildId: string | undefined;
+  actorId: string;
+  actorCanManageGuild: boolean;
+  actorVoiceChannelId: string | undefined;
+};
+
+export type TranslationCommandInput =
+  | StartCommandInput
+  | StopCommandInput
+  | SessionControlInput;
 
 export type CommandResult = {
   ok: boolean;
@@ -100,9 +125,9 @@ export class TranslationCommandService {
 
   public async execute(input: TranslationCommandInput): Promise<CommandResult> {
     try {
-      return input.kind === "start"
-        ? await this.#start(input)
-        : await this.#stop(input);
+      if (input.kind === "start") return await this.#start(input);
+      if (input.kind === "stop") return await this.#stop(input);
+      return await this.#control(input);
     } catch (error) {
       if (!(error instanceof ApplicationError)) {
         throw error;
@@ -217,6 +242,9 @@ export class TranslationCommandService {
         "対応していない言語ペアです。コマンドを再登録してください。",
       );
     }
+    const playbackMode: PlaybackMode = input.mode === undefined
+      ? "conversation"
+      : this.#requirePlaybackMode(input.mode);
 
     await this.#sessions.start({
       guildId,
@@ -227,21 +255,16 @@ export class TranslationCommandService {
       startedByUserId: input.actorId,
       pair: input.pair,
       participantIds: input.voiceChannel.humanParticipantIds,
+      playbackMode,
+      audioEnabled: true,
+      captionFailurePolicy: "continue_audio",
       requiredSttStreams: this.#maxSpeakersPerSession,
     });
 
     return {
       ok: true,
       ephemeral: true,
-      interactionMessage: "翻訳を開始しました。字幕チャンネルへ開始通知を投稿しました。",
-      publicMessage: {
-        channelId: input.textChannel.id,
-        content: this.#startMessage(
-          input.pair,
-          input.voiceChannel.name,
-          input.textChannel.name,
-        ),
-      },
+      interactionMessage: "翻訳を開始しました。専用スレッドへ字幕を表示します。",
     };
   }
 
@@ -255,26 +278,66 @@ export class TranslationCommandService {
         interactionMessage: "翻訳セッションは実行されていません。",
       };
     }
-    const mayStop =
-      input.actorId === session.startedByUserId ||
-      input.actorVoiceChannelId === session.voiceChannelId ||
-      input.actorCanManageGuild;
-    if (!mayStop) {
-      throw new ApplicationError(
-        "STOP_NOT_ALLOWED",
-        "この翻訳セッションを停止する権限がありません。",
-      );
-    }
+    this.#assertSessionMatches(session, input.sessionId);
+    this.#assertMayControl(session, input);
 
     await this.#sessions.stop(guildId, "USER_REQUEST");
     return {
       ok: true,
       ephemeral: true,
       interactionMessage: "翻訳セッションを停止しました。",
-      publicMessage: {
-        channelId: session.textChannelId,
-        content: "**⏹ Translation stopped**\n-# Stopped by user · `USER_REQUEST`",
-      },
+    };
+  }
+
+  async #control(input: SessionControlInput): Promise<CommandResult> {
+    const guildId = this.#requireAllowedGuild(input.guildId);
+    const session = this.#sessions.get(guildId);
+    if (!session) {
+      throw new ApplicationError(
+        "SESSION_NOT_ACTIVE",
+        "このカードの翻訳セッションは終了しています。",
+      );
+    }
+    this.#assertSessionMatches(session, input.sessionId);
+    this.#assertMayControl(session, input);
+
+    if (input.action === "show_settings") {
+      return {
+        ok: true,
+        ephemeral: true,
+        interactionMessage: "セッション設定を表示します。",
+      };
+    }
+    if (input.action === "toggle_audio") {
+      const enabled = !session.audioEnabled;
+      await this.#sessions.setAudioEnabled(guildId, enabled);
+      return {
+        ok: true,
+        ephemeral: true,
+        interactionMessage: enabled
+          ? "翻訳音声を再開しました。"
+          : "字幕のみへ変更しました。再生中と待機中の翻訳音声も停止しました。",
+      };
+    }
+    if (input.action === "set_playback_mode") {
+      const mode = this.#requirePlaybackMode(input.value ?? "");
+      await this.#sessions.setPlaybackMode(guildId, mode);
+      return {
+        ok: true,
+        ephemeral: true,
+        interactionMessage: mode === "conversation"
+          ? "会話優先モードへ変更しました。"
+          : "正確さ優先モードへ変更しました。",
+      };
+    }
+    const policy = this.#requireCaptionFailurePolicy(input.value ?? "");
+    await this.#sessions.setCaptionFailurePolicy(guildId, policy);
+    return {
+      ok: true,
+      ephemeral: true,
+      interactionMessage: policy === "continue_audio"
+        ? "字幕を送れない場合も音声翻訳を継続します。"
+        : "字幕を送れない場合はセッションを停止します。",
     };
   }
 
@@ -301,22 +364,55 @@ export class TranslationCommandService {
     if (!permissions.voice.speak) missing.push("Voice Speak");
     if (!permissions.text.viewChannel) missing.push("Text ViewChannel");
     if (!permissions.text.sendMessages) missing.push("Text SendMessages");
+    if (!permissions.text.createPublicThreads) missing.push("Text CreatePublicThreads");
+    if (!permissions.text.sendMessagesInThreads) {
+      missing.push("Text SendMessagesInThreads");
+    }
+    if (!permissions.text.manageThreads) missing.push("Text ManageThreads");
     return missing;
   }
 
-  #startMessage(
-    pair: LanguagePair,
-    voiceChannelName: string,
-    textChannelName: string,
-  ): string {
-    return [
-      `**🟢 Translation live** · \`${languagePairLabels[pair]}\``,
-      `🔊 ${escapeMarkdown(voiceChannelName)} · 💬 #${escapeMarkdown(textChannelName)}`,
-      "Stop · `/translate stop`",
-      "",
-      "-# Simultaneous speech is played in order.",
-      "-# Speech → Soniox (real-time).",
-      "-# Bot storage: no audio or caption text. Captions remain in Discord.",
-    ].join("\n");
+  #assertSessionMatches(
+    session: Readonly<SessionDescriptor>,
+    expectedSessionId: string | undefined,
+  ): void {
+    if (expectedSessionId !== undefined && session.sessionId !== expectedSessionId) {
+      throw new ApplicationError(
+        "SESSION_NOT_ACTIVE",
+        "このカードの翻訳セッションは終了しています。",
+      );
+    }
+  }
+
+  #assertMayControl(
+    session: Readonly<SessionDescriptor>,
+    input: Pick<StopCommandInput, "actorId" | "actorVoiceChannelId" | "actorCanManageGuild">,
+  ): void {
+    const mayControl =
+      input.actorId === session.startedByUserId ||
+      input.actorVoiceChannelId === session.voiceChannelId ||
+      input.actorCanManageGuild;
+    if (!mayControl) {
+      throw new ApplicationError(
+        "STOP_NOT_ALLOWED",
+        "この翻訳セッションを操作する権限がありません。",
+      );
+    }
+  }
+
+  #requirePlaybackMode(value: string): PlaybackMode {
+    if (isPlaybackMode(value)) return value;
+    throw new ApplicationError(
+      "SESSION_NOT_ACTIVE",
+      "再生モードの指定が不正です。",
+    );
+  }
+
+  #requireCaptionFailurePolicy(value: string): CaptionFailurePolicy {
+    if (isCaptionFailurePolicy(value)) return value;
+    throw new ApplicationError(
+      "SESSION_NOT_ACTIVE",
+      "字幕エラー時の動作指定が不正です。",
+    );
   }
 }

@@ -39,7 +39,7 @@ export class UnsupportedLanguageWarning {
     } catch (error) {
       this.#onFailure(
         "CAPTION_SEND_FAILED",
-        "警告を字幕チャンネルへ投稿できませんでした。",
+        "警告を字幕スレッドへ投稿できませんでした。",
         error,
       );
     }

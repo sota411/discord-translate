@@ -23,7 +23,6 @@ export const errorCodes = [
   "UTTERANCE_TOO_LONG",
   "TTS_OUTPUT_LIMIT_REACHED",
   "CAPTION_SEND_FAILED",
-  "PLAYBACK_BACKLOG",
   "UNSUPPORTED_LANGUAGE",
 ] as const;
 

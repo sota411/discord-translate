@@ -16,7 +16,6 @@ import {
   ChannelType,
   type Client,
   type Guild,
-  type TextChannel,
   type VoiceChannel,
 } from "discord.js";
 import {
@@ -44,13 +43,17 @@ import type {
   SessionRuntime,
   TranslationSessionDriver,
 } from "../session/session-manager.js";
+import { SpeakerVoiceAssignments } from "../session/speaker-voice-assignments.js";
+import { conversationAudioMaxDelayMs } from "../session/session-settings.js";
 import { SonioxSttFactory } from "../soniox/control.js";
 import type { TtsGateway } from "../translation/utterance-processor.js";
 import { StreamingUtterance } from "../translation/streaming-utterance.js";
+import type { InterimUtterance } from "../translation/token-assembler.js";
 import { UtteranceProcessor } from "../translation/utterance-processor.js";
 import type { UsageLedger } from "../usage/usage-ledger.js";
 import { DiscordCaptionGateway } from "./caption-gateway.js";
 import { DiscordPlaybackGateway } from "./playback-gateway.js";
+import { DiscordSessionPresentation } from "./session-presentation.js";
 import { UnsupportedLanguageWarning } from "./unsupported-language-warning.js";
 
 const { OpusEncoder } = opus;
@@ -59,6 +62,7 @@ const maxStartupOpusBytes = 512 * 1024;
 const speakingEndFinalizeDelayMs = 100;
 const transcriptInactivityFinalizeMs = 3_000;
 const manualFinalizeTrailingSilenceMs = 200;
+const interimCaptionThrottleMs = 500;
 
 export type RuntimeFailureHandler = (
   guildId: string,
@@ -76,6 +80,7 @@ type DiscordTranslationDriverOptions = {
   latency: TranslationLatencyRecorder;
   observeFlow?: TranslationFlowObserver;
   onFailure: RuntimeFailureHandler;
+  onWarning?: (guildId: string, operation: string, cause: unknown) => void;
 };
 
 type SpeakerStream = {
@@ -86,6 +91,10 @@ type SpeakerStream = {
   stt: RealtimeSttSession;
   turnFinalizer: SttTurnFinalizer;
   utterance: StreamingUtterance;
+  turnId: string;
+  pendingPreview?: InterimUtterance;
+  previewTimer?: NodeJS.Timeout;
+  lastPreviewAtMonotonic: number;
   burstHasPacket: boolean;
   lastUsageAtMonotonic?: number;
   lastAudioAtMonotonic?: number;
@@ -151,6 +160,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
   readonly #latency: TranslationLatencyRecorder;
   readonly #observeFlow: TranslationFlowObserver;
   readonly #onFailure: RuntimeFailureHandler;
+  readonly #onWarning: (guildId: string, operation: string, cause: unknown) => void;
 
   public constructor(options: DiscordTranslationDriverOptions) {
     this.#client = options.client;
@@ -163,6 +173,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
     this.#onFailure = (guildId, reason, publicMessage, cause) => {
       options.onFailure(guildId, reason, publicMessage, cause);
     };
+    this.#onWarning = options.onWarning ?? (() => undefined);
   }
 
   public async start(
@@ -182,7 +193,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
       throw new Error("対象チャンネルはGuild Voice Channelではありません");
     }
     if (textChannel?.type !== ChannelType.GuildText) {
-      throw new Error("字幕チャンネルはGuild Text Channelではありません");
+      throw new Error("セッションカードの親はGuild Text Channelではありません");
     }
     this.#assertParticipantsUnchanged(voiceChannel, participantIds);
 
@@ -197,6 +208,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
     });
 
     let connection: VoiceConnection | undefined;
+    let presentation: DiscordSessionPresentation | undefined;
     try {
       signal.throwIfAborted();
       connection = joinVoiceChannel({
@@ -213,12 +225,26 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
       );
       signal.throwIfAborted();
       this.#assertParticipantsUnchanged(voiceChannel, participantIds);
+      presentation = await DiscordSessionPresentation.open({
+        channel: textChannel,
+        sessionId: session.sessionId,
+        pair: session.pair,
+        participantDisplayNames: this.#participantDisplayNames(guild, participantIds),
+        playbackMode: session.playbackMode,
+        audioEnabled: session.audioEnabled,
+        queueWarningMs: conversationAudioMaxDelayMs,
+        startedAt: session.startedAt,
+        onWarning: (operation, cause) => {
+          this.#onWarning(session.guildId, operation, cause);
+        },
+      });
+      signal.throwIfAborted();
       return new DiscordTranslationRuntime({
         session,
         participantIds,
         guild,
         voiceChannel,
-        textChannel,
+        presentation,
         connection,
         config: this.#config,
         ledger: this.#ledger,
@@ -227,12 +253,19 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
         latency: this.#latency,
         observeFlow: this.#observeFlow,
         onFailure: this.#onFailure,
+        onWarning: this.#onWarning,
       });
     } catch (error) {
+      await presentation?.close("START_ABORTED");
       connection?.destroy();
       this.#ledger.finishSession(session.sessionId, "START_FAILED", new Date());
       throw error;
     }
+  }
+
+  #participantDisplayNames(guild: Guild, participantIds: readonly string[]): string[] {
+    return participantIds.map((userId) =>
+      guild.members.cache.get(userId)?.displayName ?? "参加者");
   }
 
   #assertParticipantsUnchanged(
@@ -261,7 +294,7 @@ export type TranslationRuntimeOptions = {
   participantIds: readonly string[];
   guild: Guild;
   voiceChannel: VoiceChannel;
-  textChannel: TextChannel;
+  presentation: DiscordSessionPresentation;
   connection: VoiceConnection;
   config: AppConfig;
   ledger: UsageLedger;
@@ -270,6 +303,7 @@ export type TranslationRuntimeOptions = {
   latency: TranslationLatencyRecorder;
   observeFlow: TranslationFlowObserver;
   onFailure: RuntimeFailureHandler;
+  onWarning: (guildId: string, operation: string, cause: unknown) => void;
 };
 
 export class DiscordTranslationRuntime implements SessionRuntime {
@@ -277,6 +311,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
   readonly #guild: Guild;
   readonly #voiceChannel: VoiceChannel;
   readonly #captions: DiscordCaptionGateway;
+  readonly #presentation: DiscordSessionPresentation;
   readonly #connection: VoiceConnection;
   readonly #config: AppConfig;
   readonly #ledger: UsageLedger;
@@ -285,15 +320,19 @@ export class DiscordTranslationRuntime implements SessionRuntime {
   readonly #latency: TranslationLatencyRecorder;
   readonly #observeFlow: TranslationFlowObserver;
   readonly #onFailure: RuntimeFailureHandler;
+  readonly #onWarning: (guildId: string, operation: string, cause: unknown) => void;
   readonly #player: AudioPlayer;
   readonly #processor: UtteranceProcessor;
   readonly #unsupportedLanguageWarning: UnsupportedLanguageWarning;
   readonly #participants: Set<string>;
+  readonly #voiceAssignments: SpeakerVoiceAssignments;
   readonly #speakers = new Map<string, SpeakerStream>();
   readonly #speakingListener: (userId: string) => void;
   readonly #speakingEndListener: (userId: string) => void;
   readonly #maxSessionTimer: NodeJS.Timeout;
   readonly #idleTimer: NodeJS.Timeout;
+  readonly #presentationTimer: NodeJS.Timeout;
+  #accuracyDelayWarning: { queueWaitMs: number; expiresAt: number } | undefined;
   #lastHumanAudioAt = performance.now();
   #stopping = false;
   #failureSent = false;
@@ -302,7 +341,17 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     this.#session = options.session;
     this.#guild = options.guild;
     this.#voiceChannel = options.voiceChannel;
-    this.#captions = new DiscordCaptionGateway(options.textChannel);
+    this.#presentation = options.presentation;
+    this.#onWarning = options.onWarning;
+    this.#captions = new DiscordCaptionGateway(options.presentation.captionChannel, {
+      failurePolicy: options.session.captionFailurePolicy,
+      onWarning: (operation, cause) => {
+        this.#onWarning(options.session.guildId, operation, cause);
+      },
+      onClosedOperationSettled: () => {
+        this.#presentation.rearchiveAfterClose();
+      },
+    });
     this.#connection = options.connection;
     this.#config = options.config;
     this.#ledger = options.ledger;
@@ -314,6 +363,12 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       options.onFailure(guildId, reason, publicMessage, cause);
     };
     this.#participants = new Set(options.participantIds);
+    this.#voiceAssignments = new SpeakerVoiceAssignments([
+      options.config.soniox.voices.ja,
+      options.config.soniox.voices.ko,
+      options.config.soniox.voices.en,
+    ]);
+    this.#voiceAssignments.updateParticipants(options.participantIds);
     this.#player = createAudioPlayer();
     this.#connection.subscribe(this.#player);
     const playback = new DiscordPlaybackGateway(this.#player, options.latency);
@@ -322,9 +377,19 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       playback,
       tts: options.tts,
       maxQueueWaitMs: options.config.limits.playbackQueueMaxMs,
+      playbackMode: options.session.playbackMode,
       maxSourceDurationMs: options.config.limits.utteranceMaxSourceSeconds * 1000,
       maxInputCharacters: options.config.limits.ttsMaxInputCharacters,
       latency: options.latency,
+      onQueueDelay: (queueWaitMs) => {
+        this.#accuracyDelayWarning = {
+          queueWaitMs,
+          expiresAt: performance.now() + 5_000,
+        };
+        void this.#refreshPresentation({ queueWaitMs }).catch((error: unknown) => {
+          this.#onWarning(this.#session.guildId, "card_update", error);
+        });
+      },
       onFatal: (error) => this.#fail(error.code, error.publicMessage),
     });
     this.#unsupportedLanguageWarning = new UnsupportedLanguageWarning({
@@ -357,6 +422,10 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       }
     }, Math.min(1_000, options.config.limits.sessionIdleTimeoutSeconds * 1000));
     this.#idleTimer.unref();
+    this.#presentationTimer = setInterval(() => {
+      void this.#refreshPresentation();
+    }, 5_000);
+    this.#presentationTimer.unref();
   }
 
   public async updateParticipants(participantIds: readonly string[]): Promise<void> {
@@ -379,6 +448,27 @@ export class DiscordTranslationRuntime implements SessionRuntime {
         "退出した発話者の音声ストリームを正常に終了できませんでした",
       );
     }
+    this.#voiceAssignments.updateParticipants(participantIds);
+    await this.#refreshPresentation();
+  }
+
+  public async setPlaybackMode(mode: import("../session/session-settings.js").PlaybackMode): Promise<void> {
+    if (mode !== "accuracy") this.#accuracyDelayWarning = undefined;
+    this.#processor.setPlaybackMode(mode);
+    await this.#refreshPresentation({ playbackMode: mode });
+  }
+
+  public async setAudioEnabled(enabled: boolean): Promise<void> {
+    if (!enabled) this.#accuracyDelayWarning = undefined;
+    this.#processor.setAudioEnabled(enabled);
+    await this.#refreshPresentation({ audioEnabled: enabled });
+  }
+
+  public setCaptionFailurePolicy(
+    policy: import("../session/session-settings.js").CaptionFailurePolicy,
+  ): Promise<void> {
+    this.#captions.setFailurePolicy(policy);
+    return Promise.resolve();
   }
 
   public async stop(reason: string): Promise<void> {
@@ -387,6 +477,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     const cleanupErrors: unknown[] = [];
     clearTimeout(this.#maxSessionTimer);
     clearInterval(this.#idleTimer);
+    clearInterval(this.#presentationTimer);
     this.#connection.receiver.speaking.off("start", this.#speakingListener);
     this.#connection.receiver.speaking.off("end", this.#speakingEndListener);
     try {
@@ -417,6 +508,12 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     } catch (error) {
       cleanupErrors.push(error);
     }
+    try {
+      await this.#captions.close();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+    await this.#presentation.close(reason);
     if (cleanupErrors.length > 0) {
       throw new AggregateError(cleanupErrors, "翻訳セッションの停止処理に失敗しました");
     }
@@ -432,6 +529,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     }
     const member = this.#voiceChannel.members.get(userId);
     if (!member || member.user.bot) return;
+    this.#processor.interruptForNewSpeech();
     this.#observeFlow("voice_speaking_started");
     this.#tts.warm?.();
     const existing = this.#speakers.get(userId);
@@ -473,6 +571,8 @@ export class DiscordTranslationRuntime implements SessionRuntime {
         maxSourceDurationMs: this.#config.limits.utteranceMaxSourceSeconds * 1_000,
         maxInputCharacters: this.#config.limits.ttsMaxInputCharacters,
       }),
+      turnId: randomUUID(),
+      lastPreviewAtMonotonic: Number.NEGATIVE_INFINITY,
       burstHasPacket: false,
       pendingTextCharacters: stt.initialTextCharacterCount,
       startupOpus: new OpusStartupBuffer({
@@ -595,6 +695,13 @@ export class DiscordTranslationRuntime implements SessionRuntime {
   }
 
   #handleSttResult(speaker: SpeakerStream, result: RealtimeResult): void {
+    if (
+      this.#stopping ||
+      speaker.closed ||
+      !this.#participants.has(speaker.userId)
+    ) {
+      return;
+    }
     try {
       const fingerprint = transcriptFingerprint(result);
       if (fingerprint !== undefined && fingerprint !== speaker.lastTranscriptFingerprint) {
@@ -605,7 +712,8 @@ export class DiscordTranslationRuntime implements SessionRuntime {
         speaker.pendingTextCharacters += Array.from(token.text).length;
       }
       void this.#unsupportedLanguageWarning.handle(speaker.userId, result);
-      speaker.utterance.accept(result.tokens);
+      const preview = speaker.utterance.accept(result.tokens);
+      if (preview) this.#schedulePreview(speaker, preview);
     } catch (error) {
       const mapped = mapSttError(error);
       this.#fail(mapped.code, mapped.publicMessage, error);
@@ -613,6 +721,13 @@ export class DiscordTranslationRuntime implements SessionRuntime {
   }
 
   #handleSttBoundary(speaker: SpeakerStream, kind: SttBoundaryKind): void {
+    if (
+      this.#stopping ||
+      speaker.closed ||
+      !this.#participants.has(speaker.userId)
+    ) {
+      return;
+    }
     if (!speaker.turnFinalizer.boundaryReceived(kind)) return;
     delete speaker.lastTranscriptFingerprint;
     this.#handleEndpoint(speaker);
@@ -620,11 +735,24 @@ export class DiscordTranslationRuntime implements SessionRuntime {
 
   #handleEndpoint(speaker: SpeakerStream): void {
     try {
-      if (this.#stopping) return;
+      if (
+        this.#stopping ||
+        speaker.closed ||
+        !this.#participants.has(speaker.userId)
+      ) {
+        return;
+      }
+      if (speaker.previewTimer) {
+        clearTimeout(speaker.previewTimer);
+        delete speaker.previewTimer;
+      }
+      delete speaker.pendingPreview;
       this.#flushSpeakerUsage(speaker);
       const finalized = speaker.utterance.takeAtEndpoint();
       if (!finalized) {
         this.#observeFlow("stt_endpoint_empty");
+        void this.#captions.discardPreview(speaker.turnId);
+        speaker.turnId = randomUUID();
         return;
       }
       this.#observeFlow("stt_endpoint_finalized");
@@ -633,7 +761,8 @@ export class DiscordTranslationRuntime implements SessionRuntime {
         this.#fail("VOICE_CONNECTION_LOST", "発話者のDiscord情報を確認できませんでした。");
         return;
       }
-      const utteranceId = randomUUID();
+      const utteranceId = speaker.turnId;
+      speaker.turnId = randomUUID();
       this.#latency.start(
         utteranceId,
         speaker.lastAudioAtMonotonic ?? performance.now(),
@@ -644,6 +773,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
         sessionId: this.#session.sessionId,
         speakerUserId: speaker.userId,
         speakerDisplayName: displayName,
+        voiceId: this.#voiceAssignments.get(speaker.userId),
       });
     } catch (error) {
       const mapped = mapSttError(error);
@@ -681,6 +811,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     const cleanupErrors: unknown[] = [];
     if (speaker.keepaliveTimer) clearInterval(speaker.keepaliveTimer);
     if (speaker.usageTimer) clearInterval(speaker.usageTimer);
+    if (speaker.previewTimer) clearTimeout(speaker.previewTimer);
     speaker.opus.destroy();
     try {
       this.#flushSpeakerUsage(speaker);
@@ -730,5 +861,68 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     if (this.#stopping || this.#failureSent) return;
     this.#failureSent = true;
     this.#onFailure(this.#session.guildId, reason, publicMessage, cause);
+  }
+
+  #schedulePreview(speaker: SpeakerStream, preview: InterimUtterance): void {
+    speaker.pendingPreview = preview;
+    if (speaker.previewTimer) return;
+    const elapsed = performance.now() - speaker.lastPreviewAtMonotonic;
+    const delayMs = Math.max(0, interimCaptionThrottleMs - elapsed);
+    speaker.previewTimer = setTimeout(() => {
+      delete speaker.previewTimer;
+      const latest = speaker.pendingPreview;
+      delete speaker.pendingPreview;
+      if (!latest || speaker.closed || this.#stopping) return;
+      const displayName = this.#guild.members.cache.get(speaker.userId)?.displayName;
+      if (!displayName) return;
+      speaker.lastPreviewAtMonotonic = performance.now();
+      void this.#captions.preview({
+        utteranceId: speaker.turnId,
+        speakerDisplayName: displayName,
+        originalText: latest.originalText,
+        translatedText: latest.translatedText,
+      }).catch((error: unknown) => {
+        if (error instanceof ApplicationError && error.code === "CAPTION_SEND_FAILED") {
+          this.#fail(error.code, error.publicMessage, error);
+          return;
+        }
+        this.#onWarning(this.#session.guildId, "caption_preview", error);
+      });
+    }, delayMs);
+    speaker.previewTimer.unref();
+  }
+
+  async #refreshPresentation(
+    override: Partial<{
+      playbackMode: import("../session/session-settings.js").PlaybackMode;
+      audioEnabled: boolean;
+      queueWaitMs: number;
+    }> = {},
+  ): Promise<void> {
+    const participantDisplayNames = [...this.#participants].map((userId) =>
+      this.#guild.members.cache.get(userId)?.displayName ?? "参加者");
+    const playbackMode = override.playbackMode ?? this.#session.playbackMode;
+    let queueWaitMs = override.queueWaitMs ?? this.#processor.currentQueueWaitMs();
+    if (
+      playbackMode === "accuracy" &&
+      this.#accuracyDelayWarning &&
+      performance.now() < this.#accuracyDelayWarning.expiresAt
+    ) {
+      queueWaitMs = Math.max(queueWaitMs, this.#accuracyDelayWarning.queueWaitMs);
+    } else if (
+      playbackMode !== "accuracy" ||
+      (
+        this.#accuracyDelayWarning !== undefined &&
+        performance.now() >= this.#accuracyDelayWarning.expiresAt
+      )
+    ) {
+      this.#accuracyDelayWarning = undefined;
+    }
+    await this.#presentation.update({
+      participantDisplayNames,
+      playbackMode,
+      audioEnabled: override.audioEnabled ?? this.#session.audioEnabled,
+      queueWaitMs,
+    });
   }
 }

@@ -47,6 +47,16 @@ void test("同時話者数を3人に設定できる", () => {
   assert.equal(config.limits.maxSpeakersPerSession, 3);
 });
 
+void test("3人を聞き分けられない重複voice設定は起動前に拒否する", () => {
+  assert.throws(
+    () => loadConfig(
+      validEnv({ SONIOX_VOICE_KO: "ja-test-voice" }),
+      new Date("2026-08-15T00:00:00Z"),
+    ),
+    /話者ごとに異なる3件/u,
+  );
+});
+
 void test("不正な設定を一括報告し、秘密値はエラーへ含めない", () => {
   const leakedToken = "do-not-leak-this-discord-token";
   const leakedKey = "do-not-leak-this-soniox-key";

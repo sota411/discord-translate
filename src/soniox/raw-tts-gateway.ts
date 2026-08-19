@@ -5,7 +5,6 @@ import WebSocket, { type RawData } from "ws";
 import { z } from "zod";
 
 import { ApplicationError } from "../domain/application-error.js";
-import type { Language } from "../domain/language-pair.js";
 import type { TranslationLatencyRecorder } from "../observability/translation-latency.js";
 import type {
   SynthesizedSpeech,
@@ -43,7 +42,6 @@ type RawSonioxTtsGatewayOptions = {
   apiKey: string;
   model: string;
   speed?: number;
-  voices: Readonly<Record<Language, string>>;
   terminationTimeoutMs: number;
   ledger: TtsUsageLedger;
   latency?: TranslationLatencyRecorder;
@@ -154,7 +152,6 @@ export class RawSonioxTtsGateway implements TtsGateway {
   readonly #apiKey: string;
   readonly #model: string;
   readonly #speed: number;
-  readonly #voices: Readonly<Record<Language, string>>;
   readonly #terminationTimeoutMs: number;
   readonly #connectTimeoutMs: number;
   readonly #keepaliveIntervalMs: number;
@@ -174,7 +171,6 @@ export class RawSonioxTtsGateway implements TtsGateway {
     this.#apiKey = options.apiKey;
     this.#model = options.model;
     this.#speed = options.speed ?? 1;
-    this.#voices = options.voices;
     this.#terminationTimeoutMs = options.terminationTimeoutMs;
     this.#connectTimeoutMs = options.connectTimeoutMs ?? 20_000;
     this.#keepaliveIntervalMs = options.keepaliveIntervalMs ?? 20_000;
@@ -226,6 +222,8 @@ export class RawSonioxTtsGateway implements TtsGateway {
     let audioEnded = false;
     let settled = false;
     let canceled = false;
+    let cancelRequested = false;
+    let streamStartSent = false;
     let terminalError: ApplicationError | undefined;
     let sentTextCharacterCount = 0;
     let textSent = false;
@@ -283,6 +281,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
     };
 
     const resetInactivityTimeout = (): void => {
+      if (settled) return;
       if (inactivityTimer) clearTimeout(inactivityTimer);
       inactivityTimer = setTimeout(() => {
         const timedOutSocket = stream.socket;
@@ -296,6 +295,84 @@ export class RawSonioxTtsGateway implements TtsGateway {
         timedOutSocket?.terminate();
       }, this.#terminationTimeoutMs);
       inactivityTimer.unref();
+    };
+
+    const requestCancel = (unavailableError: ApplicationError): void => {
+      if (settled || cancelRequested) return;
+      canceled = true;
+      cancelRequested = true;
+      if (streamStartSent && socket?.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+          stream_id: input.utteranceId,
+          cancel: true,
+        }), (error) => {
+          if (error) {
+            finish(
+              "failed",
+              new ApplicationError(
+                "SONIOX_STREAM_FAILED",
+                "Soniox TTSへ取消要求を送信できませんでした。",
+                { cause: error },
+              ),
+            );
+          } else {
+            resetInactivityTimeout();
+          }
+        });
+        return;
+      }
+      finish("failed", unavailableError);
+    };
+
+    const writableStream: WritableTtsStream = {
+      audio,
+      completed,
+      hasReceivedAudio: () => receivedAudioBytes > 0,
+      sendText: async (text) => {
+        if (canceled) return;
+        if (settled || textSent) {
+          throw new ApplicationError(
+            "SONIOX_STREAM_FAILED",
+            "Soniox TTS streamへ本文を送信できない状態です。",
+          );
+        }
+        const connectedSocket = socket;
+        if (!connectedSocket) {
+          throw new ApplicationError(
+            "SONIOX_STREAM_FAILED",
+            "Soniox TTS接続が確立していません。",
+          );
+        }
+        try {
+          await this.#send(connectedSocket, {
+            stream_id: input.utteranceId,
+            text,
+            text_end: true,
+          }, signal);
+        } catch (error) {
+          if (signal?.aborted === true) return;
+          const mapped = new ApplicationError(
+            "SONIOX_STREAM_FAILED",
+            "Soniox TTSへ本文を送信できませんでした。",
+            { cause: error },
+          );
+          finish("failed", mapped);
+          await completed;
+          throw mapped;
+        }
+        textSent = true;
+        sentTextCharacterCount = Array.from(text).length;
+        this.#latency?.mark(input.traceId ?? input.utteranceId, "tts_text_sent");
+        resetInactivityTimeout();
+      },
+      cancel: () => {
+        requestCancel(
+          new ApplicationError(
+            "SONIOX_STREAM_FAILED",
+            "Soniox TTS接続が終了しているため取消できませんでした。",
+          ),
+        );
+      },
     };
 
     const stream: ActiveTtsStream = {
@@ -342,14 +419,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
 
     if (signal) {
       const onAbort = (): void => {
-        canceled = true;
-        if (socket?.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({
-            stream_id: input.utteranceId,
-            cancel: true,
-          }), () => undefined);
-        }
-        finish("failed", canceledTtsError(signal));
+        requestCancel(canceledTtsError(signal));
       };
       removeAbortListener = (): void => signal.removeEventListener("abort", onAbort);
       signal.addEventListener("abort", onAbort, { once: true });
@@ -377,11 +447,12 @@ export class RawSonioxTtsGateway implements TtsGateway {
     }
 
     try {
+      streamStartSent = true;
       await this.#send(socket, {
         api_key: this.#apiKey,
         model: this.#model,
         language: input.language,
-        voice: this.#voices[input.language],
+        voice: input.voiceId,
         audio_format: "pcm_s16le",
         sample_rate: 48_000,
         speed: this.#speed,
@@ -391,6 +462,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
       }, signal);
       this.#ensureKeepalive(socket);
     } catch (error) {
+      if (signal?.aborted === true) return writableStream;
       const mapped = new ApplicationError(
         "SONIOX_STREAM_FAILED",
         "Soniox TTSへstream設定を送信できませんでした。",
@@ -404,70 +476,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
       throw mapped;
     }
 
-    return {
-      audio,
-      completed,
-      hasReceivedAudio: () => receivedAudioBytes > 0,
-      sendText: async (text) => {
-        if (settled || textSent) {
-          throw new ApplicationError(
-            "SONIOX_STREAM_FAILED",
-            "Soniox TTS streamへ本文を送信できない状態です。",
-          );
-        }
-        try {
-          await this.#send(socket, {
-            stream_id: input.utteranceId,
-            text,
-            text_end: true,
-          }, signal);
-        } catch (error) {
-          const mapped = new ApplicationError(
-            "SONIOX_STREAM_FAILED",
-            "Soniox TTSへ本文を送信できませんでした。",
-            { cause: error },
-          );
-          finish("failed", mapped);
-          await completed;
-          throw mapped;
-        }
-        textSent = true;
-        sentTextCharacterCount = Array.from(text).length;
-        this.#latency?.mark(input.traceId ?? input.utteranceId, "tts_text_sent");
-        resetInactivityTimeout();
-      },
-      cancel: () => {
-        if (settled) return;
-        canceled = true;
-        if (socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({
-            stream_id: input.utteranceId,
-            cancel: true,
-          }), (error) => {
-            if (error) {
-              finish(
-                "failed",
-                new ApplicationError(
-                  "SONIOX_STREAM_FAILED",
-                  "Soniox TTSへ取消要求を送信できませんでした。",
-                  { cause: error },
-                ),
-              );
-            } else {
-              resetInactivityTimeout();
-            }
-          });
-          return;
-        }
-        finish(
-          "failed",
-          new ApplicationError(
-            "SONIOX_STREAM_FAILED",
-            "Soniox TTS接続が終了しているため取消できませんでした。",
-          ),
-        );
-      },
-    };
+    return writableStream;
   }
 
   public close(): void {

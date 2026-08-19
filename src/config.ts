@@ -190,6 +190,13 @@ export function loadConfig(
   if (raw.MAX_SPEAKERS_PER_SESSION > 3) {
     issues.push("MAX_SPEAKERS_PER_SESSION: 3以下の整数を指定してください");
   }
+  if (new Set([
+    raw.SONIOX_VOICE_JA,
+    raw.SONIOX_VOICE_KO,
+    raw.SONIOX_VOICE_EN,
+  ]).size !== 3) {
+    issues.push("SONIOX_VOICE_JA/KO/EN: 話者ごとに異なる3件のvoice IDを指定してください");
+  }
   if (raw.USER_MONTHLY_COST_LIMIT_MICROUSD > raw.GUILD_MONTHLY_COST_LIMIT_MICROUSD) {
     issues.push("GUILD_MONTHLY_COST_LIMIT_MICROUSD: User上限以上にしてください");
   }

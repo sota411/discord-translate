@@ -106,7 +106,6 @@ export async function startApplication(
       apiKey: config.soniox.apiKey,
       model: config.soniox.ttsModel,
       speed: config.soniox.ttsSpeed,
-      voices: config.soniox.voices,
       terminationTimeoutMs: config.soniox.terminationTimeoutMs,
       ledger,
       latency,
@@ -131,6 +130,12 @@ export async function startApplication(
             guild_id: logger.pseudonymize(guildId),
             reason,
           });
+        });
+      },
+      onWarning: (guildId, operation, cause) => {
+        logger.error("translation_runtime_warning", cause, {
+          guild_id: logger.pseudonymize(guildId),
+          operation,
         });
       },
     });
