@@ -1,15 +1,15 @@
 # Discord Realtime Translation Bot
 
-許可したDiscordサーバーと利用者だけが使える、private beta向けのリアルタイム音声翻訳Botです。日本語・韓国語・英語から2言語を選び、確定した翻訳だけを同じ音声チャンネルで再生し、原文と翻訳文をテキストチャンネルへ投稿します。
+許可したDiscordサーバーと利用者だけが使える、private beta向けのリアルタイム音声翻訳Botです。日本語・韓国語・英語から2言語を選び、確定した翻訳だけを同じ音声チャンネルで再生し、仮字幕と確定字幕をセッション専用スレッドへ表示します。
 
 設計の詳細は[docs/design.md](./docs/design.md)を参照してください。
 
 ## 現在の状態
 
-- 実装済み: Guild/User許可リスト、Discord Voice受信・再生、Soniox STT/TTS、字幕、精度優先のsemantic endpoint、Discord発話終了時のmanual finalize、認識停滞3秒と発話30秒の終端上限、同一発話内の少数方向揺れの局所除外、発話確定後だけのTTS生成、1.15倍を既定値とするTTS速度調整、本文を送らないTTS接続ウォームアップ、確定順のFIFO再生、実時間の再生待ち上限、接続・合成のキャンセル、STT接続待ちの有界音声buffer、TTS wire応答検証、破損Opus packetの局所破棄、区間遅延ログ、SQLite利用量台帳、費用上限、利用ログ照合、graceful shutdown
+- 実装済み: Guild/User許可リスト、Discord Voice受信・再生、Soniox STT/TTS、500 ms間隔の仮字幕、専用スレッドとセッションカード、会話優先・正確さ優先の再生モード、字幕のみ切替、話者別voice、精度優先のsemantic endpoint、Discord発話終了時のmanual finalize、認識停滞3秒と発話30秒の終端上限、発話確定後だけのTTS生成、1.15倍を既定値とするTTS速度調整、本文を送らないTTS接続ウォームアップ、確定順のFIFO再生、接続・合成のキャンセル、STT接続待ちの有界音声buffer、TTS wire応答検証、破損Opus packetの局所破棄、区間遅延ログ、SQLite利用量台帳、費用上限、利用ログ照合、graceful shutdown
 - 自動確認済み: lint、型検査、公開境界・統合テスト、production build、production依存監査、native module smoke、Compose設定検証、Docker build
 - 実機確認済み: 実Discordと実Sonioxの日韓1人通話、字幕、読み上げ、8発話の区間遅延計測。発話中にTTSへ確定翻訳を送るPoCも実施したが、通常操作と安定性を優先し、現行実装には採用していない
-- 未確認: 発話境界の確定後にTTSを開始する現行版の実Discord遅延、複数人通話（3人を含む）、日英・韓英、3言語ペアの30分E2Eと料金受入。300 msは発話中TTSを採用しない現行方針と実測値が両立しないため、MVPの必須受入条件にはしない
+- 未確認: 新しいセッションカード・専用スレッド・操作部品・仮字幕・2つの再生モード・話者別voiceを含む現行版の実Discord/Soniox E2E、複数人通話（3人を含む）、日英・韓英、3言語ペアの30分継続と料金受入。300 msは発話中TTSを採用しない現行方針と実測値が両立しないため、MVPの必須受入条件にはしない
 
 Discordの音声受信はDiscord側で正式に文書化された安定APIではありません。`@discordjs/voice`は`0.19.2`へ固定しており、更新前に実機PoCを再実行してください。
 
@@ -32,11 +32,14 @@ Discordの音声受信はDiscord側で正式に文書化された安定APIでは
 5. Application OwnerがOAuth2 URL Generatorを一時的に使い、`bot`と`applications.commands`、次のBot権限だけを選んでテストサーバーへ追加します。URLは配布しません。
    - View Channels
    - Send Messages
+   - Create Public Threads
+   - Send Messages in Threads
+   - Manage Threads
    - Connect
    - Speak
 6. Discordの`ユーザー設定 > 詳細設定 > 開発者モード`をONにします。サーバーと自分を右クリックして、それぞれ`IDをコピー`します。
 
-IDは、公開を防ぐruntime許可リストに必要です。自分一人のデバッグでもServer IDと自分のUser IDは設定します。
+IDは、公開を防ぐruntime許可リストに必要です。自分一人のデバッグでもServer IDと自分のUser IDは設定します。既存のBotへ今回の更新を適用する場合は、Botロールへ上記3つのスレッド権限を追加するか、権限を選び直して再招待してください。
 
 ## 2. 環境変数を用意する
 
@@ -86,7 +89,7 @@ Docker Composeは、このホスト側ファイルをコンテナ内の`/config/
 pnpm soniox:inspect
 ```
 
-`tts-rt-v2`とvoice IDが表示されれば、Sonioxの準備は完了です。voiceは確認済みの初期値`Kenji`、`Mina`、`Emma`をそのまま使用できます。変更したい場合だけ、`SONIOX_VOICE_JA`、`SONIOX_VOICE_KO`、`SONIOX_VOICE_EN`を書き換えてください。読み上げ速度は`SONIOX_TTS_SPEED`で0.7〜1.3の範囲に設定でき、省略時は1.15倍です。
+`tts-rt-v2`とvoice IDが表示されれば、Sonioxの準備は完了です。`SONIOX_VOICE_JA`、`SONIOX_VOICE_KO`、`SONIOX_VOICE_EN`という既存の設定名は互換性のため残していますが、現在は言語別ではなく参加者1〜3のvoice枠として使います。3件には重複しない多言語voiceを指定してください。同じ参加者には翻訳先言語が変わっても同じvoiceが割り当てられます。読み上げ速度は`SONIOX_TTS_SPEED`で0.7〜1.3の範囲に設定でき、省略時は1.15倍です。
 
 最後に、TokenやAPI Keyを表示せず、不足している設定名と理由を確認します。
 
@@ -241,10 +244,12 @@ pnpm dev
 2. `ALLOWED_USER_IDS`へ登録した自分が、通常のボイスチャンネルへ参加します。
 3. 音声の回り込みを避けるため、イヤホンまたはヘッドホンを使用します。
 4. 字幕を表示したいテキストチャンネルで`/translate start`と入力します。
-5. `pair`で`ja-ko`を選択して送信します。
-6. Botが同じボイスチャンネルへ参加し、テキストチャンネルへ`Translation live · JA ⇄ KO`カードを投稿したことを確認します。
-7. 日本語で短く話します。`JA → KO`カード内に日本語の原文、韓国語の翻訳、`🔊 PLAYED`が表示され、韓国語音声が返れば成功です。
-8. `/translate stop`を実行します。Botがボイスチャンネルから退出し、`Translation stopped`カードが投稿されれば終了です。
+5. `pair`で`日本語 ⇄ 韓国語`を選び、必要なら`mode`で`会話優先`または`正確さ優先`を選択します。省略時は`会話優先`です。
+6. Botが同じボイスチャンネルへ参加し、親チャンネルへ`🟢 翻訳中`カードを1件だけ投稿し、そのカードから専用スレッドを作成したことを確認します。
+7. 日本語で短く話します。スレッド内の1件が`認識中`・`翻訳中`から確定字幕へ置き換わり、`🔊 再生済み`になって韓国語音声が返れば成功です。
+8. カードの`停止`または`/translate stop`を実行します。Botがボイスチャンネルから退出し、カードが終了表示へ変わり、専用スレッドがアーカイブされれば終了です。
+
+会話優先では、再生待ちが2.5秒を超えた発話の音声だけを省略し、字幕へ`⏭ 遅延回避のため音声省略`と表示してセッションを継続します。人が新しく話し始めた場合も、古い翻訳音声を中断します。正確さ優先では全発話を確定順に再生し、遅延が2.5秒を超えるとカードへ実測値を警告表示します。カードの`字幕のみへ変更`と`設定`は、開始者、対象ボイスチャンネルの参加者、または`ManageGuild`保持者が操作できます。
 
 扇風機などの環境音でDiscordの発話表示が点灯し続ける場合は、`ユーザー設定 > 音声・ビデオ`で[Krisp](https://support.discord.com/hc/en-us/articles/360040843952-Krisp-FAQ)を有効にしてください。それでも続く場合は[入力感度](https://support.discord.com/hc/en-us/articles/211376518-Voice-Input-Modes-101-Push-to-Talk-Voice-Activated)の自動判定をOFFにし、無発話時のノイズより高く、最も小さい声より低い位置へ閾値を調整します。Bot側にも認識停滞3秒と発話30秒の確定上限があるため、終了イベントが欠けても無期限には待ちません。
 
@@ -256,7 +261,7 @@ pnpm dev
 - 複数人で双方向会話を試す場合は、参加者全員を`ALLOWED_USER_IDS`へ登録します。
 - 同時利用人数は`MAX_SPEAKERS_PER_SESSION`で1〜3人に設定します。
 
-自動停止条件は、最大30分、120秒無音、参加者不在、未許可Userの参加、設定人数を超える参加、再生待ち10秒超過、利用上限、外部接続障害です。
+自動停止条件は、最大30分、120秒無音、参加者不在、未許可Userの参加、設定人数を超える参加、利用上限、外部接続障害です。再生待ち時間だけではセッションを停止しません。
 
 ### 3言語ペアの受入確認
 
@@ -313,5 +318,5 @@ docker build --network=host --tag discord-translate:local .
 - `.env.local`はGitとDocker build contextから除外されています。
 - Botは外部向けHTTPポートを開きません。
 - API KeyをDiscordへ渡さず、BotプロセスからだけSonioxへ接続します。
-- 音声、原文、翻訳文、表示名はSQLiteや構造化ログへ保存しません。字幕はDiscord上に残ります。
+- 音声、原文、翻訳文、表示名はSQLiteや構造化ログへ保存しません。字幕はセッション専用の公開スレッド内に残り、終了時に自動アーカイブされます。
 - 公開Botへ変更する場合は、運営者のAPI Keyを共有する方式を継続せず、BYOKまたは利用者別課金を先に設計してください。
