@@ -63,6 +63,8 @@ const speakingEndFinalizeDelayMs = 100;
 const transcriptInactivityFinalizeMs = 3_000;
 const manualFinalizeTrailingSilenceMs = 200;
 const interimCaptionThrottleMs = 500;
+const voiceReceiveRecoveryDelayMs = 200;
+const maxConsecutiveVoiceReceiveRecoveries = 3;
 
 export type RuntimeFailureHandler = (
   guildId: string,
@@ -104,6 +106,8 @@ type SpeakerStream = {
   startupBufferOverflowed: boolean;
   keepaliveTimer?: NodeJS.Timeout;
   usageTimer?: NodeJS.Timeout;
+  receiveRecoveryTimer?: NodeJS.Timeout;
+  receiveRecoveryAttempts: number;
   lastTranscriptFingerprint?: string;
   closed: boolean;
 };
@@ -581,17 +585,63 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       }),
       sttConnected: false,
       startupBufferOverflowed: false,
+      receiveRecoveryAttempts: 0,
       closed: false,
     };
     this.#speakers.set(userId, speaker);
-    speaker.opus.on("data", (packet: Buffer) => this.#handleOpusPacket(speaker, packet));
-    speaker.opus.on("error", (error) => {
-      this.#fail("VOICE_CONNECTION_LOST", "Discordの音声受信に失敗しました。", error);
-    });
+    this.#attachSpeakerAudio(speaker, opus);
     void this.#connectSpeaker(speaker).catch((error: unknown) => {
       const mapped = mapSttError(error);
       this.#fail(mapped.code, mapped.publicMessage, error);
     });
+  }
+
+  #attachSpeakerAudio(speaker: SpeakerStream, stream: AudioReceiveStream): void {
+    speaker.opus = stream;
+    let streamError: unknown;
+    stream.on("data", (packet: Buffer) => {
+      if (speaker.closed || speaker.opus !== stream) return;
+      speaker.receiveRecoveryAttempts = 0;
+      this.#handleOpusPacket(speaker, packet);
+    });
+    stream.once("error", (error) => {
+      streamError = error;
+    });
+    stream.once("close", () => {
+      if (this.#stopping || speaker.closed || speaker.opus !== stream) return;
+      this.#recoverSpeakerAudio(
+        speaker,
+        stream,
+        streamError ?? new Error("Discordの音声受信streamが予期せず終了しました。"),
+      );
+    });
+  }
+
+  #recoverSpeakerAudio(
+    speaker: SpeakerStream,
+    closedStream: AudioReceiveStream,
+    cause: unknown,
+  ): void {
+    speaker.receiveRecoveryAttempts += 1;
+    if (speaker.receiveRecoveryAttempts > maxConsecutiveVoiceReceiveRecoveries) {
+      this.#fail("VOICE_CONNECTION_LOST", "Discordの音声受信を復旧できませんでした。", cause);
+      return;
+    }
+    this.#onWarning(this.#session.guildId, "voice_receive_stream_recovering", cause);
+    const timer = setTimeout(() => {
+      if (speaker.receiveRecoveryTimer === timer) delete speaker.receiveRecoveryTimer;
+      if (this.#stopping || speaker.closed || speaker.opus !== closedStream) return;
+      try {
+        const nextStream = this.#connection.receiver.subscribe(speaker.userId, {
+          end: { behavior: EndBehaviorType.Manual },
+        });
+        this.#attachSpeakerAudio(speaker, nextStream);
+      } catch (error) {
+        this.#fail("VOICE_CONNECTION_LOST", "Discordの音声受信を再開できませんでした。", error);
+      }
+    }, voiceReceiveRecoveryDelayMs);
+    speaker.receiveRecoveryTimer = timer;
+    timer.unref();
   }
 
   async #connectSpeaker(speaker: SpeakerStream): Promise<void> {
@@ -812,6 +862,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     if (speaker.keepaliveTimer) clearInterval(speaker.keepaliveTimer);
     if (speaker.usageTimer) clearInterval(speaker.usageTimer);
     if (speaker.previewTimer) clearTimeout(speaker.previewTimer);
+    if (speaker.receiveRecoveryTimer) clearTimeout(speaker.receiveRecoveryTimer);
     speaker.opus.destroy();
     try {
       this.#flushSpeakerUsage(speaker);

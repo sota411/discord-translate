@@ -15,12 +15,14 @@ import {
 import { validEnv } from "./helpers/valid-env.js";
 
 class FakeSttSession extends EventEmitter {
+  public audioWrites = 0;
+
   public connect(): Promise<void> {
     return Promise.resolve();
   }
 
   public sendAudio(): void {
-    return undefined;
+    this.audioWrites += 1;
   }
 
   public keepAlive(): void {
@@ -227,6 +229,106 @@ void test("RuntimeのSTT resultから警告送信失敗を非致命ログへ渡�
     stt.emit("endpoint");
     await new Promise<void>((resolve) => setImmediate(resolve));
     assert.deepEqual(failures, []);
+  } finally {
+    await runtime.stop("TEST_COMPLETE");
+  }
+});
+
+void test("Discord音声受信streamの一時エラーは再購読してセッションを継続する", {
+  timeout: 2_000,
+}, async () => {
+  const userId = "323456789012345678";
+  const speaking = new EventEmitter();
+  const opusStreams = [new PassThrough(), new PassThrough()];
+  const stt = new FakeSttSession();
+  const failures: string[] = [];
+  const warnings: string[] = [];
+  const connectionEvents = new EventEmitter();
+  let subscriptions = 0;
+  const runtime = new DiscordTranslationRuntime({
+    session: {
+      sessionId: "session-voice-recovery",
+      guildId: "223456789012345678",
+      voiceChannelId: "voice-1",
+      voiceChannelName: "General",
+      textChannelId: "text-1",
+      textChannelName: "translation",
+      startedByUserId: userId,
+      pair: "ja-ko",
+      state: "ACTIVE",
+      startedAt: new Date("2026-08-20T00:00:00Z"),
+      participantIds: [userId],
+      playbackMode: "conversation",
+      audioEnabled: true,
+      captionFailurePolicy: "continue_audio",
+    },
+    participantIds: [userId],
+    guild: {
+      members: {
+        cache: new Map([[userId, { displayName: "Sota" }]]),
+      },
+    },
+    voiceChannel: {
+      members: new Map([[userId, { user: { bot: false } }]]),
+    },
+    presentation: {
+      captionChannel: {
+        send: () => Promise.resolve({
+          edit: () => Promise.resolve(),
+          delete: () => Promise.resolve(),
+        }),
+      },
+      update: () => Promise.resolve(),
+      close: () => Promise.resolve(),
+    },
+    connection: {
+      receiver: {
+        speaking,
+        subscribe: () => {
+          const stream = opusStreams[subscriptions];
+          assert.ok(stream);
+          subscriptions += 1;
+          return stream;
+        },
+      },
+      subscribe: () => undefined,
+      on: connectionEvents.on.bind(connectionEvents),
+      destroy: () => undefined,
+    },
+    config: loadConfig(validEnv({ SONIOX_REGION: "jp" })),
+    ledger: {
+      openProviderRequest: () => undefined,
+      recordProviderUsage: () => undefined,
+      finishProviderRequest: () => undefined,
+      finishSession: () => undefined,
+    },
+    sttFactory: {
+      create: () => ({ session: stt, initialTextCharacterCount: 0 }),
+    },
+    tts: {},
+    latency: {
+      start: () => undefined,
+      mark: () => undefined,
+      finish: () => undefined,
+    },
+    observeFlow: () => undefined,
+    onFailure: (_guildId: string, reason: string) => failures.push(reason),
+    onWarning: (_guildId: string, operation: string) => warnings.push(operation),
+  } as unknown as TranslationRuntimeOptions);
+
+  try {
+    speaking.emit("start", userId);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    opusStreams[0]?.destroy(new Error("Failed to decrypt voice packet"));
+    await new Promise<void>((resolve) => setTimeout(resolve, 300));
+
+    assert.equal(subscriptions, 2);
+    opusStreams[1]?.write(Buffer.from([0x00]));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.equal(stt.audioWrites, 1);
+    assert.deepEqual(failures, []);
+    assert.deepEqual(warnings, ["voice_receive_stream_recovering"]);
   } finally {
     await runtime.stop("TEST_COMPLETE");
   }

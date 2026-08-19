@@ -354,6 +354,8 @@ Sonioxのwire protocolには`<end>`と`<fin>`の制御トークンがあるが�
 
 Discordのspeaking startでTTS WebSocketの接続だけを開始し、TLSとWebSocketの接続時間を隠す。この時点ではAPI keyを含むstream設定、言語、voice、翻訳本文を送らない。Soniox TTSは接続後およそ10秒以内に最初のstream設定を要求するため、発話境界の確定前に閉じた場合はTTS開始時に再接続する。
 
+Discord Voiceの参加者別`AudioReceiveStream`が復号またはpacket解析エラーで閉じた場合は、Soniox STT接続と発話bufferを維持し、200 ms後に同じ参加者の受信streamだけを再購読する。正常packetを1件受信した時点で連続復旧回数を0へ戻す。正常packetを挟まず4回連続で閉じた場合は、音声欠落と再購読loopを避けるため`VOICE_CONNECTION_LOST`でセッションを停止する。再購読時は本文やDiscord IDを含めず、`translation_runtime_warning`の`operation: "voice_receive_stream_recovering"`へ記録する。
+
 最初のstream設定後は20秒間隔で`{"keep_alive": true}`を送り、`terminated: true`を受けた接続を後続発話の別`stream_id`へ再利用する。生成音声がない状態が3分を超えてSoniox側から接続を閉じられた場合も、次の発話で再接続する。active streamの途中で切断した場合は自動再送せず、要求を`failed`としてセッションを停止する。
 
 FIFO processorは同時のTTS生成を1本に制限する。先行発話のTTS生成が完了し、その音声がDiscordで再生中な場合は、発話境界が確定した後続1件だけをTTS生成する。これは未確定tokenの先読みではなく、確定済みFIFOの待機処理である。
@@ -761,7 +763,7 @@ Botは`SONIOX_PROJECT_MONTHLY_BUDGET_MICROUSD`へ同じ値を保持し、`GLOBAL
 | `USAGE_LEDGER_UNAVAILABLE` | SQLite書き込み失敗 | 開始を拒否するか実行中セッションを停止 | DB復旧後のみ |
 | `USAGE_RECONCILIATION_STALE` | Sonioxとの照合が古い | 新しい開始を拒否する | 照合成功後 |
 | `SONIOX_CAPACITY_UNAVAILABLE` | `MAX_SPEAKERS_PER_SESSION`本のSTTまたはTTS 1 stream分の空きがない | Sonioxへ接続せず開始を拒否する | 空き確認後 |
-| `VOICE_CONNECTION_LOST` | Discord Voice切断 | 組み込み再接続を待ち、期限超過で停止 | `/start`で再実行 |
+| `VOICE_CONNECTION_LOST` | Discord Voice切断、または参加者別受信streamを4回連続で復旧不能 | Voice接続は組み込み再接続を待つ。受信streamは200 ms後に再購読し、いずれも復旧上限を超えた場合だけ停止 | `/start`で再実行 |
 | `SONIOX_AUTH_FAILED` | APIキーが不正、失効、またはProject regionと不一致 | セッションを停止し、運営者へ通知 | 自動再試行しない |
 | `SONIOX_BUDGET_EXHAUSTED` | Sonioxが残高不足またはProject・Organization月額上限到達をHTTP 402で返す | 全セッションを停止し、新しい開始を拒否して運営者へ通知 | 入金、上限変更、または翌月まで自動再試行しない |
 | `SONIOX_LIMIT_EXCEEDED` | 429または並行数上限 | セッションを停止し、運営者へ通知 | 自動再試行しない |
