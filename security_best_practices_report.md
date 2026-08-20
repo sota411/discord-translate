@@ -13,7 +13,7 @@
 - application code、test、script、CI、Dockerfile、Compose、設定例、文書
 - Git が追跡する全ファイル
 - 到達可能な Git 履歴
-- 到達不能な1コミットと8ブロブ
+- 到達不能な1コミットと9ブロブ
 - `discord_realtime_translation_chat.zip`内の2ファイル
 - Discord の認可、thread、message、Voice、ログ境界
 - Soniox の認証、固定 endpoint、STT/TTS wire、利用量・費用制御
@@ -77,7 +77,7 @@ semgrep scan --config p/secrets --json --quiet "${tracked_files[@]}" \
          scanned_files: (.paths.scanned | length)}'
 ```
 
-Git 履歴は、全参照から到達できるブロブと、参照・reflogのどちらからも到達できない残存ブロブを分けて検査しました。次の手順は内容や検出文字列を表示せず、件数だけを出します。監査時の到達不能オブジェクトは、commit 1件、blob 8件、tree 4件でした。到達可能なブロブ数は、コミットが増えると変わります。
+Git 履歴は、全参照から到達できるブロブと、参照・reflogのどちらからも到達できない残存ブロブを分けて検査しました。次の手順は内容や検出文字列を表示せず、件数だけを出します。最終コミット後の到達不能オブジェクトは、commit 1件、blob 9件、tree 4件でした。到達可能なブロブ数は、コミットが増えると変わります。
 
 ```bash
 set -euo pipefail
