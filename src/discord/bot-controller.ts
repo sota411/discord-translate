@@ -1,4 +1,5 @@
 import {
+  AttachmentBuilder,
   ChannelType,
   Events,
   MessageFlags,
@@ -7,6 +8,7 @@ import {
   type ButtonInteraction,
   type Client,
   type Interaction,
+  type PermissionsBitField,
   type StringSelectMenuInteraction,
   type VoiceState,
 } from "discord.js";
@@ -15,8 +17,11 @@ import type {
   CommandResult,
   TranslationCommandService,
 } from "../commands/translation-command-service.js";
+import { ApplicationError } from "../domain/application-error.js";
 import type { SafeLogger } from "../observability/logger.js";
 import { createSessionSettingsMessagePayload } from "./message-payload.js";
+import { createSessionStatusMessage } from "./status-message.js";
+import { exportThreadToMarkdown } from "./thread-export.js";
 
 type CommandService = Pick<
   TranslationCommandService,
@@ -27,12 +32,14 @@ type DiscordBotControllerOptions = {
   client: Client;
   commands: CommandService;
   logger: SafeLogger;
+  now?: () => Date;
 };
 
 export class DiscordBotController {
   readonly #client: Client;
   readonly #commands: CommandService;
   readonly #logger: SafeLogger;
+  readonly #now: () => Date;
   readonly #interactionListener: (interaction: Interaction) => void;
   readonly #voiceStateListener: (oldState: VoiceState, newState: VoiceState) => void;
   #acceptingCommands = true;
@@ -42,6 +49,7 @@ export class DiscordBotController {
     this.#client = options.client;
     this.#commands = options.commands;
     this.#logger = options.logger;
+    this.#now = options.now ?? (() => new Date());
     this.#interactionListener = (interaction) => {
       if (interaction.isChatInputCommand()) {
         void this.handleInteraction(interaction).catch((error: unknown) => {
@@ -87,7 +95,12 @@ export class DiscordBotController {
   }
 
   public async handleInteraction(interaction: ChatInputCommandInteraction): Promise<void> {
-    if (!interaction.isChatInputCommand() || interaction.commandName !== "translate") return;
+    if (
+      !interaction.isChatInputCommand() ||
+      !["translate", "status", "export", "register"].includes(interaction.commandName)
+    ) {
+      return;
+    }
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     if (!this.#acceptingCommands) {
@@ -96,15 +109,27 @@ export class DiscordBotController {
     }
 
     try {
-      const subcommand = interaction.options.getSubcommand(true);
-      if (subcommand !== "start" && subcommand !== "stop") {
-        throw new Error("未対応のtranslateサブコマンドです");
+      if (interaction.commandName === "translate") {
+        await this.#handleTranslateCommand(interaction);
+        return;
       }
-      const result = subcommand === "start"
-        ? await this.#commands.execute(this.#startInput(interaction))
-        : await this.#commands.execute(this.#stopInput(interaction));
-      await this.#completeInteraction(interaction, result);
+      if (interaction.commandName === "status") {
+        await this.#handleStatusCommand(interaction);
+        return;
+      }
+      if (interaction.commandName === "register") {
+        await this.#completeInteraction(
+          interaction,
+          await this.#commands.execute(this.#registerInput(interaction)),
+        );
+        return;
+      }
+      await this.#handleExportCommand(interaction);
     } catch (error) {
+      if (error instanceof ApplicationError) {
+        await interaction.editReply(error.publicMessage);
+        return;
+      }
       this.#logger.error("discord_interaction_failed", error, {
         guild_id: this.#guildLogId(interaction.guildId),
       });
@@ -112,6 +137,139 @@ export class DiscordBotController {
         "コマンドを処理できませんでした。時間を置いて再実行してください。",
       );
     }
+  }
+
+  async #handleTranslateCommand(
+    interaction: ChatInputCommandInteraction,
+  ): Promise<void> {
+    const subcommand = interaction.options.getSubcommand(true);
+    if (subcommand !== "start" && subcommand !== "stop") {
+      throw new Error("未対応のtranslateサブコマンドです");
+    }
+    const result = subcommand === "start"
+      ? await this.#commands.execute(this.#startInput(interaction))
+      : await this.#commands.execute(this.#stopInput(interaction));
+    await this.#completeInteraction(interaction, result);
+  }
+
+  async #handleStatusCommand(
+    interaction: ChatInputCommandInteraction,
+  ): Promise<void> {
+    const result = await this.#commands.execute({
+      kind: "status",
+      guildId: interaction.guildId ?? undefined,
+      actorId: interaction.user.id,
+    });
+    if (!result.ok || !result.status) {
+      await interaction.editReply(result.interactionMessage);
+      return;
+    }
+    const displayNames = result.status.participantIds.map((participantId) =>
+      interaction.guild?.members.cache.get(participantId)?.displayName ?? "参加者");
+    await interaction.editReply(createSessionStatusMessage(
+      result.status,
+      displayNames,
+      this.#now(),
+    ));
+  }
+
+  async #handleExportCommand(
+    interaction: ChatInputCommandInteraction,
+  ): Promise<void> {
+    const authorization = await this.#commands.execute({
+      kind: "export",
+      guildId: interaction.guildId ?? undefined,
+      actorId: interaction.user.id,
+    });
+    if (!authorization.ok) {
+      await interaction.editReply(authorization.interactionMessage);
+      return;
+    }
+
+    const selected = interaction.options.getChannel(
+      "thread",
+      false,
+      [ChannelType.PublicThread],
+    );
+    const thread = selected ?? interaction.channel;
+    if (
+      thread?.type !== ChannelType.PublicThread ||
+      thread.guildId !== interaction.guildId
+    ) {
+      throw new ApplicationError(
+        "EXPORT_NOT_ALLOWED",
+        "対象には、このサーバーの公開スレッドを指定してください。",
+      );
+    }
+    const actor = interaction.guild?.members.cache.get(interaction.user.id);
+    const bot = interaction.guild?.members.me;
+    if (!actor || !bot) {
+      throw new ApplicationError(
+        "EXPORT_NOT_ALLOWED",
+        "対象スレッドの利用者またはBotの権限を確認できませんでした。",
+      );
+    }
+    const requiredPermissions = [
+      PermissionFlagsBits.ViewChannel,
+      PermissionFlagsBits.ReadMessageHistory,
+    ];
+    // ThreadChannel#permissionsForは親Channelを解決できない場合、実行時にnullを返す。
+    const actorPermissions = thread.permissionsFor(actor) as PermissionsBitField | null;
+    if (!actorPermissions) {
+      throw new ApplicationError(
+        "EXPORT_NOT_ALLOWED",
+        "対象スレッドの権限を確認できませんでした。",
+      );
+    }
+    if (!requiredPermissions.every((permission) => actorPermissions.has(permission))) {
+      throw new ApplicationError(
+        "EXPORT_NOT_ALLOWED",
+        "対象スレッドの閲覧権限とメッセージ履歴閲覧権限が必要です。",
+      );
+    }
+    const botPermissions = thread.permissionsFor(bot) as PermissionsBitField | null;
+    if (!botPermissions) {
+      throw new ApplicationError(
+        "EXPORT_NOT_ALLOWED",
+        "Botの対象スレッドに対する権限を確認できませんでした。",
+      );
+    }
+    if (!requiredPermissions.every((permission) => botPermissions.has(permission))) {
+      throw new ApplicationError(
+        "EXPORT_NOT_ALLOWED",
+        "Botに対象スレッドの閲覧権限とメッセージ履歴閲覧権限がありません。",
+      );
+    }
+    if (!interaction.appPermissions.has(PermissionFlagsBits.AttachFiles)) {
+      throw new ApplicationError(
+        "EXPORT_NOT_ALLOWED",
+        "Botにファイル添付権限がありません。",
+      );
+    }
+    const botUserId = this.#client.user?.id;
+    if (!botUserId) {
+      throw new Error("Discord Bot userを確認できません");
+    }
+    const exported = await exportThreadToMarkdown({
+      thread,
+      botUserId,
+      now: this.#now,
+    });
+    if (exported.byteLength > interaction.attachmentSizeLimit) {
+      throw new ApplicationError(
+        "EXPORT_TOO_LARGE",
+        "MarkdownがDiscordへ添付できるサイズ上限を超えています。",
+      );
+    }
+    const attachment = new AttachmentBuilder(
+      Buffer.from(exported.markdown, "utf8"),
+      { name: exported.filename },
+    );
+    await interaction.editReply({
+      content: `確定字幕${String(exported.captionCount)}件をMarkdownで出力しました。`,
+      files: [attachment],
+      allowedMentions: { parse: [] },
+    });
   }
 
   public async handleComponentInteraction(
@@ -327,6 +485,17 @@ export class DiscordBotController {
       actorCanManageGuild:
         interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ?? false,
       actorVoiceChannelId: actor?.voice.channelId ?? undefined,
+    };
+  }
+
+  #registerInput(interaction: ChatInputCommandInteraction) {
+    return {
+      kind: "register" as const,
+      pair: interaction.options.getString("pair", true),
+      source: interaction.options.getString("source", true),
+      target: interaction.options.getString("target", true),
+      guildId: interaction.guildId ?? undefined,
+      actorId: interaction.user.id,
     };
   }
 

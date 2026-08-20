@@ -55,6 +55,7 @@ void test("親カードから専用スレッドを作り、状態更新後に終
   const archiveValues: boolean[] = [];
   const events: string[] = [];
   const thread = {
+    id: "thread-1",
     send(payload: SessionCardPayload) {
       events.push("thread-message");
       threadMessages.push(payload);
@@ -103,6 +104,7 @@ void test("親カードから専用スレッドを作り、状態更新後に終
   });
 
   assert.equal(presentation.captionChannel, thread);
+  assert.equal(presentation.threadId, "thread-1");
   assert.deepEqual(events.slice(0, 2), ["card-send", "start-thread"]);
   const initialCard = cards[0];
   assert.ok(initialCard);
@@ -155,6 +157,7 @@ void test("Discordのカード更新や終了通知が未完了でも停止要�
   let blockCardUpdate = true;
   const pendingCardUpdate = new Promise<never>(() => undefined);
   const thread = {
+    id: "thread-pending-card",
     send: () => Promise.resolve({
       edit: () => Promise.resolve(),
       delete: () => Promise.resolve(),
@@ -197,6 +200,7 @@ void test("Discordのカード更新や終了通知が未完了でも停止要�
       send: () => Promise.resolve({
         edit: () => Promise.resolve(),
         startThread: () => Promise.resolve({
+          id: "thread-pending-stop-notice",
           send: () => pendingStopNotice,
           setArchived: () => Promise.resolve(),
         }),
@@ -234,6 +238,7 @@ void test("停止前の遅い字幕POSTが完了してスレッドを再開し�
   const archiveValues: boolean[] = [];
   let threadSendCount = 0;
   const thread = {
+    id: "thread-late-caption",
     send() {
       threadSendCount += 1;
       return threadSendCount === 1

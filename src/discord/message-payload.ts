@@ -72,6 +72,11 @@ const captionStateLabels: Readonly<Record<CaptionState, string>> = {
   interrupted_for_conversation: "⏭ 新しい発話のため音声中断",
   captions_only: "📝 字幕のみ",
 };
+
+export function isFinalCaptionStatus(content: string): boolean {
+  return Object.entries(captionStateLabels).some(([state, label]) =>
+    state !== "pending" && content === `-# ${label}`);
+}
 const longestCaptionStateLabel = Object.values(captionStateLabels).reduce(
   (longest, candidate) => candidate.length > longest.length ? candidate : longest,
   "",

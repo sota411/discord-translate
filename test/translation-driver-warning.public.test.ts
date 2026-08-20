@@ -87,6 +87,7 @@ void test("RuntimeのSTT resultから警告送信失敗を非致命ログへ渡�
       captionFailurePolicy: "continue_audio",
     },
     participantIds: [userId],
+    translationTerms: [],
     guild: {
       members: {
         cache: new Map([
@@ -99,6 +100,7 @@ void test("RuntimeのSTT resultから警告送信失敗を非致命ログへ渡�
       members: new Map([[userId, { user: { bot: false } }]]),
     },
     presentation: {
+      threadId: "thread-1",
       captionChannel: {
         send(payload: CaptionMessagePayload) {
           sent.push(payload);
@@ -263,6 +265,7 @@ void test("Discord音声受信streamの一時エラーは再購読してセッ�
       captionFailurePolicy: "continue_audio",
     },
     participantIds: [userId],
+    translationTerms: [],
     guild: {
       members: {
         cache: new Map([[userId, { displayName: "Sota" }]]),
@@ -272,6 +275,7 @@ void test("Discord音声受信streamの一時エラーは再購読してセッ�
       members: new Map([[userId, { user: { bot: false } }]]),
     },
     presentation: {
+      threadId: "thread-2",
       captionChannel: {
         send: () => Promise.resolve({
           edit: () => Promise.resolve(),

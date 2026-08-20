@@ -15,6 +15,7 @@ const closeOperationTimeoutMs = 5_000;
 export type SessionCardPayload = ComponentsMessagePayload;
 
 export type SessionThreadChannel = {
+  id: string;
   send(payload: SessionCardPayload): Promise<{
     edit(payload: SessionCardPayload): Promise<unknown>;
     delete(): Promise<unknown>;
@@ -130,6 +131,10 @@ export class DiscordSessionPresentation {
 
   public get captionChannel(): SessionThreadChannel {
     return this.#thread;
+  }
+
+  public get threadId(): string {
+    return this.#thread.id;
   }
 
   public update(update: SessionPresentationUpdate): Promise<void> {

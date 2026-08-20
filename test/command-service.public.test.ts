@@ -5,7 +5,9 @@ import {
   TranslationCommandService,
   type StartCommandInput,
 } from "../src/commands/translation-command-service.js";
+import type { TranslationTerm } from "../src/config/translation-terms.js";
 import { ApplicationError } from "../src/domain/application-error.js";
+import type { LanguagePair } from "../src/domain/language-pair.js";
 import {
   SessionManager,
   type CapacityGate,
@@ -19,8 +21,41 @@ type Harness = {
   driver: RecordingDriver;
   usageGate: RecordingUsageGate;
   capacityGate: RecordingCapacityGate;
+  terms: RecordingTermCatalog;
   reconciliation: { calls: number };
 };
+
+class RecordingTermCatalog {
+  public snapshotResult: readonly TranslationTerm[] = [];
+  public registerResult: "created" | "updated" = "created";
+  public readonly snapshots: { guildId: string; pair: LanguagePair }[] = [];
+  public readonly registrations: {
+    guildId: string;
+    pair: LanguagePair;
+    source: string;
+    target: string;
+  }[] = [];
+
+  public snapshot(guildId: string, pair: LanguagePair): readonly TranslationTerm[] {
+    this.snapshots.push({ guildId, pair });
+    return this.snapshotResult.map((term) => ({ ...term }));
+  }
+
+  public register(input: {
+    guildId: string;
+    pair: LanguagePair;
+    source: string;
+    target: string;
+  }): "created" | "updated" {
+    this.registrations.push({
+      guildId: input.guildId,
+      pair: input.pair,
+      source: input.source,
+      target: input.target,
+    });
+    return this.registerResult;
+  }
+}
 
 class RecordingUsageGate implements UsageGate {
   public calls = 0;
@@ -53,6 +88,7 @@ class RecordingCapacityGate implements CapacityGate {
 }
 
 class RecordingRuntime implements SessionRuntime {
+  public readonly captionThreadId = "723456789012345678";
   public readonly updates: string[][] = [];
   public readonly stopReasons: string[] = [];
   public stopError: Error | undefined;
@@ -89,7 +125,11 @@ class RecordingRuntime implements SessionRuntime {
 }
 
 class RecordingDriver implements TranslationSessionDriver {
-  public readonly starts: { guildId: string; participantIds: readonly string[] }[] = [];
+  public readonly starts: {
+    guildId: string;
+    participantIds: readonly string[];
+    translationTerms: readonly TranslationTerm[];
+  }[] = [];
   public readonly runtimes: RecordingRuntime[] = [];
   public readonly signals: AbortSignal[] = [];
   public wait: Promise<void> = Promise.resolve();
@@ -98,8 +138,13 @@ class RecordingDriver implements TranslationSessionDriver {
     session: { guildId: string },
     participantIds: readonly string[],
     signal: AbortSignal,
+    translationTerms: readonly TranslationTerm[],
   ): Promise<SessionRuntime> {
-    this.starts.push({ guildId: session.guildId, participantIds: [...participantIds] });
+    this.starts.push({
+      guildId: session.guildId,
+      participantIds: [...participantIds],
+      translationTerms: translationTerms.map((term) => ({ ...term })),
+    });
     this.signals.push(signal);
     await this.wait;
     const runtime = new RecordingRuntime();
@@ -115,6 +160,7 @@ function createHarness(options: {
   const driver = new RecordingDriver();
   const usageGate = new RecordingUsageGate();
   const capacityGate = new RecordingCapacityGate();
+  const terms = new RecordingTermCatalog();
   const reconciliation = { calls: 0 };
   const sessions = new SessionManager({
     driver,
@@ -135,8 +181,9 @@ function createHarness(options: {
     ]),
     maxSpeakersPerSession: options.maxSpeakersPerSession ?? 2,
     sessions,
+    terms,
   });
-  return { service, driver, usageGate, capacityGate, reconciliation };
+  return { service, driver, usageGate, capacityGate, terms, reconciliation };
 }
 
 function validStart(overrides: Partial<StartCommandInput> = {}): StartCommandInput {
@@ -555,4 +602,108 @@ void test("runtimeの停止処理が失敗しても停止後の利用ログ照�
   );
 
   assert.equal(harness.reconciliation.calls, 1);
+});
+
+void test("start開始時のGuild用語を固定し、開始途中の登録変更を実行中STTへ混ぜない", async () => {
+  const harness = createHarness();
+  harness.terms.snapshotResult = [{ source: "ult", target: "궁극기" }];
+  let releaseUsage: (() => void) | undefined;
+  harness.usageGate.wait = new Promise<void>((resolve) => {
+    releaseUsage = resolve;
+  });
+
+  const starting = harness.service.execute(validStart());
+  harness.terms.snapshotResult = [{ source: "ult", target: "필살기" }];
+  releaseUsage?.();
+  assert.equal((await starting).ok, true);
+
+  assert.deepEqual(harness.driver.starts[0]?.translationTerms, [
+    { source: "ult", target: "궁극기" },
+  ]);
+  assert.deepEqual(harness.terms.snapshots, [{
+    guildId: "223456789012345678",
+    pair: "ja-ko",
+  }]);
+});
+
+void test("statusは許可利用者へ現在のセッションと字幕Thread IDを返す", async () => {
+  const harness = createHarness();
+  const idle = await harness.service.execute({
+    kind: "status",
+    guildId: "223456789012345678",
+    actorId: "323456789012345678",
+  });
+  assert.equal(idle.ok, true);
+  assert.equal(idle.status, null);
+
+  assert.equal((await harness.service.execute(validStart())).ok, true);
+  const active = await harness.service.execute({
+    kind: "status",
+    guildId: "223456789012345678",
+    actorId: "423456789012345678",
+  });
+  assert.equal(active.ok, true);
+  assert.ok(active.status);
+  assert.equal(active.status.state, "ACTIVE");
+  assert.equal(active.status.captionThreadId, "723456789012345678");
+
+  const denied = await harness.service.execute({
+    kind: "status",
+    guildId: "223456789012345678",
+    actorId: "999999999999999999",
+  });
+  assert.equal(denied.ok, false);
+  assert.equal(denied.code, "USER_NOT_ALLOWED");
+});
+
+void test("registerは許可利用者の入力をGuild用語へ渡し、次回反映を通知する", async () => {
+  const harness = createHarness();
+  harness.terms.registerResult = "updated";
+
+  const result = await harness.service.execute({
+    kind: "register",
+    guildId: "223456789012345678",
+    actorId: "323456789012345678",
+    pair: "ja-ko",
+    source: "ult",
+    target: "궁극기",
+  });
+
+  assert.equal(result.ok, true);
+  assert.match(result.interactionMessage, /更新/u);
+  assert.match(result.interactionMessage, /次に開始/u);
+  assert.deepEqual(harness.terms.registrations, [{
+    guildId: "223456789012345678",
+    pair: "ja-ko",
+    source: "ult",
+    target: "궁극기",
+  }]);
+
+  const denied = await harness.service.execute({
+    kind: "register",
+    guildId: "223456789012345678",
+    actorId: "999999999999999999",
+    pair: "ja-ko",
+    source: "ace",
+    target: "에이스",
+  });
+  assert.equal(denied.ok, false);
+  assert.equal(denied.code, "USER_NOT_ALLOWED");
+  assert.equal(harness.terms.registrations.length, 1);
+});
+
+void test("export認可は未許可利用者をDiscord履歴取得前に拒否する", async () => {
+  const harness = createHarness();
+  assert.equal((await harness.service.execute({
+    kind: "export",
+    guildId: "223456789012345678",
+    actorId: "323456789012345678",
+  })).ok, true);
+  const denied = await harness.service.execute({
+    kind: "export",
+    guildId: "223456789012345678",
+    actorId: "999999999999999999",
+  });
+  assert.equal(denied.ok, false);
+  assert.equal(denied.code, "USER_NOT_ALLOWED");
 });

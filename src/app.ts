@@ -8,6 +8,7 @@ import {
 
 import { TranslationCommandService } from "./commands/translation-command-service.js";
 import { loadConfig } from "./config.js";
+import { TranslationTermCatalog } from "./config/translation-term-catalog.js";
 import { loadTranslationTerms } from "./config/translation-terms.js";
 import { DiscordBotController } from "./discord/bot-controller.js";
 import { DiscordTranslationDriver } from "./discord/translation-driver.js";
@@ -37,7 +38,7 @@ export async function startApplication(
   const latency = createTranslationLatencyRecorder((fields) => {
     logger.info("translation_latency", fields);
   });
-  const terms = loadTranslationTerms(config.storage.translationTermsPath);
+  const staticTerms = loadTranslationTerms(config.storage.translationTermsPath);
   const ledger = UsageLedger.open({
     databasePath: config.storage.sqlitePath,
     pricing: config.pricing,
@@ -51,6 +52,8 @@ export async function startApplication(
   let client: Client | undefined;
   let reconciliationTimer: NodeJS.Timeout | undefined;
   try {
+    const terms = new TranslationTermCatalog(staticTerms, ledger);
+    terms.assertGuildsValid(config.discord.allowedGuildIds);
     const recovered = ledger.recoverInterruptedWork(new Date());
     logger.info("startup_recovery_complete", {
       sessions: recovered.sessions,
@@ -99,7 +102,6 @@ export async function startApplication(
     const sttFactory = new SonioxSttFactory(
       soniox,
       config.soniox.sttModel,
-      terms,
     );
     const tts = new RawSonioxTtsGateway({
       url: config.soniox.ttsWebSocketUrl,
@@ -150,6 +152,7 @@ export async function startApplication(
       allowedUserIds: config.discord.allowedUserIds,
       maxSpeakersPerSession: config.limits.maxSpeakersPerSession,
       sessions,
+      terms,
     });
     const controller = new DiscordBotController({
       client: discordClient,

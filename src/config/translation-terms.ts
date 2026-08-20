@@ -14,6 +14,8 @@ export type TranslationTerm = {
 
 export type TranslationTerms = Readonly<Record<LanguagePair, readonly TranslationTerm[]>>;
 
+export const translationTermsContextCharacterLimit = 10_000;
+
 const termSchema = z.object({
   source: z.string().refine((value) => value.trim().length > 0, "sourceは空にできません"),
   target: z.string().refine((value) => value.trim().length > 0, "targetは空にできません"),
@@ -41,19 +43,36 @@ export function parseTranslationTerms(json: string): TranslationTerms {
   }
 
   for (const pair of languagePairs) {
-    const entries = result.data[pair];
-    const sources = new Set<string>();
-    for (const entry of entries) {
-      if (sources.has(entry.source)) {
-        throw new Error(`${pair}: source「${entry.source}」が重複しています`);
-      }
-      sources.add(entry.source);
-    }
-    if (Array.from(JSON.stringify(entries)).length > 10_000) {
-      throw new Error(`${pair}: Soniox contextの10,000文字上限を超えています`);
-    }
+    assertTranslationTermsFitContext(pair, result.data[pair]);
   }
   return result.data;
+}
+
+export function translationTermsCharacterCount(
+  entries: readonly TranslationTerm[],
+): number {
+  return Array.from(JSON.stringify(entries)).length;
+}
+
+export function assertTranslationTermsFitContext(
+  pair: LanguagePair,
+  entries: readonly TranslationTerm[],
+): void {
+  const sources = new Set<string>();
+  for (const entry of entries) {
+    if (entry.source.trim().length === 0 || entry.target.trim().length === 0) {
+      throw new Error(`${pair}: sourceとtargetは空にできません`);
+    }
+    if (sources.has(entry.source)) {
+      throw new Error(`${pair}: source「${entry.source}」が重複しています`);
+    }
+    sources.add(entry.source);
+  }
+  if (translationTermsCharacterCount(entries) > translationTermsContextCharacterLimit) {
+    throw new Error(
+      `${pair}: Soniox contextの${translationTermsContextCharacterLimit.toLocaleString("en-US")}文字上限を超えています`,
+    );
+  }
 }
 
 export function loadTranslationTerms(filePath: string | undefined): TranslationTerms {

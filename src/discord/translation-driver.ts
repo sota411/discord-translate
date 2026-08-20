@@ -26,6 +26,7 @@ import {
 } from "@soniox/node";
 
 import type { AppConfig } from "../config.js";
+import type { TranslationTerm } from "../config/translation-terms.js";
 import { decodeDiscordOpusPacketToMono } from "../audio/pcm.js";
 import { OpusStartupBuffer } from "../audio/opus-startup-buffer.js";
 import {
@@ -184,6 +185,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
     session: Readonly<SessionDescriptor>,
     participantIds: readonly string[],
     signal: AbortSignal,
+    translationTerms: readonly TranslationTerm[],
   ): Promise<SessionRuntime> {
     signal.throwIfAborted();
     const guild = this.#client.guilds.cache.get(session.guildId);
@@ -253,6 +255,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
         config: this.#config,
         ledger: this.#ledger,
         sttFactory: this.#sttFactory,
+        translationTerms,
         tts: this.#tts,
         latency: this.#latency,
         observeFlow: this.#observeFlow,
@@ -303,6 +306,7 @@ export type TranslationRuntimeOptions = {
   config: AppConfig;
   ledger: UsageLedger;
   sttFactory: SonioxSttFactory;
+  translationTerms: readonly TranslationTerm[];
   tts: TtsGateway;
   latency: TranslationLatencyRecorder;
   observeFlow: TranslationFlowObserver;
@@ -311,6 +315,7 @@ export type TranslationRuntimeOptions = {
 };
 
 export class DiscordTranslationRuntime implements SessionRuntime {
+  public readonly captionThreadId: string;
   readonly #session: Readonly<SessionDescriptor>;
   readonly #guild: Guild;
   readonly #voiceChannel: VoiceChannel;
@@ -320,6 +325,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
   readonly #config: AppConfig;
   readonly #ledger: UsageLedger;
   readonly #sttFactory: SonioxSttFactory;
+  readonly #translationTerms: readonly TranslationTerm[];
   readonly #tts: TtsGateway;
   readonly #latency: TranslationLatencyRecorder;
   readonly #observeFlow: TranslationFlowObserver;
@@ -342,6 +348,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
   #failureSent = false;
 
   public constructor(options: TranslationRuntimeOptions) {
+    this.captionThreadId = options.presentation.threadId;
     this.#session = options.session;
     this.#guild = options.guild;
     this.#voiceChannel = options.voiceChannel;
@@ -360,6 +367,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     this.#config = options.config;
     this.#ledger = options.ledger;
     this.#sttFactory = options.sttFactory;
+    this.#translationTerms = options.translationTerms.map((term) => ({ ...term }));
     this.#tts = options.tts;
     this.#latency = options.latency;
     this.#observeFlow = options.observeFlow;
@@ -547,7 +555,11 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       end: { behavior: EndBehaviorType.Manual },
     });
     const requestRef = randomUUID();
-    const stt = this.#sttFactory.create(this.#session.pair, requestRef);
+    const stt = this.#sttFactory.create(
+      this.#session.pair,
+      requestRef,
+      this.#translationTerms,
+    );
     const turnFinalizer = new SttTurnFinalizer({
       session: stt.session,
       speakingEndDelayMs: speakingEndFinalizeDelayMs,

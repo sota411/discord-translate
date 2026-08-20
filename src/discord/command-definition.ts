@@ -1,4 +1,5 @@
 import {
+  ChannelType,
   InteractionContextType,
   SlashCommandBuilder,
 } from "discord.js";
@@ -50,4 +51,48 @@ export const translateCommand = new SlashCommandBuilder()
     subcommand
       .setName("stop")
       .setDescription("実行中の翻訳を直ちに停止します"),
+  );
+
+export const statusCommand = new SlashCommandBuilder()
+  .setName("status")
+  .setDescription("現在の翻訳セッションの状態を表示します")
+  .setContexts(InteractionContextType.Guild);
+
+export const exportCommand = new SlashCommandBuilder()
+  .setName("export")
+  .setDescription("翻訳スレッドの確定字幕をMarkdownで出力します")
+  .setContexts(InteractionContextType.Guild)
+  .addChannelOption((option) =>
+    option
+      .setName("thread")
+      .setDescription("対象の翻訳スレッド。省略時は現在のスレッドです")
+      .setRequired(false)
+      .addChannelTypes(ChannelType.PublicThread),
+  );
+
+export const registerCommand = new SlashCommandBuilder()
+  .setName("register")
+  .setDescription("特殊な用語と希望する翻訳を登録します")
+  .setContexts(InteractionContextType.Guild)
+  .addStringOption((option) =>
+    option
+      .setName("pair")
+      .setDescription("用語を使う言語ペア")
+      .setRequired(true)
+      .addChoices(...languagePairs.map((pair) => ({
+        name: languagePairLabels[pair],
+        value: pair,
+      }))),
+  )
+  .addStringOption((option) =>
+    option
+      .setName("source")
+      .setDescription("翻訳前の特殊な用語")
+      .setRequired(true),
+  )
+  .addStringOption((option) =>
+    option
+      .setName("target")
+      .setDescription("希望する翻訳")
+      .setRequired(true),
   );

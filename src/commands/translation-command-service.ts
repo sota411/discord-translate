@@ -2,6 +2,7 @@ import {
   ApplicationError,
   type ErrorCode,
 } from "../domain/application-error.js";
+import type { TranslationTermCatalog } from "../config/translation-term-catalog.js";
 import {
   isLanguagePair,
 } from "../domain/language-pair.js";
@@ -76,16 +77,41 @@ export type SessionControlInput = {
   actorVoiceChannelId: string | undefined;
 };
 
+export type StatusCommandInput = {
+  kind: "status";
+  guildId: string | undefined;
+  actorId: string;
+};
+
+export type ExportCommandInput = {
+  kind: "export";
+  guildId: string | undefined;
+  actorId: string;
+};
+
+export type RegisterCommandInput = {
+  kind: "register";
+  pair: string;
+  source: string;
+  target: string;
+  guildId: string | undefined;
+  actorId: string;
+};
+
 export type TranslationCommandInput =
   | StartCommandInput
   | StopCommandInput
-  | SessionControlInput;
+  | SessionControlInput
+  | StatusCommandInput
+  | ExportCommandInput
+  | RegisterCommandInput;
 
 export type CommandResult = {
   ok: boolean;
   ephemeral: true;
   interactionMessage: string;
   code?: ErrorCode;
+  status?: Readonly<SessionDescriptor> | null;
   publicMessage?: {
     channelId: string;
     content: string;
@@ -97,6 +123,8 @@ type TranslationCommandServiceDependencies = {
   allowedUserIds: ReadonlySet<string>;
   maxSpeakersPerSession: number;
   sessions: SessionManager;
+  terms: Pick<TranslationTermCatalog, "snapshot" | "register">;
+  now?: () => Date;
 };
 
 export type VoiceParticipantsChangeResult = {
@@ -115,19 +143,26 @@ export class TranslationCommandService {
   readonly #allowedUserIds: ReadonlySet<string>;
   readonly #maxSpeakersPerSession: number;
   readonly #sessions: SessionManager;
+  readonly #terms: Pick<TranslationTermCatalog, "snapshot" | "register">;
+  readonly #now: () => Date;
 
   public constructor(dependencies: TranslationCommandServiceDependencies) {
     this.#allowedGuildIds = dependencies.allowedGuildIds;
     this.#allowedUserIds = dependencies.allowedUserIds;
     this.#maxSpeakersPerSession = dependencies.maxSpeakersPerSession;
     this.#sessions = dependencies.sessions;
+    this.#terms = dependencies.terms;
+    this.#now = dependencies.now ?? (() => new Date());
   }
 
   public async execute(input: TranslationCommandInput): Promise<CommandResult> {
     try {
       if (input.kind === "start") return await this.#start(input);
       if (input.kind === "stop") return await this.#stop(input);
-      return await this.#control(input);
+      if (input.kind === "control") return await this.#control(input);
+      if (input.kind === "status") return this.#status(input);
+      if (input.kind === "register") return this.#register(input);
+      return this.#authorizeExport(input);
     } catch (error) {
       if (!(error instanceof ApplicationError)) {
         throw error;
@@ -194,12 +229,7 @@ export class TranslationCommandService {
 
   async #start(input: StartCommandInput): Promise<CommandResult> {
     const guildId = this.#requireAllowedGuild(input.guildId);
-    if (!this.#allowedUserIds.has(input.actorId)) {
-      throw new ApplicationError(
-        "USER_NOT_ALLOWED",
-        "このBotはprivate betaです。許可された利用者だけが開始できます。",
-      );
-    }
+    this.#requireAllowedUser(input.actorId);
     if (!input.voiceChannel) {
       throw new ApplicationError(
         "VOICE_REQUIRED",
@@ -245,6 +275,7 @@ export class TranslationCommandService {
     const playbackMode: PlaybackMode = input.mode === undefined
       ? "conversation"
       : this.#requirePlaybackMode(input.mode);
+    const translationTerms = this.#terms.snapshot(guildId, input.pair);
 
     await this.#sessions.start({
       guildId,
@@ -259,12 +290,62 @@ export class TranslationCommandService {
       audioEnabled: true,
       captionFailurePolicy: "continue_audio",
       requiredSttStreams: this.#maxSpeakersPerSession,
+      translationTerms,
     });
 
     return {
       ok: true,
       ephemeral: true,
       interactionMessage: "翻訳を開始しました。専用スレッドへ字幕を表示します。",
+    };
+  }
+
+  #status(input: StatusCommandInput): CommandResult {
+    const guildId = this.#requireAllowedGuild(input.guildId);
+    this.#requireAllowedUser(input.actorId);
+    const status = this.#sessions.get(guildId) ?? null;
+    return {
+      ok: true,
+      ephemeral: true,
+      interactionMessage: status
+        ? "現在の翻訳セッションを表示します。"
+        : "翻訳セッションは実行されていません。",
+      status,
+    };
+  }
+
+  #authorizeExport(input: ExportCommandInput): CommandResult {
+    this.#requireAllowedGuild(input.guildId);
+    this.#requireAllowedUser(input.actorId);
+    return {
+      ok: true,
+      ephemeral: true,
+      interactionMessage: "翻訳スレッドをエクスポートします。",
+    };
+  }
+
+  #register(input: RegisterCommandInput): CommandResult {
+    const guildId = this.#requireAllowedGuild(input.guildId);
+    this.#requireAllowedUser(input.actorId);
+    if (!isLanguagePair(input.pair)) {
+      throw new ApplicationError(
+        "UNSUPPORTED_PAIR",
+        "対応していない言語ペアです。コマンドを再登録してください。",
+      );
+    }
+    const result = this.#terms.register({
+      guildId,
+      pair: input.pair,
+      source: input.source,
+      target: input.target,
+      at: this.#now(),
+    });
+    return {
+      ok: true,
+      ephemeral: true,
+      interactionMessage: result === "created"
+        ? "翻訳用語を登録しました。次に開始する翻訳セッションから反映されます。"
+        : "登録済みの翻訳用語を更新しました。次に開始する翻訳セッションから反映されます。",
     };
   }
 
@@ -355,6 +436,14 @@ export class TranslationCommandService {
       );
     }
     return guildId;
+  }
+
+  #requireAllowedUser(actorId: string): void {
+    if (this.#allowedUserIds.has(actorId)) return;
+    throw new ApplicationError(
+      "USER_NOT_ALLOWED",
+      "このBotはprivate betaです。許可された利用者だけが実行できます。",
+    );
   }
 
   #missingPermissions(permissions: BotPermissions): string[] {

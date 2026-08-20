@@ -30,10 +30,9 @@ void test("STTは認識精度を優先してendpoint調整をSoniox既定値へ�
       },
     } as never,
     "stt-rt-v5",
-    { "ja-ko": [], "ja-en": [], "ko-en": [] },
   );
 
-  factory.create("ja-ko", "request-ref");
+  factory.create("ja-ko", "request-ref", []);
 
   assert.ok(received);
   assert.equal(received.enable_endpoint_detection, true);
@@ -54,7 +53,6 @@ void test("3言語ペアをSonioxの双方向翻訳設定へ正しく変換す�
       },
     } as never,
     "stt-rt-v5",
-    { "ja-ko": [], "ja-en": [], "ko-en": [] },
   );
   const cases = [
     ["ja-ko", "ja", "ko"],
@@ -62,7 +60,7 @@ void test("3言語ペアをSonioxの双方向翻訳設定へ正しく変換す�
     ["ko-en", "ko", "en"],
   ] as const;
 
-  for (const [pair] of cases) factory.create(pair, `request-ref-${pair}`);
+  for (const [pair] of cases) factory.create(pair, `request-ref-${pair}`, []);
 
   for (const [index, [pair, languageA, languageB]] of cases.entries()) {
     const input = received[index];
@@ -74,6 +72,32 @@ void test("3言語ペアをSonioxの双方向翻訳設定へ正しく変換す�
       language_b: languageB,
     }, pair);
   }
+});
+
+void test("セッション開始時に固定した翻訳用語だけをSTT contextへ渡す", () => {
+  const received: Record<string, unknown>[] = [];
+  const factory = new SonioxSttFactory(
+    {
+      realtime: {
+        stt: (input: Record<string, unknown>) => {
+          received.push(input);
+          return {};
+        },
+      },
+    } as never,
+    "stt-rt-v5",
+  );
+
+  const first = factory.create("ja-en", "request-1", [
+    { source: "技術室", target: "technology room" },
+  ]);
+  factory.create("ja-en", "request-2", []);
+
+  assert.deepEqual(received[0]?.context, {
+    translation_terms: [{ source: "技術室", target: "technology room" }],
+  });
+  assert.equal(first.initialTextCharacterCount, 45);
+  assert.equal("context" in (received[1] ?? {}), false);
 });
 
 function withTestDeadline<T>(operation: Promise<T>, timeoutMs = 50): Promise<T> {

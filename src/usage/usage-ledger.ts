@@ -3,6 +3,11 @@ import path from "node:path";
 
 import Database from "better-sqlite3";
 
+import type {
+  RegisteredTranslationTermInput,
+  TranslationTermStore,
+} from "../config/translation-term-catalog.js";
+import type { TranslationTerm } from "../config/translation-terms.js";
 import { ApplicationError } from "../domain/application-error.js";
 import type { LanguagePair } from "../domain/language-pair.js";
 import type { UsageGate } from "../session/session-manager.js";
@@ -95,7 +100,7 @@ type ProviderContextRow = {
   reconciled_cost_microusd: number | null;
 };
 
-const schemaVersion = 1;
+const schemaVersion = 2;
 const millisecondsPerHour = 3_600_000n;
 const charactersPerMillion = 1_000_000n;
 
@@ -209,7 +214,8 @@ function migrate(database: Database.Database): void {
   if (currentVersion === schemaVersion) return;
 
   database.transaction(() => {
-    database.exec(`
+    if (currentVersion < 1) {
+      database.exec(`
       CREATE TABLE session_usage (
         session_id TEXT PRIMARY KEY,
         guild_id TEXT NOT NULL,
@@ -261,12 +267,25 @@ function migrate(database: Database.Database): void {
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
-    `);
+      `);
+    }
+    if (currentVersion < 2) {
+      database.exec(`
+        CREATE TABLE registered_translation_term (
+          guild_id TEXT NOT NULL,
+          pair TEXT NOT NULL CHECK (pair IN ('ja-ko', 'ja-en', 'ko-en')),
+          source TEXT NOT NULL CHECK (length(trim(source)) > 0),
+          target TEXT NOT NULL CHECK (length(trim(target)) > 0),
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (guild_id, pair, source)
+        );
+      `);
+    }
     database.pragma(`user_version = ${String(schemaVersion)}`);
   })();
 }
 
-export class UsageLedger implements UsageGate {
+export class UsageLedger implements UsageGate, TranslationTermStore {
   readonly #database: Database.Database;
   readonly #pricing: Pricing;
   readonly #limits: UsageLimits;
@@ -294,6 +313,36 @@ export class UsageLedger implements UsageGate {
     if (this.#closed) return;
     this.#database.close();
     this.#closed = true;
+  }
+
+  public listRegisteredTranslationTerms(
+    guildId: string,
+    pair: LanguagePair,
+  ): readonly TranslationTerm[] {
+    const rows = this.#database.prepare(`
+      SELECT source, target
+      FROM registered_translation_term
+      WHERE guild_id = ? AND pair = ?
+      ORDER BY source COLLATE BINARY
+    `).all(guildId, pair) as { source: string; target: string }[];
+    return rows.map((row) => ({ source: row.source, target: row.target }));
+  }
+
+  public upsertRegisteredTranslationTerm(input: RegisteredTranslationTermInput): void {
+    this.#database.prepare(`
+      INSERT INTO registered_translation_term (
+        guild_id, pair, source, target, updated_at
+      ) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(guild_id, pair, source) DO UPDATE SET
+        target = excluded.target,
+        updated_at = excluded.updated_at
+    `).run(
+      input.guildId,
+      input.pair,
+      input.source,
+      input.target,
+      input.updatedAt.toISOString(),
+    );
   }
 
   public createSession(input: CreateSessionInput): void {

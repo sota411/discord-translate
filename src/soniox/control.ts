@@ -7,7 +7,10 @@ import {
 } from "@soniox/node";
 
 import { ConfigError, type AppConfig } from "../config.js";
-import type { TranslationTerms } from "../config/translation-terms.js";
+import {
+  translationTermsCharacterCount,
+  type TranslationTerm,
+} from "../config/translation-terms.js";
 import { ApplicationError } from "../domain/application-error.js";
 import {
   languagePairs,
@@ -188,20 +191,21 @@ export async function verifySonioxConfiguration(
 export class SonioxSttFactory {
   readonly #client: SonioxNodeClient;
   readonly #model: string;
-  readonly #terms: TranslationTerms;
 
-  public constructor(client: SonioxNodeClient, model: string, terms: TranslationTerms) {
+  public constructor(client: SonioxNodeClient, model: string) {
     this.#client = client;
     this.#model = model;
-    this.#terms = terms;
   }
 
-  public create(pair: LanguagePair, requestRef: string): {
+  public create(
+    pair: LanguagePair,
+    requestRef: string,
+    translationTerms: readonly TranslationTerm[],
+  ): {
     session: RealtimeSttSession;
     initialTextCharacterCount: number;
   } {
     const [languageA, languageB] = languagesForPair(pair);
-    const translationTerms = this.#terms[pair];
     const session = this.#client.realtime.stt({
       model: this.#model,
       audio_format: "pcm_s16le",
@@ -223,7 +227,7 @@ export class SonioxSttFactory {
     return {
       session,
       initialTextCharacterCount: translationTerms.length > 0
-        ? Array.from(JSON.stringify(translationTerms)).length
+        ? translationTermsCharacterCount(translationTerms)
         : 0,
     };
   }

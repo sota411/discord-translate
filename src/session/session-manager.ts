@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import type { TranslationTerm } from "../config/translation-terms.js";
 import { ApplicationError } from "../domain/application-error.js";
 import type { LanguagePair } from "../domain/language-pair.js";
 import type {
@@ -29,13 +30,15 @@ export type SessionDescriptor = {
   playbackMode: PlaybackMode;
   audioEnabled: boolean;
   captionFailurePolicy: CaptionFailurePolicy;
+  captionThreadId?: string;
 };
 
 export type StartSessionInput = Omit<
   SessionDescriptor,
-  "sessionId" | "state" | "startedAt"
+  "sessionId" | "state" | "startedAt" | "captionThreadId"
 > & {
   requiredSttStreams: number;
+  translationTerms: readonly TranslationTerm[];
 };
 
 export type UsageGate = {
@@ -55,6 +58,7 @@ export type CapacityGate = {
 };
 
 export type SessionRuntime = {
+  readonly captionThreadId?: string;
   updateParticipants(participantIds: readonly string[]): Promise<void>;
   setPlaybackMode(mode: PlaybackMode): Promise<void>;
   setAudioEnabled(enabled: boolean): Promise<void>;
@@ -67,11 +71,13 @@ export type TranslationSessionDriver = {
     session: Readonly<SessionDescriptor>,
     participantIds: readonly string[],
     signal: AbortSignal,
+    translationTerms: readonly TranslationTerm[],
   ): Promise<SessionRuntime>;
 };
 
 type ManagedSession = SessionDescriptor & {
   runtime?: SessionRuntime;
+  translationTerms: readonly TranslationTerm[];
   participantRevision: number;
   startController: AbortController;
 };
@@ -115,7 +121,7 @@ export class SessionManager {
       );
     }
 
-    const { requiredSttStreams, ...descriptor } = input;
+    const { requiredSttStreams, translationTerms, ...descriptor } = input;
     const startedAt = this.#now();
     const session: ManagedSession = {
       ...descriptor,
@@ -123,6 +129,7 @@ export class SessionManager {
       sessionId: this.#createId(),
       state: "AUTHORIZING",
       startedAt,
+      translationTerms: translationTerms.map((term) => ({ ...term })),
       participantRevision: 0,
       startController: new AbortController(),
     };
@@ -146,7 +153,11 @@ export class SessionManager {
         session,
         session.participantIds,
         session.startController.signal,
+        session.translationTerms,
       );
+      if (session.runtime.captionThreadId) {
+        session.captionThreadId = session.runtime.captionThreadId;
+      }
       this.#assertCurrent(session);
       session.state = "ACTIVE";
       return session;

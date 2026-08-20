@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
+import Database from "better-sqlite3";
+
 import { ApplicationError } from "../src/domain/application-error.js";
 import {
   UsageLedger,
@@ -127,6 +129,98 @@ void test("SQLite利用量台帳は所有者だけが読み書きできる", asy
   await withLedger(async (_ledger, databasePath) => {
     const mode = (await stat(databasePath)).mode & 0o777;
     assert.equal(mode, 0o600);
+  });
+});
+
+void test("Guild別翻訳用語をSQLiteへ保存し、再起動後もsource順で読み出す", async () => {
+  await withLedger((ledger, databasePath) => {
+    ledger.upsertRegisteredTranslationTerm({
+      guildId: "223456789012345678",
+      pair: "ja-ko",
+      source: "ult",
+      target: "궁극기",
+      updatedAt: new Date("2026-08-21T03:00:00Z"),
+    });
+    ledger.upsertRegisteredTranslationTerm({
+      guildId: "223456789012345678",
+      pair: "ja-ko",
+      source: "ace",
+      target: "에이스",
+      updatedAt: new Date("2026-08-21T03:01:00Z"),
+    });
+    ledger.upsertRegisteredTranslationTerm({
+      guildId: "999999999999999999",
+      pair: "ja-ko",
+      source: "ult",
+      target: "필살기",
+      updatedAt: new Date("2026-08-21T03:02:00Z"),
+    });
+    ledger.close();
+
+    const reopened = UsageLedger.open({
+      databasePath,
+      pricing,
+      limits,
+      reconcileMaxStalenessSeconds: 180,
+    });
+    try {
+      assert.deepEqual(
+        reopened.listRegisteredTranslationTerms("223456789012345678", "ja-ko"),
+        [
+          { source: "ace", target: "에이스" },
+          { source: "ult", target: "궁극기" },
+        ],
+      );
+      assert.deepEqual(
+        reopened.listRegisteredTranslationTerms("999999999999999999", "ja-ko"),
+        [{ source: "ult", target: "필살기" }],
+      );
+    } finally {
+      reopened.close();
+    }
+  });
+});
+
+void test("SQLite version 1から用語テーブルだけを追加し、既存利用量を保持する", async () => {
+  await withLedger((ledger, databasePath) => {
+    ledger.createSession({
+      sessionId: "00000000-0000-4000-8000-000000000050",
+      guildId: "223456789012345678",
+      voiceChannelId: "523456789012345678",
+      textChannelId: "623456789012345678",
+      startedByUserId: "323456789012345678",
+      pair: "ja-en",
+      startedAt: new Date("2026-08-21T03:00:00Z"),
+    });
+    ledger.close();
+
+    const versionOne = new Database(databasePath);
+    versionOne.exec("DROP TABLE registered_translation_term");
+    versionOne.pragma("user_version = 1");
+    versionOne.close();
+
+    const migrated = UsageLedger.open({
+      databasePath,
+      pricing,
+      limits,
+      reconcileMaxStalenessSeconds: 180,
+    });
+    try {
+      assert.ok(migrated.getSession("00000000-0000-4000-8000-000000000050"));
+      assert.deepEqual(
+        migrated.listRegisteredTranslationTerms("223456789012345678", "ja-en"),
+        [],
+      );
+      migrated.upsertRegisteredTranslationTerm({
+        guildId: "223456789012345678",
+        pair: "ja-en",
+        source: "固有名詞",
+        target: "proper noun",
+        updatedAt: new Date("2026-08-21T04:00:00Z"),
+      });
+    } finally {
+      migrated.close();
+    }
   });
 });
 
