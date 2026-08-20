@@ -1,98 +1,75 @@
 # Discord Realtime Translation Bot 設計書
 
-本書は、Discordの音声チャンネルで日本語・韓国語・英語を双方向に翻訳するBotの現行設計を示す。基準日は2026年8月20日。コード、自動テスト、配布設定、運用ファイルを照合し、実装済みと未検証を分けて記載する。
+Discordの音声チャンネルで、日本語・韓国語・英語の会話を双方向に翻訳するBotの設計書である。
 
-導入手順は[README](../README.md)、公開前の安全性調査は[公開前セキュリティ監査](../security_best_practices_report.md)を参照する。一般公開前の未解決事項は第14節にまとめる。
+導入と起動は[README](../README.md)、公開前の安全性調査は[公開前セキュリティ監査](../security_best_practices_report.md)を参照する。
 
-| 表記 | 意味 |
+| 用語 | この文書での意味 |
 |---|---|
-| 実装済み | 現行コードに処理がある |
-| 自動確認済み | 現行コードに対する自動検証が成功した |
-| 実機確認済み | Discord・Sonioxの実サービスで確認した履歴がある |
-| 未検証 | 実装済みだが、現行版を実サービスで確認していない |
-| 未実装 | 必要性はあるが、現行コードに処理がない |
 | Guild | Discord API上のサーバー |
-| STT | 音声認識とテキスト化。Sonioxでは翻訳も同じ処理で行う |
-| TTS | テキストから読み上げ音声を生成する処理 |
-| E2E | DiscordからSonioxを経てDiscordへ戻る経路の実サービス確認 |
+| セッション | 1つのGuildで翻訳を開始してから停止するまでの実行単位 |
+| STT | 音声を文字にし、同時に翻訳するSonioxの処理 |
+| TTS | 翻訳文から読み上げ音声を作るSonioxの処理 |
+| E2E | Discordの音声入力からSonioxを経て、字幕と翻訳音声がDiscordへ戻るまでの実サービス確認 |
+| 利用量台帳 | STT・TTS・テキストの利用量と費用を記録するSQLiteデータベース |
 
-## 1. 対象は1〜3人の限定公開
+## 1. それを作ろうと思った背景
 
-言語の異なる1〜3人が同じ音声チャンネルで会話するとき、発話を選択した言語ペアのもう一方へ翻訳する。原文と翻訳文を字幕として表示し、翻訳音声を同じ音声チャンネルへ出力する。運営者が費用、利用者、保存データを制御できる小規模運用を前提とする。
+出発点は、言語の異なる複数人の人物が、専用のアプリを用いること無く会話をできるようにしたい。というところからスタートした。
+
+最初に検討したのは、音声を入れると翻訳音声まで返す一体型APIと、音声認識・翻訳・読み上げを分ける方式である。一体型は遅延を抑えやすいが、従量課金が高額になりやすく、用語や読み上げ音声の種類（voice）を調整しにくい。字幕だけにすると安くなるものの、当初ほしかった音声会話から離れる。そのため、Sonioxで音声認識と双方向翻訳を行い、確定した翻訳文をSoniox TTSへ渡す分割型を採用した。MVPでは、費用を上限内に収めることと、固有名詞や読み上げ音声を調整できることを優先した。
+
+もう一つの課題として、BotのAPI Keyを使って第三者が勝手に課金を発生させることへの対策があった。
+そのため、API Keyは利用者へ渡さず、Botの実行環境に置く。そのうえで、利用できるGuildとUserを許可リストへ限定し、User・Guild・Bot全体に月間上限を設ける方針を採用した。
+
+Discordでは、Botが音声チャンネルへ流した音声を参加者ごとに出し分けられない。3言語を同時に扱うと、全員が複数の翻訳音声を聞くことになる。そこで1セッションは2言語に絞り、日韓・日英・韓英の3ペアから選ぶ仕様にした。
+
+## 2. スコープ
 
 ### 対象
 
 - 言語ペアは`ja-ko`、`ja-en`、`ko-en`
-- 1セッションの人間参加者は1〜3人。配布初期値は2人
-- 同じGuildでは同時に1セッション
+- 1セッションの人間参加者は1〜3人。
+- 同じGuildでは開始中を含めて同時に1セッション
 - 発話者ごとにSTTストリームとvoiceを分離
 - 仮字幕と確定字幕を専用の公開スレッドへ表示
-- 確定翻訳だけをTTSへ送り、確定順に再生
+- 確定翻訳だけをTTSへ送り、発話の確定順に再生
 - 会話優先と正確さ優先の2モード
-- User・Guild・Globalの月間利用上限と、Soniox Project上限の手前に置くローカル上限
+- User・Guild・Globalの月間利用上限
 - 音声、字幕本文、表示名をBotの永続ストレージとログへ保存しない
+- Docker Composeを標準の配置経路とする
 
 ### 対象外
 
 - 不特定多数が追加できる公開Bot
 - 4人以上、3言語以上、または日韓英以外の会話
+- 参加者ごとに異なる翻訳音声を聞かせること
 - 音声録音、字幕検索、会話履歴
-- 話者の自動登録、課金、管理画面
+- 話者の自動登録、課金、管理画面、利用者によるAPI Key登録
 - 非公開スレッドやDMへの字幕配信
 - 完全な同時通訳、または再生開始300 ms以内の保証
 
-## 2. 現行版は自動検証済み、実サービスE2Eは未完了
+## 3. ユーザーから見た仕様(外部インターフェース)
 
-### 自動確認済み
+### 基本の利用手順
 
-現行環境では次が成功している。
-
-- ESLintとTypeScript型検査
-- 公開境界・統合テスト148件
-- 本番用ビルド
-- `better-sqlite3`と`@discordjs/opus`の実行検査
-- 本番向け依存関係の監査
-- Compose設定検証とDockerビルド
-- 図版のHTML・SVG同期
-
-CIも同じ検査を実行する。
-
-### 実機確認の履歴
-
-以前のUIを使った版では、Discord・Sonioxの実サービスで、参加者1人による日本語・韓国語の通話、字幕、読み上げを確認した。8発話の区間遅延も計測した。発話中に確定トークンをTTSへ送る実験は、ストリーム終端とキャンセルが不安定だったため現行版へ採用していない。
-
-この履歴は現行版の受入証跡ではない。当時は次を確認していない。
-
-- セッションカード
-- 専用スレッド
-- 仮字幕
-- 2つの再生モード
-- 話者別voice
-
-### 未検証
-
-- 現行版のDiscord・Soniox E2E
-- 2人・3人通話、日英、韓英
-- 3言語ペアの30分継続運転
-- 実請求額とローカル台帳の照合精度
-- 複数Guildの同時運転
-- Discord DAVE（音声のエンドツーエンド暗号化）環境での受信ストリーム復旧
-- 実デプロイ環境のGitHub Actions
-
-## 3. 利用者はコマンドとセッションカードを操作する
+1. 許可された利用者が同じ音声チャンネルへ参加する
+2. 字幕を表示してよいテキストチャンネルで`/translate start`を実行する
+3. 日韓・日英・韓英から言語ペアを選ぶ。必要なら再生モードも選ぶ
+4. Botが同じ音声チャンネルへ入り、親チャンネルへセッションカードを出す
+5. カードから作られた公開スレッドへ字幕が流れ、翻訳音声が音声チャンネルで再生される
+6. カードの停止ボタン、または`/translate stop`で終了する
 
 ### コマンド
 
 | コマンド | 引数 | 動作 |
 |---|---|---|
-| `/translate start` | `pair`必須、`mode`任意 | 実行者が参加中の音声チャンネルで開始 |
-| `/translate stop` | なし | 実行中のセッションを停止 |
+| `/translate start` | `pair`必須、`mode`任意 | 実行者が参加中の音声チャンネルで翻訳を開始する |
+| `/translate stop` | なし | 実行中または開始中のセッションを停止する |
 
-`pair`は3言語ペアから選ぶ。`mode`を省略した場合は`conversation`になる。コマンドはGuild内だけで使え、`default_member_permissions`は`0`。Discord側では管理者または明示的に許可された利用者だけが実行できる。
+`pair`は3言語ペアの選択肢だけを受け付ける。`mode`を省略すると会話優先の`conversation`になる。コマンドはGuild内だけで使え、Discord上の既定権限は管理者のみ。一般メンバーへ使わせる場合は、DiscordのIntegrationsでロールまたはUserへ明示的に許可する。
 
-### 開始条件
-
-`/translate start`は次の順に検査する。
+BotはDiscord側の権限とは別に、次の条件を順に検査する。
 
 1. コマンドがGuild内で実行されている
 2. Guildが`ALLOWED_GUILD_IDS`に含まれる
@@ -100,52 +77,81 @@ CIも同じ検査を実行する。
 4. 実行者が音声チャンネルへ参加している
 5. 全人間参加者が許可されている
 6. 人間参加者が`MAX_SPEAKERS_PER_SESSION`以下である
-7. Botが必要な音声・テキスト・公開スレッド権限を持つ
+7. BotがVoice、Text、公開スレッドに必要な権限を持つ
 8. 同じGuildに開始中または実行中のセッションがない
 9. User・Guild・Globalの利用額が上限内で、利用量照合が古くない
-10. SonioxのProjectとOrganizationに、設定上限人数分のSTTと1本のTTSの空きがある
+10. SonioxのProjectと、その所属先であるOrganizationの両方に、設定上限人数分のSTTと1本のTTSの同時実行枠が残っている
 
-Sonioxの容量は、現在の参加者数ではなく`MAX_SPEAKERS_PER_SESSION`本のSTTを予約できる前提で判定する。開始後に参加者が増えた場合も、追加利用者の月間上限を検査する。
+Sonioxの容量判定では、常に`MAX_SPEAKERS_PER_SESSION`本のSTTを要求する。開始時の参加者が少なくても要求数は減らさない。
 
-### カードと字幕
+### セッションカードと字幕
 
-開始に成功すると、Botは親テキストチャンネルへセッションカードを投稿する。そのカードから公開スレッドを作り、仮字幕と確定字幕をスレッドへ投稿する。
-
-カードには言語ペア、参加者、経過時間、音声の待ち時間、再生モード、実行状態を表示する。カードから次を操作できる。
+セッションカードには、言語ペア、参加者、経過時間、音声の待ち時間、再生モード、実行状態を表示する。カードから次を変更できる。
 
 - セッションの停止
 - 音声再生と字幕のみの切り替え
 - 会話優先と正確さ優先の切り替え
-- 字幕の新規投稿に失敗したとき、音声を継続するか停止するか
+- 字幕の新規投稿に失敗したとき、音声を続けるかセッションを止めるか
 
-操作できるのは、開始者、対象音声チャンネルの現在参加者、または`Manage Guild`権限を持つ利用者。カードのSession IDが現行セッションと一致しない場合は、終了済みとして拒否する。
+操作できるのは、開始者、対象音声チャンネルの現在参加者、またはDiscord APIの`ManageGuild`権限を持つ利用者である。カードのSession IDが現行セッションと一致しない場合は、終了済みの操作として拒否する。
 
-公開スレッドは親チャンネルの閲覧者からも見える。終了時にアーカイブするが、自動削除しない。
+発話中は、認識途中の原文と翻訳文を仮字幕として同じメッセージへ最大500 ms間隔で反映する。発話が確定すると、そのメッセージを確定字幕へ置き換える。確定結果が空なら仮字幕を削除する。
 
-### 参加者の変化
+字幕用スレッドは公開スレッドである。親チャンネルを閲覧できるメンバーは字幕も閲覧できる。終了時にアーカイブするが、自動削除しない。
+
+### 参加者が変わったとき
 
 | 変化 | 動作 |
 |---|---|
-| 未許可の人間が入室 | `SPEAKER_NOT_ALLOWED`で停止 |
-| 設定人数を超過 | `TOO_MANY_SPEAKERS`で停止 |
-| 人間参加者が0人 | `VOICE_EMPTY`で停止 |
-| Botが対象音声チャンネルから外れる | `BOT_VOICE_REMOVED`で停止 |
-| 許可された利用者が増える | 月間上限を検査してストリームを追加 |
+| 未許可の人間が入室 | `SPEAKER_NOT_ALLOWED`で停止する |
+| 設定人数を超過 | `TOO_MANY_SPEAKERS`で停止する |
+| 人間参加者が0人 | `VOICE_EMPTY`で停止する |
+| Botが対象音声チャンネルから外れる | `BOT_VOICE_REMOVED`で停止する |
+| 許可された利用者が増える | 追加Userの月間上限を検査し、話者用ストリームを追加する |
 
-## 4. DiscordとSonioxへ外向きに接続する
+`VOICE_EMPTY`と`BOT_VOICE_REMOVED`はセッションの終了理由であり、公開エラーコードの型には含まれない。
+
+## 4. 設計概要
+
+### システム構成
 
 ![Discord、Bot、Sonioxのシステム構成](./diagrams/system-architecture.svg)
 
 [HTML版を開く](./diagrams/system-architecture.html)
 
-BotはHTTPサーバーを持たない。Discord Gateway・Voice、およびリージョンごとに固定したSonioxのHTTPS・WSSエンドポイントへ外向きに接続する。
+BotはHTTPサーバーを持たない。Discord Gateway・Voiceと、設定したリージョンのSoniox HTTPS・WSSへ外向きに接続する。音声と字幕の経路は次のとおり。
+
+```text
+Discord Voice
+  -> 発話者別にOpusを受信
+  -> PCMへ復号し、Soniox STTへ送信
+  -> 原文と翻訳文を組み立てる
+  -> Discordの公開スレッドへ字幕を投稿
+  -> 確定翻訳をSoniox TTSへ送信
+  -> 返ってきたPCMをDiscord Voiceで再生
+```
+
+### 主要コンポーネント
+
+| コンポーネント | 責務 | 主な実装 |
+|---|---|---|
+| 起動・組み立て | 依存関係の生成、起動前検査、Discord接続、シグナルによる終了を管理する | `src/index.ts`、`src/app.ts` |
+| 設定 | 環境変数、リージョン、上限、パスを起動時に検証する | `src/config.ts` |
+| Command Service | Guild・User・参加者・権限を認可する | `src/commands/translation-command-service.ts` |
+| Session Manager | Guildごとの単一セッションと状態を管理する | `src/session/session-manager.ts` |
+| Discord Driver | Voice受信、STT、字幕、再生、復旧を統合する | `src/discord/translation-driver.ts` |
+| Utterance Processor | 発話確定後の字幕、TTS、FIFO、割り込みを管理する | `src/translation/utterance-processor.ts` |
+| Soniox Control | モデル・容量の事前確認、STT作成、利用量照合を行う | `src/soniox/control.ts` |
+| TTS Gateway | 常時接続WebSocketとTTSストリームを管理する | `src/soniox/raw-tts-gateway.ts` |
+| Usage Ledger | 利用量、見積額、照合額、保持期限をSQLiteで管理する | `src/usage/usage-ledger.ts` |
+| Safe Logger | Discord IDを仮名化し、本文を含まないJSONログを出す | `src/observability/logger.ts` |
 
 ### 起動順
 
 1. 環境変数を検証する
 2. 翻訳用語を読み込む
 3. SQLiteを開き、スキーマを作成または確認する
-4. 異常終了で残ったセッションとプロバイダー要求を失敗扱いにする
+4. 異常終了で残ったセッションとSoniox要求を失敗扱いにする
 5. 保持期限を過ぎた利用量を削除する
 6. Sonioxのモデル、3言語、3言語ペア、voice、無音短縮、速度を検査する
 7. Sonioxの同時実行枠APIを検査する
@@ -153,186 +159,240 @@ BotはHTTPサーバーを持たない。Discord Gateway・Voice、およびリ�
 9. Discord Gatewayへ接続する
 10. 定期照合タイマーを開始する
 
-手順1〜8のいずれかが失敗すると、Discordへ接続しない。設定不備や課金制御の異常、外部仕様とのずれを検出し、利用開始を止める。
+手順1〜8のいずれかが失敗すると、Discordへ接続しない。設定不備、課金制御の異常、外部仕様とのずれを利用開始前に止める。
 
-### 主要コンポーネント
-
-| コンポーネント | 責務 | 主な実装 |
-|---|---|---|
-| 設定 | 環境変数、リージョン、上限、パスを起動時に検証 | `src/config.ts` |
-| Command Service | Guild・利用者・参加者・権限を認可 | `src/commands/translation-command-service.ts` |
-| Session Manager | Guildごとの単一セッションと状態を管理 | `src/session/session-manager.ts` |
-| Discord Driver | Voice受信、STT、字幕、再生、復旧を統合 | `src/discord/translation-driver.ts` |
-| Utterance Processor | 発話確定後の字幕、TTS、FIFO、割り込みを管理 | `src/translation/utterance-processor.ts` |
-| Soniox Control | モデル・容量の事前確認、STT作成、利用量照合 | `src/soniox/control.ts` |
-| TTS Gateway | 常時接続WebSocketとストリームを管理 | `src/soniox/raw-tts-gateway.ts` |
-| Usage Ledger | 利用量、見積額、照合額、保持期限をSQLiteで管理 | `src/usage/usage-ledger.ts` |
-| Safe Logger | IDを仮名化し、内容を含まないJSONログを出力 | `src/observability/logger.ts` |
-
-### 既存ライブラリを優先する
-
-- Discord Gateway、Application Command、Components V2、Voice、権限判定は`discord.js`と`@discordjs/voice`を使う
-- Soniox STT、モデル、利用量、同時実行枠は公式`@soniox/node`を使う
-- 入力と外部応答はZodで検証する
-- 永続化は`better-sqlite3`とSQLiteの制約・トランザクションを使う
-- HMAC、UUID、AbortSignal、ストリームはNode.js標準機能を使う
-
-公式`@soniox/node` 2.3.0のRealtime TTSは、速度、無音短縮、明示終了、キャンセルを提供する。ただし、Realtime TTSのストリーム設定には`client_reference_id`がない。現行版はTTSの利用量もSoniox `usage logs`と照合するため、このIDを送れるraw WebSocketを採用済みの`ws`で実装する。接続先はリージョンごとの固定URLとし、受信イベントをZodで検証する。
-
-## 5. セッション開始処理の失敗は`FAILED`、実行時障害は`STOPPING`を経由する
-
-![翻訳セッションの状態遷移](./diagrams/session-state.svg)
-
-[HTML版を開く](./diagrams/session-state.html)
-
-セッションが存在しない状態は、`SessionManager`の`Map`にエントリがないことで表す。列挙型は次の5値を持つ。
-
-| 状態 | 意味 |
-|---|---|
-| `AUTHORIZING` | ローカル利用上限とSoniox同時実行枠を確認中 |
-| `CONNECTING` | Discordチャンネル再確認、台帳作成、Voice接続、カード・スレッド作成中 |
-| `ACTIVE` | 発話を受信し、翻訳できる |
-| `FAILED` | 開始処理が失敗し、エントリを除去する直前 |
-| `STOPPING` | 開始中断または実行中セッションの停止処理中 |
-
-コマンド前段の認可、参加者、権限、言語ペアの拒否は、セッションを作らずに返す。`SessionManager.start`の重複検査も、エントリを作る前に拒否する。
-
-エントリ作成後は、セッションなし→`AUTHORIZING`→`CONNECTING`→`ACTIVE`→`STOPPING`→セッションなしと進む。利用量・容量検査または接続・提示準備に失敗すると、`FAILED`を経てエントリを除去する。開始中に停止すると一時的に`STOPPING`となり、開始処理の例外処理で`FAILED`を経由する。`ACTIVE`中の復旧不能な障害は`STOPPING`へ直接進む。
-
-Global上限またはSoniox 402を検出しても、現行実装が停止するのは検出したGuildのセッションだけ。別Guildの実行中セッションは止まらない。
-
-## 6. 発話境界の確定後に字幕とTTSを並行処理する
+### 1発話の処理
 
 ![1発話を字幕と翻訳音声へ変えるシーケンス](./diagrams/utterance-sequence.svg)
 
 [HTML版を開く](./diagrams/utterance-sequence.html)
 
-### 音声受信
+Discordの発話開始イベントを受けると、TTS接続を先にウォームアップし、発話者別のOpusパケットを購読する。OpusはDiscord音声の圧縮形式である。これを48 kHz・16 bit・stereoの非圧縮音声データ（PCM）へ戻し、1チャンネルのmonoへ変換してSoniox STTへ送る。
 
-Discordの発話開始イベントを受けると、再生割り込みを判定し、TTS接続を先にウォームアップする。その後、発話者別のOpusパケットを購読し、48 kHz・16 bit・stereo PCMへ復号する。mono PCMへ変換してSoniox STTへ送る。STT接続前の音声は、250パケットまたは512 KiBの先に達した方まで保持する。超過時は音声を欠落させず、セッションを停止する。
+STTには次を指定する。
 
-破損したOpusパケットは1件だけ破棄する。受信ストリームが`close`した場合は200 ms後に再購読する。再購読後に`data`を1件受け取ると復旧回数を0に戻す。再購読後もデータを受信できない状態が4回続くと停止する。復号、パケット解析、STT送信のエラーは`SONIOX_STREAM_FAILED`で停止する。
-
-### STTと発話境界
-
-発話者ごとのSTTには次を指定する。
-
-- 48 kHz・16 bit・mono PCM
 - 選択した2言語と言語識別
-- semantic endpoint
+- 意味の区切りを検出するsemantic endpoint
 - 双方向翻訳
 - 任意の翻訳用語
 
-トークンは`is_final`、`translation_status`、`language`、`source_language`を検査して組み立てる。未確定トークンはTTSへ送らず、確定済みトークンと合わせて仮字幕へ表示する。仮字幕は発話者ごとに最大500 ms間隔で更新する。言語ペア外の言語を検出した場合は翻訳せず、スレッドへ英語の警告を出す。
+Sonioxから届く認識・翻訳結果について、各トークンが確定済みか、翻訳結果かを判定する。あわせて言語と翻訳元言語を検査し、発話を組み立てる。言語ペア外の言語を検出した場合は翻訳せず、スレッドへ英語の警告を出す。
+
+発話は次のいずれかで確定する。
 
 | 確定経路 | 条件 |
 |---|---|
-| semantic endpoint | Sonioxが`endpoint`を返す |
+| semantic endpoint | Sonioxが意味の区切りを検出し、`endpoint`を返す |
 | manual finalize | Discordの発話終了から100 ms後に、200 ms分の無音PCMとfinalizeを送る |
 | inactivity | STTの認識結果が3秒間更新されない |
-| maximum duration | 認識開始から`UTTERANCE_MAX_SOURCE_SECONDS`に達した |
+| maximum duration | 認識開始から`UTTERANCE_MAX_SOURCE_SECONDS`に達する |
 
-`endpoint`または`finalized`を1発話の境界とする。確定済みの原文と翻訳文が揃った発話だけを後段へ渡す。空の発話は仮字幕を削除して終える。
+`endpoint`または`finalized`が1発話の境界になる。原文と翻訳文が揃った発話だけを字幕とTTSへ渡す。境界確定後は、確定字幕の投稿とTTS生成を並行して始める。字幕投稿の完了はTTS生成開始の条件にしない。
 
-### 字幕、TTS、再生
-
-境界の確定後、確定字幕の投稿とTTS生成を並行して始める。字幕投稿の完了は音声再生の条件にしない。
-
-TTS WebSocketへの接続だけを発話開始時に先行させる。API Keyを含む設定、翻訳本文、`text_end`は境界確定後に送る。TTS応答はZodで検証し、1メッセージを8 MiB以下に制限する。生成時には次を指定する。
+TTSへ次を送る。
 
 - モデルと翻訳先言語
-- 話者のvoice
+- 話者に割り当てたvoice
 - 48 kHz PCM、速度、無音短縮
-- 不透明な要求ID
+- 利用量照合に使う不透明な要求ID
 
-再生順は発話確定順のFIFO。先行発話の再生中は後続1発話までTTSを準備する。待機音声は48 kHz mono PCMの120秒相当までメモリへ保持する。
+再生には、先に確定した発話から処理する先入れ先出し（FIFO）を使う。先行発話の再生中は、後続1発話までTTSを先行生成する。
 
-| モード | 待ち時間が2.5秒を超えた | 新しい発話が始まった |
+| モード | 待ち時間が2.5秒を超えた場合 | 新しい発話が始まった場合 |
 |---|---|---|
-| `conversation` | 待機中の翻訳音声を省略 | 再生中・待機中・生成中の翻訳音声を中断 |
-| `accuracy` | FIFOを維持し、カードへ遅延警告を表示 | 中断しない |
+| `conversation` | 待機中の翻訳音声を省略する | 再生中・待機中・生成中の古い翻訳音声を中断する |
+| `accuracy` | FIFOを維持し、カードへ遅延警告を出す | 中断しない |
 
 字幕のみに切り替えると、再生中・待機中・生成中のTTSを止める。以後は字幕だけを投稿する。
 
-`PLAYBACK_QUEUE_MAX_MS`は既存配置との互換性のために必須の設定項目として残る。現行処理は停止条件にも2.5秒の判定にも使わない。
+## 5. データ / 状態
 
-### 字幕失敗
+### セッション状態
 
-初期設定は`continue_audio`である。仮字幕または確定字幕の新規投稿に失敗した場合、`continue_audio`では警告を記録して音声を続ける。`stop_session`では`CAPTION_SEND_FAILED`で停止する。既存字幕の編集や削除の失敗は、どちらの方針でも停止条件にならない。
+![翻訳セッションの状態遷移](./diagrams/session-state.svg)
 
-## 7. SQLiteは利用量だけを保持する
+[HTML版を開く](./diagrams/session-state.html)
 
-SQLiteはWAL modeで開く。親ディレクトリを新規作成した場合は`0700`、DBファイルは既存・新規を問わず`0600`へ設定する。既存の親ディレクトリ権限は変更しない。
+セッションが存在しない状態は、Guildごとのセッションを保持する`SessionManager`の`Map`（連想配列）に、そのGuildの項目がないことで表す。項目の作成後は次の5状態を取る。
+
+| 状態 | 意味 |
+|---|---|
+| `AUTHORIZING` | ローカル利用上限とSoniox同時実行枠を確認中 |
+| `CONNECTING` | チャンネル再確認、台帳作成、Voice接続、カード・スレッド作成中 |
+| `ACTIVE` | 発話を受信し、翻訳できる |
+| `FAILED` | 開始処理が失敗し、エントリを除去する直前 |
+| `STOPPING` | 開始中断または実行中セッションの停止処理中 |
+
+通常は、セッションなし→`AUTHORIZING`→`CONNECTING`→`ACTIVE`→`STOPPING`→セッションなしと進む。利用量・容量検査や接続準備に失敗すると、`FAILED`を経てエントリを除去する。開始中に停止した場合は、一度`STOPPING`へ移り、開始処理側の例外処理で`FAILED`を経由する。コマンド前段で拒否された場合、エントリは作らない。この前段には認可と参加者確認、Discord権限と言語ペア確認が含まれる。
+
+メモリ上のデータは2種類に分かれる。
+
+| 種類 | 内容 |
+|---|---|
+| セッション記述 | Session ID、Guild・Channel、開始者、言語ペア、参加者、再生モード、音声の有無、字幕失敗時の方針 |
+| 実行時データ | 発話者ごとのSTT、voice割り当て、仮字幕、TTS生成、FIFO再生キュー |
+
+どちらもプロセス終了時に消える。
+
+### SQLiteへ保存するデータ
+
+SQLiteは利用量と運用メタデータだけを保持する。読み取りと書き込みの競合を減らすWAL modeで開く。親ディレクトリを新規作成した場合は`0700`、DBファイルは`0600`にする。
 
 | テーブル | 主な内容 |
 |---|---|
-| `session_usage` | Session ID、Guild・Voice Channel・Text Channel・開始者ID、言語ペア、時刻、終了理由、見積額・照合額 |
-| `provider_request` | Provider Request ID、Session ID、User ID、STT/TTS、状態、利用時間、文字数、見積額・照合額 |
+| `session_usage` | Session ID、Guild・Channel・開始者ID、言語ペア、時刻、終了理由、見積額・照合額 |
+| `provider_request` | 照合用の要求ID、Session ID、User ID、STT/TTS、状態、利用時間、文字数、見積額・照合額 |
 | `monthly_usage` | User・Guild・Globalごとの月、利用時間、文字数、見積額・照合額 |
 | `app_meta` | 最終照合時刻と書き込み確認 |
 
-音声、原文、翻訳文、表示名は保存しない。Discord IDは運用メタデータとして保存する。
+音声、原文、翻訳文、表示名は保存しない。Discord IDとChannel IDは運用メタデータとして保存する。起動時には、未完了の`provider_request`を`failed`へ変更し、未完了の`session_usage`を`PROCESS_RESTART`で終了する。
 
-起動時に未完了の`provider_request`を`failed`へ変更し、未完了の`session_usage`を`PROCESS_RESTART`で終了する。User・Guildの月次集計は当月と前月、Globalは当月を含む12か月を保持する。古いセッションを削除すると、紐づくプロバイダー要求も削除する。
+月の境界は`Asia/Tokyo`で計算する。セッション、紐づくSoniox要求、User・Guildの月次集計は当月と前月を保持する。Globalの月次集計は当月を含む12か月を保持する。Discord上のスレッドと字幕はSQLiteの保持処理に含まれず、Botが終了時にアーカイブしてもDiscordへ残る。
 
-Discordのスレッドと字幕はSQLiteの保持処理に含まれない。終了時にアーカイブするが、削除しない。
+### 利用量と費用
 
-## 8. 利用量はローカル見積額とSoniox照合額の大きい方で判定する
-
-ローカル見積額は、STTストリーム時間、TTS音声時間、課金対象テキストの文字数から計算する。設定単価と安全係数を掛け、microUSDの整数に切り上げる。上限判定には、ローカル見積額とSoniox `usage logs`の照合額の大きい方を使う。
-
-設定は次の大小関係を満たす必要がある。
+ローカル見積額は、STTストリーム時間、TTS音声時間、課金対象テキストの文字数から計算する。設定単価と安全係数を掛け、1 USDの100万分の1を表すmicroUSDの整数へ切り上げる。上限判定には、ローカル見積額とSoniox `usage logs`の照合額の大きい方を使う。
 
 ```text
 User <= Guild <= Global < Soniox Project budget
 ```
 
-User上限は新規参加、Guild上限は新規セッション、Global上限は全Guildの新規セッションを拒否する。上限判定後に発生した利用量も台帳へ加算する。
+User上限は新規参加、Guild上限は新規セッション、Global上限は全Guildの新規セッションを拒否する。起動時とセッション終了時に`usage logs`を取得する。定期照合の配布初期値は60秒間隔である。ローカルのSoniox要求IDを`client_reference_id`へ対応させ、Sonioxの`cost_usd`を照合額として記録する。最終照合から180秒を超えると、新規セッションと新規参加者を拒否する。
 
-起動時とセッション終了時に`usage logs`を取得する。配布初期値では60秒ごとにも取得する。ローカルのProvider Request IDを`client_reference_id`へ対応させ、Sonioxの`cost_usd`を照合額として記録する。最終照合から180秒を超えると、新規セッションと新規参加者を拒否する。
+`SONIOX_PROJECT_MONTHLY_BUDGET_MICROUSD`は、Soniox Consoleに設定したProject上限を運用者が転記する値である。BotはConsoleの上限を変更せず、実際の設定値と環境変数の一致も確認しない。
 
-`SONIOX_PROJECT_MONTHLY_BUDGET_MICROUSD`は、Consoleに設定したProject上限を転記した値である。BotはConsoleの設定を変更せず、Console上の実際の設定値との一致も自動確認しない。
+## 6. エラー・境界条件
 
-| Soniox応答 | Botの分類 |
+### 信頼境界
+
+| 境界 | 制御 |
 |---|---|
-| 401・403 | 認証失敗 |
-| 402 | 予算到達 |
-| 429 | 同時実行上限 |
-| その他のストリームエラー | プロバイダー障害 |
+| Discord利用者→Bot | Guild・User許可リスト、Guild限定コマンド、Discord権限、Session ID、操作権限 |
+| Discord Voice→音声処理 | 対象Voice Channel、Bot以外の参加者、最大人数、Opus復号、上限付き起動バッファ |
+| Soniox→Bot | 固定HTTPS・WSS、TLS、SDK型、Zodスキーマ、タイムアウト、ペイロード上限 |
+| Bot→Discordテキスト | Markdownエスケープ、メンション無効化、4,000文字上限、公開スレッド権限 |
+| Bot→SQLite | プリペアドステートメント、スキーマ制約、WAL、ファイル権限 |
+| 運用者→設定 | `.env.local`と実運用の翻訳用語をGit・Dockerコンテキストから除外し、起動時に検証 |
 
-### 現行の予算制御には競合が残る
+Discord Token、Soniox API Key、ログ仮名化用のHMAC Keyは環境変数から読む。通常ログには例外メッセージとスタックを出さず、固定コードまたはエラー名を記録する。Guild・User IDは、秘密鍵を使うHMAC-SHA-256で仮名化する。発話本文、字幕本文、表示名、Token、API Keyはログへ出さない。
 
-複数Guildが同時に開始・課金すると、事前判定を両方通過してGlobal上限を超過できる。Global上限またはSoniox 402を1つのGuildで検出しても、停止するのはそのGuildだけ。別Guildの実行中セッションを一括停止する処理は未実装である。
+運用者向けの`pnpm config:check`だけは、設定を直せるように通常のエラーメッセージを端末へ出す。翻訳用語の値やファイルパスが含まれる場合があるため、出力を公開ログや問い合わせ先へ貼らない。
 
-したがって、`GLOBAL_MONTHLY_COST_LIMIT_MICROUSD`はプロセス全体の即時停止機能ではない。利用範囲を広げる前に、原子的な予算予約またはプロセス全体の同時1セッション制限が必要になる。
+### 失敗時の動作
 
-## 9. `.env.example`は配布初期値を持つ
+| 分類 | 主なコード・終了理由 | 動作 |
+|---|---|---|
+| 認可 | `GUILD_NOT_ALLOWED`、`USER_NOT_ALLOWED`、`STOP_NOT_ALLOWED` | コマンドを拒否する |
+| 参加者 | `SPEAKER_NOT_ALLOWED`、`TOO_MANY_SPEAKERS`、`VOICE_EMPTY` | 開始を拒否するかセッションを停止する |
+| Discord権限 | `BOT_PERMISSION_MISSING` | 開始を拒否し、不足権限名を返す |
+| 利用量 | `USAGE_LIMIT_REACHED`、`USAGE_LEDGER_UNAVAILABLE`、`USAGE_RECONCILIATION_STALE` | 開始または参加を拒否し、検出したGuildを停止する |
+| Soniox容量 | `SONIOX_CAPACITY_UNAVAILABLE` | 同時実行枠が足りないか確認できない場合、開始を拒否する |
+| Soniox通信 | `SONIOX_AUTH_FAILED`、`SONIOX_BUDGET_EXHAUSTED`、`SONIOX_LIMIT_EXCEEDED`、`SONIOX_STREAM_FAILED` | 公開コードへ変換し、検出したGuildを停止する |
+| Discord Voice切断 | `VOICE_CONNECTION_LOST` | 再接続を試し、復旧できなければ停止する |
+| BotのVoice退出 | `BOT_VOICE_REMOVED` | 再接続を試さず、直ちに停止する |
+| セッション | `SESSION_TIME_LIMIT`、`SESSION_IDLE` | 設定した時間または無音時間に達すると停止する |
+| 言語 | `UNSUPPORTED_PAIR`、`UNSUPPORTED_LANGUAGE` | 開始を拒否するか、字幕スレッドへ警告を出す |
+| 発話 | `UTTERANCE_TOO_LONG`、`TTS_OUTPUT_LIMIT_REACHED` | 対象発話を続行せず、セッションを停止する |
+| 字幕 | `CAPTION_SEND_FAILED` | 設定に従って音声を続けるか停止する |
+| プロセス | SIGINT・SIGTERM | 新規コマンドを拒否し、全セッションと外部接続を閉じる |
 
-### 秘密値と許可リスト
+公開メッセージに内部例外や認証情報を含めない。カードの終了理由には固定コードを付ける。コードの定義は`src/domain/application-error.ts`、カードに表示する英語の終了理由は`src/discord/message-payload.ts`が正本である。
 
-| 設定 | 配布初期値 | 制約 |
+Sonioxの401・403は認証失敗、402は予算到達、429は同時実行上限へ変換する。その他のストリーム異常はプロバイダー障害として扱う。
+
+### ログで追跡する
+
+ログはJSONを1行に1件ずつ出す。主なイベントは次のとおり。
+
+| イベント | 用途 |
+|---|---|
+| `application_ready` | Discord接続と起動準備の完了 |
+| `startup_recovery_complete` | 異常終了から復旧した件数 |
+| `usage_retention_complete` | 保持期限で削除した件数 |
+| `soniox_preflight_complete` | Sonioxの起動前確認完了 |
+| `translation_flow` | 本文を含まない処理段階 |
+| `translation_latency` | 1発話の区間時間 |
+| `translation_runtime_warning` | 局所復旧や字幕編集の失敗 |
+| `translation_runtime_failed` | セッション停止へ至った障害 |
+| `usage_reconciliation_failed` | 定期照合の失敗 |
+| `application_shutdown_complete` | 正常終了処理の完了 |
+
+`translation_latency.trace_id`は1発話を表す。`playback_started.total_ms`は、最後の音声パケットを受けてから再生を始めるまでの時間である。字幕とTTSは並行するため、ログの出力順は一定にならない。
+
+### 音声処理の上限と復旧
+
+- STT接続前の音声は250パケットまたは512 KiBの、いずれか早く達した上限まで保持する。超過時は音声を欠落させず、セッションを停止する
+- 破損したOpusパケットは、その1件だけを破棄する
+- 受信ストリームが閉じた場合は200 ms後に再購読する。データを受信できない状態が4回続くと停止する
+- 待機中のTTS音声は48 kHz mono PCMの120秒相当まで保持する
+- TTS WebSocketの1メッセージは8 MiB以下に制限する
+- `UTTERANCE_MAX_SOURCE_SECONDS`と`TTS_MAX_INPUT_CHARACTERS`を超えた発話は後段へ流さない
+- 初期設定では字幕の新規投稿に失敗しても音声を続ける。既存字幕の編集・削除失敗は停止条件にしない
+
+### 現時点で残る境界問題
+
+1. 複数Guildが同時に開始・課金すると、両方が事前判定を通過し、Global上限を超過できる。利用範囲を広げる前に、原子的な予算予約またはプロセス全体の同時1セッション制限が必要になる
+2. Global上限またはSoniox 402を1つのGuildで検出しても、別Guildの実行中セッションは停止しない
+3. 字幕は公開スレッドへ残り、自動削除されない。Botは音声と字幕をDiscord・Sonioxへ送ることへの参加同意を強制取得しない
+4. SQLiteは生のDiscord IDとChannel IDを一定期間保存する
+5. 用語ファイルの内容はSTTコンテキストとしてSonioxへ送る
+6. `Manage Threads`を外した最小権限で必要なスレッド操作が成立するか、実サービスで確認していない
+7. 許可リストから削除したGuildの登録済みコマンドは自動削除しない。実行時認可は保たれるが、古いコマンド表示が残る
+
+利用範囲を広げる前に、参加同意と字幕の閲覧範囲を決める。字幕・保存データの削除と保存期間、問い合わせ窓口も運用規約へ定める。
+
+## 7. 実装方針
+
+### 既存機能を優先して使う
+
+| 対象 | 採用手段 | 理由 |
+|---|---|---|
+| Discord Gateway、Command、Components V2（カードとボタン） | `discord.js` | コマンド定義、権限、カード操作を公式APIの型で扱える |
+| Discord音声 | `@discordjs/voice`と`@discordjs/opus` | Voice接続、受信、再生、Opus変換を既存実装へ寄せる |
+| Soniox STT、モデル、利用量、同時実行枠 | `@soniox/node` 2.3.0 | 公式クライアントの型とAPIを使う |
+| TTS WebSocket | 採用済みの`ws` | 利用量照合用の`client_reference_id`を送る必要がある |
+| 入力と外部応答 | Zod | 環境変数、用語JSON、WebSocket応答を境界で検証する |
+| 永続化 | `better-sqlite3`とSQLite | 単一プロセスの利用量台帳を同期トランザクションで扱う |
+| HMAC、UUID、AbortSignal、ストリーム | Node.js標準機能 | 新しい依存関係を増やさず実装できる |
+
+公式`@soniox/node` 2.3.0のRealtime TTSは、速度、無音短縮、明示終了、キャンセルを提供する。ただし、ストリーム設定には`client_reference_id`がない。現行版はTTSの利用量もSoniox `usage logs`と照合するため、このIDを送れるWebSocket接続を`ws`で実装する。受信イベントはZodで検証する。
+
+### モジュールの分け方
+
+認可とセッション状態はDiscordの入出力から分離する。各コンポーネントの責務は第4節の表に示した。外部サービス固有のエラーは、アプリ内の共通エラー型`ApplicationError`へ境界で変換する。上位層は固定コードだけで動作を決める。
+
+テストは外部から観測できる境界を対象にする。複雑な純粋ロジックだけ、補助的な単体テストで確認する。詳細は第8節に示す。
+
+### 設定
+
+`.env.example`は配布する設定一覧と初期値を持つ。`src/config.ts`が値の型と制約を検証する。秘密値と許可リストは空のまま配布し、実運用値は`.env.local`へ置く。
+
+| 設定 | 配布初期値 | 意味・制約 |
 |---|---:|---|
-| `DISCORD_TOKEN` | 空 | 必須、Git管理外 |
+| `DISCORD_TOKEN` | 空 | 必須。Gitへ入れない |
 | `DISCORD_APPLICATION_ID` | 空 | 17〜20桁 |
 | `ALLOWED_GUILD_IDS` | 空 | 17〜20桁のIDを1件以上 |
-| `ALLOWED_USER_IDS` | 空 | 17〜20桁のIDを1件以上。全発話者を含める |
-| `SONIOX_API_KEY` | 空 | 必須、Bot専用Project |
-| `LOG_ID_HMAC_KEY` | 空 | 32文字以上、他用途と共有しない |
+| `ALLOWED_USER_IDS` | 空 | 全発話者のIDを1件以上 |
+| `SONIOX_API_KEY` | 空 | Bot専用ProjectのKey |
+| `SONIOX_REGION` | `us` | `us`、`eu`、`jp`。Projectのリージョンと一致させる |
+| `LOG_ID_HMAC_KEY` | 空 | 32文字以上。他用途と共有しない |
+| `TRANSLATION_TERMS_PATH` | 空 | 任意。指定する場合は絶対パス |
+| `SQLITE_PATH` | `/data/usage.sqlite` | 必須の絶対パス |
 
-### セッション
+セッションの制限値は次のとおり。
 
 | 設定 | 配布初期値 | 意味 |
 |---|---:|---|
 | `SESSION_MAX_MINUTES` | `30` | セッション最大時間 |
 | `MAX_SPEAKERS_PER_SESSION` | `2` | 最大参加者。許容範囲は1〜3 |
 | `SESSION_IDLE_TIMEOUT_SECONDS` | `120` | 人間の音声パケットがない場合の停止時間 |
-| `PLAYBACK_QUEUE_MAX_MS` | `10000` | 互換性のために残る必須値。実行時判定には未使用 |
+| `PLAYBACK_QUEUE_MAX_MS` | `10000` | 必須。処理器へ渡すが、この値を使う警告判定は現行フローから呼ばれない |
 | `UTTERANCE_MAX_SOURCE_SECONDS` | `30` | 1発話の認識開始から確定までの上限 |
 | `TTS_MAX_INPUT_CHARACTERS` | `300` | 1発話の翻訳本文上限 |
 | `VOICE_RECONNECT_TIMEOUT_MS` | `5000` | Discord Voice再接続待ち |
 | `SONIOX_TERMINATION_TIMEOUT_MS` | `5000` | TTSストリーム終了待ち |
 
-### 利用上限と照合
+利用上限と照合には次を使う。
 
 | 設定 | 配布初期値 | 意味 |
 |---|---:|---|
@@ -347,122 +407,129 @@ User上限は新規参加、Guild上限は新規セッション、Global上限�
 | `PRICING_CONFIRMED_AT` | `2026-08-15` | 単価を一次情報で確認した日 |
 | `PRICING_MAX_AGE_DAYS` | `30` | 単価確認日の有効期間 |
 | `USAGE_RECONCILE_INTERVAL_SECONDS` | `60` | 定期照合間隔 |
-| `USAGE_RECONCILE_MAX_STALENESS_SECONDS` | `180` | 新規開始を拒否する照合経過時間 |
-| `SONIOX_LIMIT_CHECK_MAX_STALENESS_SECONDS` | `30` | Soniox control APIのタイムアウト |
+| `USAGE_RECONCILE_MAX_STALENESS_SECONDS` | `180` | 新規利用を拒否する照合経過時間 |
+| `SONIOX_LIMIT_CHECK_MAX_STALENESS_SECONDS` | `30` | Soniox control APIの応答待ち上限 |
 
-料金確認日が未来の日付、不正な日付、または有効期限切れの場合は起動を拒否する。料金を確認したら、単価と`PRICING_CONFIRMED_AT`を更新する。
+料金確認日が未来、不正、または有効期限切れの場合は起動を拒否する。料金を確認したら、3つの単価と`PRICING_CONFIRMED_AT`を同時に更新する。
 
-### Sonioxと保存先
+Sonioxのモデルとvoiceは次の初期値を持つ。
 
 | 設定 | 配布初期値 | 意味 |
 |---|---:|---|
-| `SONIOX_REGION` | `us` | `us`、`eu`、`jp`の固定エンドポイントを選択 |
 | `SONIOX_STT_MODEL` | `stt-rt-v5` | STTモデル |
 | `SONIOX_TTS_MODEL` | `tts-rt-v2` | TTSモデル |
-| `SONIOX_TTS_SPEED` | `1.15` | 0.7〜1.3。省略時も1.15 |
+| `SONIOX_TTS_SPEED` | `1.15` | 許容範囲0.7〜1.3 |
 | `SONIOX_VOICE_JA` | `Kenji` | 話者枠1の多言語voice |
 | `SONIOX_VOICE_KO` | `Mina` | 話者枠2の多言語voice |
 | `SONIOX_VOICE_EN` | `Emma` | 話者枠3の多言語voice |
-| `TRANSLATION_TERMS_PATH` | 空 | 任意。指定時は絶対パス |
-| `SQLITE_PATH` | `/data/usage.sqlite` | 必須の絶対パス |
 
-3つのvoiceは重複できない。用語ファイルは3言語ペアを持つ厳格なJSONとする。同じ言語ペア内で`source`を重複できず、各言語ペアのJSON表現は10,000文字以下とする。
+`SONIOX_VOICE_JA`などの名前は互換性のために残っている。実際には、3人までの話者枠へ順に割り当てる多言語voiceとして使う。3つのvoiceは重複できない。
 
-## 10. 信頼境界ごとに入力と出力を制限する
+翻訳用語ファイルは3言語ペアを持つ厳格なJSONとする。同じ言語ペア内で`source`を重複できず、各言語ペアのJSON表現は10,000文字以下。空の設定では、Composeが`config/translation-terms.empty.json`を読み取り専用でマウントする。
 
-| 境界 | 制御 |
-|---|---|
-| Discord利用者→Bot | Guild・User許可リスト、Guild限定コマンド、Discord権限、Session ID、操作権限 |
-| Discord Voice→音声処理 | 対象VC、Bot以外の参加者、最大人数、Opus復号、上限付き起動バッファ |
-| Soniox→Bot | 固定HTTPS・WSS、TLS、SDK型、Zodスキーマ、タイムアウト、ペイロード上限 |
-| Bot→Discordテキスト | Markdownエスケープ、メンション無効化、4,000文字上限、公開スレッド権限 |
-| Bot→SQLite | プリペアドステートメント、スキーマ制約、WAL、権限`0700`・`0600` |
-| 運用者→設定 | `.env.local`と実運用の翻訳用語ファイルをGit・Dockerコンテキストから除外し、起動時に検証 |
+### 配置と終了処理
 
-Discord Token、Soniox API Key、HMAC keyは環境変数から読む。Botの実行ログと起動・終了時の致命的エラーログは、例外メッセージとスタックを出さず、公開用のエラーコードまたはエラー名を記録する。環境変数の検証エラーも設定名と理由だけを出す。
+Dockerfileはビルド用と実行用を分ける。実行用ステージはNode.js 24.17.0の`node`ユーザーとして動き、`/data`だけを永続ボリュームとする。Composeは`init: true`、`restart: unless-stopped`、30秒の停止猶予を設定する。Botは待受ポートを持たない。
 
-`pnpm config:check`は運用者向けの診断コマンドであり、通常の`Error.message`を端末へ出す。不正な翻訳用語ファイルを指定した場合は、ファイルパスや重複した`source`を表示する。この出力を公開ログや問い合わせ先へ貼らない。
-
-Guild・User IDはHMAC-SHA-256で仮名化し、先頭20桁の16進表現をログへ記録する。発話本文、字幕本文、表示名、Token、API Keyは記録しない。Session IDとProvider Request IDは、不透明な追跡IDとして使う。
-
-### 利用範囲を広げる前にプライバシー条件を決める
-
-- 公開スレッドは親チャンネルの閲覧者から見える
-- 字幕はDiscordへ残り、自動削除されない
-- SQLiteは生のDiscord IDとChannel IDを一定期間保存する
-- 音声と翻訳内容をDiscordとSonioxへ送る同意を、Botは強制取得しない
-- 用語ファイルの内容はSTTコンテキストとしてSonioxへ送る
-
-運用規約には、参加同意、字幕の閲覧範囲、字幕と保存データの削除、保存期間、問い合わせ窓口を定める。
-
-## 11. 障害は固定コードへ変換し、JSONログで追跡する
-
-| 分類 | 例 | 動作 |
-|---|---|---|
-| 認可 | 未許可Guild・User | 開始を拒否 |
-| 参加者 | 未許可、人数超過、無人 | セッションを停止 |
-| Discord権限 | Voice・Text・Thread権限不足 | 開始を拒否し、不足権限名を返す |
-| 利用量 | User・Guild・Global上限、照合期限切れ | 開始または参加を拒否し、検出Guildを停止 |
-| Soniox | 認証、予算、同時実行枠、ストリーム障害 | 公開コードへ変換し、検出Guildを停止 |
-| Discord Voice | Bot退出、再接続失敗、受信復旧失敗 | セッションを停止 |
-| 発話 | 原音声長、TTS文字数、待機音声上限 | 対象コードで停止 |
-| 字幕 | 新規投稿失敗 | 設定に従って音声継続または停止 |
-| プロセス | SIGINT・SIGTERM | 新規コマンドを拒否し、使用中の資源を順に閉じる |
-
-公開メッセージに内部例外や認証情報を含めない。カードの終了理由には固定コードを付ける。
-
-ログはJSONとして1行に1件ずつ出力する。主なイベントは次のとおり。
-
-| イベント | 用途 |
-|---|---|
-| `application_ready` | Discord接続と起動準備の完了 |
-| `startup_recovery_complete` | 異常終了から復旧した件数 |
-| `usage_retention_complete` | 保持期限で削除した件数 |
-| `soniox_preflight_complete` | Sonioxの起動前確認完了 |
-| `translation_flow` | 本文を含まない処理段階 |
-| `translation_latency` | 1発話の区間時間 |
-| `translation_runtime_warning` | 局所復旧や字幕編集失敗 |
-| `translation_runtime_failed` | セッション停止へ至った障害 |
-| `usage_reconciliation_failed` | 定期照合の失敗 |
-| `application_shutdown_complete` | 正常終了処理の完了 |
-
-`translation_latency.trace_id`は1発話を表す。`playback_started.total_ms`は最後の音声パケットから再生開始までの時間。字幕投稿とTTSは並行するため、イベント順は一定にならない。
-
-## 12. Docker Composeを標準の配置経路とする
-
-Dockerfileはビルド用と実行用を分ける。実行用ステージはNode 24.17.0の`node`利用者で動き、`/data`だけを永続ボリュームとする。Botは待受ポートを持たない。
-
-Composeは`.env.local`を渡し、SQLiteを名前付きボリュームへ保存し、翻訳用語を読み取り専用でマウントする。`init: true`、`restart: unless-stopped`、30秒の停止猶予を設定する。
-
-Compose設定の検査には`docker compose --env-file .env.local config -q`を使う。`-q`を外すと展開後の秘密値が表示されるため、出力を保存または共有しない。
-
-ブリッジネットワークを作れないホストでは`compose.host.yaml`を使える。ホストネットワークは分離を弱めるため、標準構成にしない。
-
-`pnpm register-commands`は`ALLOWED_GUILD_IDS`の各Guildへ`/translate`をPUTする。許可リストから削除したGuildの既存コマンドは削除しない。実行時認可は維持するが、古いコマンド表示が残る場合がある。
+Compose設定の検査には`docker compose --env-file .env.local config -q`を使う。`-q`を外すと展開後の秘密値が表示されるため、出力を保存または共有しない。ブリッジネットワークを作れないホストでは`compose.host.yaml`を使えるが、ホストネットワークは分離を弱めるため標準構成にしない。
 
 SIGINTまたはSIGTERMを受けると、新規コマンドを拒否して全Guildのセッションを停止する。必須の利用量照合を待ち、Discordリスナーとクライアント、TTS WebSocket、SQLiteを閉じる。
 
-## 13. 受入は実サービスの証跡で判定する
+### 外部仕様の参照先
 
-現行版の受入には、少なくとも次の実サービス確認が必要になる。
+第4節の音声処理または第7節の設定を変更する前に、次の一次資料で現行仕様を確認する。
+
+Sonioxの参照先:
+
+- [双方向翻訳](https://soniox.com/docs/translation/sts-translation)
+- [STT WebSocket](https://soniox.com/docs/api-reference/stt/websocket-api)
+- [発話区切り](https://soniox.com/docs/stt/rt/endpoint-detection)と[手動確定](https://soniox.com/docs/stt/rt/manual-finalization)
+- [TTS WebSocket](https://soniox.com/docs/api-reference/tts/websocket-api)
+- [利用量ログ](https://soniox.com/docs/guides/usage-logs)と[同時実行枠](https://soniox.com/docs/guides/concurrency-limits)
+- [料金](https://soniox.com/pricing)
+
+Discordの参照先:
+
+- [Voice Connections](https://docs.discord.com/developers/topics/voice-connections)
+- [Application Commands](https://docs.discord.com/developers/interactions/application-commands)
+- [Threads](https://docs.discord.com/developers/topics/threads)
+- [Message Components](https://docs.discord.com/developers/components/reference)
+- [Permissions](https://docs.discord.com/developers/topics/permissions)
+- [discord.js voice 0.19.2](https://discord.js.org/docs/packages/voice/0.19.2)
+
+## 8. テスト方針
+
+### 現在の確認状況
+
+現行環境では次が成功している。
+
+- ESLintとTypeScript型検査
+- 公開境界・統合テスト148件
+- 本番用ビルド
+- SQLiteとOpusの実行検査
+- Compose設定検査とDockerビルド
+- 本番向け依存関係の監査
+
+以前のUIを使った版では、1人による日本語・韓国語の実サービス通話、字幕、読み上げを確認した。当時は、現在のセッションUIと話者別voiceを実装していなかった。2つの再生モードもなかった。この履歴は現行版の受入証跡として扱わない。
+
+次は未検証である。
+
+- 現行版のDiscord・Soniox E2E
+- 2人・3人通話、日英、韓英
+- 3言語ペアの30分継続運転
+- 実請求額とローカル台帳の照合精度
+- 複数Guildの同時運転
+- Discord DAVE（音声のエンドツーエンド暗号化）環境での受信ストリーム復旧
+- 実デプロイ環境のGitHub Actions
+
+### 自動テストは外部から観測できる境界を優先する
+
+テスト名に`.public.test.ts`を持つテストは、利用者や運用者から見える結果を検証する。対象はコマンド、カード、字幕、再生、ログ、永続化結果である。Soniox TTSとSQLiteは統合テストで実際のWebSocketサーバーと一時DBを使う。実サービスのDiscord TokenやSoniox API Keyは自動テストへ渡さない。
+
+主な確認対象は次のとおり。
+
+- 未許可Guild・User、未許可参加者、人数超過、権限不足を外部接続前に拒否する
+- 同じGuildへの同時開始、開始中停止、参加者変更の競合を処理する
+- 3言語ペアの双方向トークンを1発話へ組み立てる
+- 発話確定、仮字幕、確定字幕、TTS、FIFO、2つの再生モードを処理する
+- Voice受信の一時障害、破損Opus、TTS WebSocketの異常応答を局所化する
+- 利用量を本文なしで記録し、再起動復旧、保持期限、Soniox照合を行う
+- ログと公開メッセージへ秘密値や生のDiscord IDを出さない
+
+変更後の基本確認は次のコマンドで行う。
+
+```bash
+pnpm check
+pnpm build
+pnpm smoke:runtime
+pnpm config:check
+pnpm audit --prod
+docker compose --env-file .env.local config -q
+```
+
+図版を変更した場合は`pnpm diagrams:sync`も実行し、HTMLとSVGを同期する。Dockerfileまたは依存関係を変更した場合は、Dockerビルドも実行する。
+
+### 実サービスでの受入
+
+現行版を受入済みにするには、少なくとも次をDiscordとSonioxの実サービスで確認する。
 
 1. 未許可Guild・User、未許可参加者、人数超過、権限不足を拒否する
 2. 3言語ペアの両方向で、事前に決めた発話例の字幕と読み上げが合格基準を満たす
-3. 1〜3人でvoiceが入れ替わらず、別利用者のストリームと混ざらない
+3. 1〜3人でvoiceが入れ替わらず、別Userのストリームと混ざらない
 4. 仮字幕が同じメッセージの確定字幕へ変わる
-5. 会話優先モードでは、待ち時間が2.5秒を超えた音声を省略し、新しい発話が始まると古い翻訳音声を中断する
-6. 正確さ優先モードでは、FIFOを保ち、遅延警告を表示する
+5. 会話優先では、2.5秒を超えた待機音声を省略し、新しい発話で古い翻訳音声を中断する
+6. 正確さ優先では、FIFOを保ち、遅延警告を表示する
 7. 字幕のみに切り替えると、音声処理を止めて字幕を続ける
-8. 破損したOpusパケットを局所的に破棄し、受信ストリームを再購読した後も処理を継続できる
+8. 破損Opusを局所的に破棄し、受信ストリームを再購読した後も処理を続ける
 9. User・Guild・Global上限とSoniox Project上限が新規利用を定義どおり拒否する
 10. 正常終了と再起動後の台帳状態が正しい
 11. 30分運転のメモリ、待ち時間、字幕、利用量、実請求額が事前基準を満たす
 
-翻訳品質、遅延、メモリ増加量、ローカル台帳と実請求額の差には、まだ合格閾値がない。運営者が試験前に閾値を決める。結果を見た後に基準を変えない。閾値がない項目は受入済みにできない。
+翻訳品質、遅延、メモリ増加量、ローカル台帳と実請求額の差には、まだ合格閾値がない。運営者が試験前に閾値を決める。結果を見た後に基準を変えず、閾値のない項目を受入済みにしない。
 
 | 対象 | 残す証跡 |
 |---|---|
-| 試験条件 | 日時、コミットSHA、DiscordとSonioxのリージョン、Sonioxのモデル、秘密値を除いた設定 |
+| 試験条件 | 日時、コミットSHA、DiscordとSonioxのリージョン、Sonioxモデル、秘密値を除いた設定 |
 | 機能 | 3言語ペア・2モード・1〜3人のシナリオ別結果、失敗時の再現手順 |
 | 遅延 | `translation_latency`から集計した区間値、事前の合格閾値 |
 | 利用量・費用 | SQLite集計、Soniox `usage logs`、実請求額の比較 |
@@ -470,57 +537,21 @@ SIGINTまたはSIGTERMを受けると、新規コマンドを拒否して全Guil
 
 証跡にToken、API Key、発話本文、生のDiscord IDを含めない。字幕や録音を残す場合は、参加者の同意と保管・削除方法を先に決める。
 
-## 14. 公開前に未解決事項を閉じる
+### 一般公開前の確認
 
-### Botの利用範囲を広げる前
+Botの利用範囲を広げる前に、次を完了する。
 
 1. 複数Guildの同時課金でGlobal上限を超過できる競合を解消する
 2. 現行版E2E、複数人、30分運転、利用額照合を完了する
 3. 参加同意、字幕公開範囲、削除、保存期間、問い合わせ窓口を定める
-4. `ManageThreads`を外した最小権限で、必要なスレッド操作を実機確認する
+4. `Manage Threads`を外した最小権限で、必要なスレッド操作を実サービスで確認する
 
-### リポジトリを一般公開する前
+リポジトリを一般公開する前に、次を完了する。
 
-1. `discord_realtime_translation_chat.zip`と`docs/reference/design-structure-sample.md`を所有者が全文確認し、内容、権利、公開意図を承認する
+1. リポジトリの公開責任者が、`discord_realtime_translation_chat.zip`と`docs/reference/design-structure-sample.md`の作成者・権利者を特定し、内容、権利、公開意図を確認する
 2. LICENSE、問い合わせ先、`SECURITY.md`、脆弱性報告窓口を用意する
 3. `.dockerignore`へ`.playwright-cli/`と`coverage/`を追加する
-4. 最終コミットとGit履歴を秘密情報、依存関係、コンテナイメージの観点から再検査する
+4. 最終コミットとGit履歴を、秘密情報、依存関係、コンテナイメージの観点から再検査する
 5. [公開前セキュリティ監査](../security_best_practices_report.md)の未解決事項を再判定する
 
-### 実装判断が残る項目
-
-1. 原子的な予算予約か、プロセス全体の同時1セッション制限か
-2. Global上限またはSoniox 402で全Guildを即時停止するか
-3. 許可リストから外したGuildのコマンドを削除する運用またはCLI
-4. 非公開スレッドへの変更、または終了時の字幕削除
-5. SQLiteに保存するDiscord IDの保持期間
-
-## 15. 一次情報
-
-### Soniox
-
-- [Real-time speech-to-speech translation](https://soniox.com/docs/translation/sts-translation)
-- [STT WebSocket API](https://soniox.com/docs/api-reference/stt/websocket-api)
-- [Real-time transcription tokens](https://soniox.com/docs/stt/rt/real-time-transcription)
-- [Endpoint detection](https://soniox.com/docs/stt/rt/endpoint-detection)
-- [Manual finalization](https://soniox.com/docs/stt/rt/manual-finalization)
-- [TTS WebSocket API](https://soniox.com/docs/api-reference/tts/websocket-api)
-- [TTS connection keepalive](https://soniox.com/docs/tts/rt/connection-keepalive)
-- [TTS limits and quotas](https://soniox.com/docs/tts/rt/limits-and-quotas)
-- [Supported translation languages](https://soniox.com/docs/translation/supported-languages)
-- [Usage logs](https://soniox.com/docs/guides/usage-logs)
-- [Concurrency limits](https://soniox.com/docs/guides/concurrency-limits)
-- [API pricing](https://soniox.com/pricing)
-- [API errors](https://soniox.com/docs/api-reference/errors)
-- [Data residency](https://soniox.com/docs/data-residency)
-- [Security and privacy](https://soniox.com/docs/security-and-privacy)
-
-### Discord
-
-- [Voice Connections](https://docs.discord.com/developers/topics/voice-connections)
-- [Application Commands](https://docs.discord.com/developers/interactions/application-commands)
-- [Threads](https://docs.discord.com/developers/topics/threads)
-- [Message Components](https://docs.discord.com/developers/components/reference)
-- [Permissions](https://docs.discord.com/developers/topics/permissions)
-- [Application installation contexts and links](https://docs.discord.com/developers/resources/application)
-- [discord.js voice](https://discord.js.org/docs/packages/voice/0.19.2)
+新しく参加した開発者は、変更する機能に対応する`.public.test.ts`を先に確認する。外部から見える動作を変える場合は、まずその境界で失敗するテストを追加する。テストを通してから実装を整理する。実サービスでしか確認できない項目は、自動テストの成功だけで完了扱いにしない。

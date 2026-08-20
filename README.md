@@ -141,7 +141,7 @@ Node.jsで直接起動した場合は、`Ctrl+C`で停止する。
 
 ## 詳細資料
 
-- [現行設計・設定一覧・受入条件](./docs/design.md)
+- [現行設計・図解・設定一覧・受入条件](./docs/design.md)
 - [公開前セキュリティ監査](./security_best_practices_report.md)
 - [環境変数の配布例](./.env.example)
 - [翻訳用語の例](./config/translation-terms.example.json)
