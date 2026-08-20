@@ -2,11 +2,13 @@
 
 ## 結論
 
-2026年8月20日時点の現行リポジトリについて、Critical または High の確定した脆弱性は確認できませんでした。全追跡ファイル、到達可能な Git 履歴、到達不能な残存オブジェクトを検査しています。会話アーカイブも展開して調べましたが、実際の認証情報や秘密鍵は検出されませんでした。production 依存の既知脆弱性も0件です。
+2026年8月20日時点の現行リポジトリについて、Critical または High の確定した脆弱性は確認できませんでした。全追跡ファイル、到達可能な Git 履歴、到達不能な残存オブジェクトを検査しています。production 依存の既知脆弱性も0件です。
+
+> 2026年8月21日追記: 公開対象外の資料を、Gitの現行ツリーと到達可能な履歴から除去しました。以下の件数と検査結果は、2026年8月20日時点の記録です。
 
 ただし、公開前に解消すべき Medium が2件あります。1件は、複数 Guild のセッションが同時に利用上限の事前判定を通過できるため、Global 上限を超過してから停止する競合です。もう1件は、Git 管理外の Playwright 出力が Docker のビルドコンテキストへ入る問題です。また、字幕の公開範囲と`ManageThreads`権限は、公開前に方針と実機挙動を確認する必要があります。
 
-自動スキャンで秘密情報が検出されなかったことは、秘密情報や個人情報が存在しないことの証明ではありません。とくに会話アーカイブと設計用の参照資料は、所有者による内容・権利の確認が必要です。
+自動スキャンで秘密情報が検出されなかったことは、秘密情報や個人情報が存在しないことの証明ではありません。設計用の参照資料は、所有者による内容・権利の確認が必要です。
 
 ## 監査範囲
 
@@ -14,7 +16,6 @@
 - Git が追跡する全ファイル
 - 到達可能な Git 履歴
 - 到達不能な1コミットと9ブロブ
-- `discord_realtime_translation_chat.zip`内の2ファイル
 - Discord の認可、thread、message、Voice、ログ境界
 - Soniox の認証、固定 endpoint、STT/TTS wire、利用量・費用制御
 - SQLite の schema、権限、保持期限
@@ -114,31 +115,6 @@ awk '$1 == "unreachable" {count[$2]++}
      END {for (type in count) print type, count[type]}' \
   "$audit_dir/unreachable-objects" | sort
 cleanup_audit
-trap - EXIT
-```
-
-会話アーカイブは一時ディレクトリへ展開し、`p/secrets`に加えて、メールアドレスと17〜20桁の Discord ID候補を検索しました。監査時は2ファイルを検査し、どちらの検索も0件でした。`rg`は候補の内容を表示しないようにしています。
-
-```bash
-set -euo pipefail
-archive_dir="$(mktemp -d /tmp/discord-translate-archive-audit.XXXXXXXX)"
-cleanup_archive() { find "$archive_dir" -depth -delete; }
-trap cleanup_archive EXIT
-
-unzip -q discord_realtime_translation_chat.zip -d "$archive_dir"
-semgrep scan --config p/secrets --json --quiet "$archive_dir" \
-  | jq '{findings: (.results | length),
-         errors: (.errors | length),
-         scanned_files: (.paths.scanned | length)}'
-
-if rg --files-with-matches --pcre2 \
-  '(?i)[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|(?<![0-9])[0-9]{17,20}(?![0-9])' \
-  "$archive_dir" >/dev/null; then
-  printf 'personal_identifier_candidates=present\n'
-else
-  printf 'personal_identifier_candidates=0\n'
-fi
-cleanup_archive
 trap - EXIT
 ```
 
@@ -264,16 +240,11 @@ CIは GitHub Actionsを`@v4`で参照し、Dockerfileは Node.jsイメージを�
 - Actionsを検証済みの完全 SHAへ固定し、元のバージョンタグをコメントとして残す
 - base imageをdigestへ固定し、Dependabotなどで定期更新する
 
-### 6. [Low・所有者確認] 会話 archiveと参照設計が公開対象に含まれる
+### 6. [解消済み] 公開対象外の参照資料が追跡されていた
 
-確度: 公開対象であることは高、内容の公開可否は未確定
+確度: 高
 
-`discord_realtime_translation_chat.zip`と`docs/reference/design-structure-sample.md`は Git の追跡対象です。アーカイブ内の Markdown とテキストから、既知形式の認証情報や秘密鍵は検出されませんでした。メールアドレスと17〜20桁の Discord ID も検出されていません。ただし、自動スキャンでは、会話の機密性、第三者情報、著作権、公開意図を判定できません。
-
-対応案:
-
-- 所有者が内容と権利を全文確認し、公開を承認する
-- 不要なら、public化前に現行treeだけでなく Git履歴からの除去要否も判断する
+2026年8月21日に、現行ツリーと到達可能なGit履歴から除去しました。再混入を防ぐため、参照資料用ディレクトリもGitの除外対象にしています。
 
 ### 7. [Medium・公開前必須] Git 管理外の Playwright 出力が Docker のビルドコンテキストへ入る
 
@@ -344,7 +315,6 @@ fi
 3. 現行版の実サービスE2Eと30分負荷・費用照合を行う
 4. 公開字幕、外部送信、保存・削除、同意の方針を決める
 5. `ManageThreads`を外せるか実 Discordで確認する
-6. 会話 archiveと参照設計を所有者が全文確認する
-7. Actionとbase imageの固定方針を決める
-8. LICENSE、`SECURITY.md`、脆弱性報告窓口を用意する
-9. public化する直前のcommitで、秘密情報、依存監査、image scanを再実行する
+6. Actionとbase imageの固定方針を決める
+7. LICENSE、`SECURITY.md`、脆弱性報告窓口を用意する
+8. public化する直前のcommitで、秘密情報、依存監査、image scanを再実行する

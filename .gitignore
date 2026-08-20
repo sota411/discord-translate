@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 
+# Private source material
+*.zip
+docs/reference/
+
 # Dependencies and build output
 node_modules/
 dist/
