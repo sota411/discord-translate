@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="system-architecture-title system-architecture-desc">
       <title id="system-architecture-title">Discordリアルタイム翻訳Botのシステム構成</title>
-      <desc id="system-architecture-desc">Discordの音声とコマンドをBotが受け、Sonioxの音声認識・双方向翻訳をsemantic endpointまたはmanual finalizeで確定し、persistent読み上げ接続を経て、翻訳音声を音声チャンネルへ、セッションカードと字幕を専用公開スレッドへ返す構成を示す。</desc>
+      <desc id="system-architecture-desc">Discordの音声とコマンドをBotが受け、Sonioxの音声認識・双方向翻訳をsemantic endpointまたはmanual finalizeで確定し、persistent読み上げ接続を経て、翻訳音声を音声チャンネルへ返す。セッションカードは親テキストチャンネルへ、字幕はカードから作成した専用公開スレッドへ返す構成を示す。</desc>
       <defs>
         <style>@import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap");</style>
         <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
@@ -57,8 +57,8 @@
       <rect x="892" y="408" width="68" height="12" rx="2" fill="#f5f5f5"/>
       <text x="926" y="416" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">TEXT / PCM</text>
 
-      <rect x="408" y="428" width="68" height="12" rx="2" fill="#f5f5f5"/>
-      <text x="442" y="436" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">CAPTION</text>
+      <rect x="400" y="428" width="84" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="442" y="436" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">CARD / CAPTION</text>
 
       <rect x="672" y="432" width="44" height="12" rx="2" fill="#f5f5f5"/>
       <text x="694" y="440" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">METER</text>
@@ -75,8 +75,8 @@
       <rect x="80" y="460" width="240" height="80" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
       <rect x="88" y="468" width="56" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.36)" stroke-width="0.8"/>
       <text x="116" y="476" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">THREAD</text>
-      <text x="200" y="504" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', 'Noto Sans JP', sans-serif" text-anchor="middle">セッションカード＋専用公開スレッド</text>
-      <text x="200" y="524" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">interim / final captions · controls</text>
+      <text x="200" y="504" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', 'Noto Sans JP', sans-serif" text-anchor="middle">親チャンネルのカード＋公開スレッド</text>
+      <text x="200" y="524" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">controls on card · captions in thread</text>
 
       <!-- Bot nodes -->
       <rect x="440" y="120" width="200" height="80" rx="6" fill="#f5f5f5"/>

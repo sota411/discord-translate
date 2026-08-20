@@ -1,35 +1,62 @@
 # Discord Realtime Translation Bot
 
-許可したDiscordサーバーと利用者だけが使える、private beta向けのリアルタイム音声翻訳Botです。日本語・韓国語・英語から2言語を選び、確定した翻訳だけを同じ音声チャンネルで再生し、仮字幕と確定字幕をセッション専用スレッドへ表示します。
+Discord の音声チャンネルで、日本語・韓国語・英語の会話を双方向に翻訳する Bot です。対象は、許可したサーバーと利用者だけが使う限定公開の試用版（private beta）です。翻訳音声は同じ音声チャンネルへ返し、認識中の仮字幕と確定字幕はセッション専用の公開スレッドへ表示します。
 
-設計の詳細は[docs/design.md](./docs/design.md)を参照してください。
+- 対応する言語ペアは、日本語・韓国語、日本語・英語、韓国語・英語です。
+- 同時参加者は1〜3人です。配布設定の初期値は2人です。
+- 再生モードは、会話優先と正確さ優先の2種類です。
+- Node.js または Docker Compose で実行できます。
+
+内部設計は [docs/design.md](./docs/design.md)、公開前の安全性調査は [security_best_practices_report.md](./security_best_practices_report.md)を参照してください。
 
 ## 現在の状態
 
-- 実装済み: Guild/User許可リスト、Discord Voice受信・再生、Soniox STT/TTS、500 ms間隔の仮字幕、専用スレッドとセッションカード、会話優先・正確さ優先の再生モード、字幕のみ切替、話者別voice、精度優先のsemantic endpoint、Discord発話終了時のmanual finalize、認識停滞3秒と発話30秒の終端上限、発話確定後だけのTTS生成、1.15倍を既定値とするTTS速度調整、本文を送らないTTS接続ウォームアップ、確定順のFIFO再生、接続・合成のキャンセル、STT接続待ちの有界音声buffer、TTS wire応答検証、破損Opus packetの局所破棄、区間遅延ログ、SQLite利用量台帳、費用上限、利用ログ照合、graceful shutdown
-- 自動確認済み: lint、型検査、公開境界・統合テスト、production build、production依存監査、native module smoke、Compose設定検証、Docker build
-- 実機確認済み: 実Discordと実Sonioxの日韓1人通話、字幕、読み上げ、8発話の区間遅延計測。発話中にTTSへ確定翻訳を送るPoCも実施したが、通常操作と安定性を優先し、現行実装には採用していない
-- 未確認: 新しいセッションカード・専用スレッド・操作部品・仮字幕・2つの再生モード・話者別voiceを含む現行版の実Discord/Soniox E2E、複数人通話（3人を含む）、日英・韓英、3言語ペアの30分継続と料金受入。300 msは発話中TTSを採用しない現行方針と実測値が両立しないため、MVPの必須受入条件にはしない
+2026年8月20日時点の現行実装について、次を確認しています。詳細と更新時の正本は、[設計書の「現在の検証状態」](./docs/design.md#3-現在の検証状態)です。
 
-Discordの音声受信はDiscord側で正式に文書化された安定APIではありません。`@discordjs/voice`は`0.19.2`へ固定しており、更新前に実機PoCを再実行してください。
+| 区分 | 状態 |
+|---|---|
+| 自動検証 | `pnpm check`の lint・型検査・148テスト、本番用ビルド、ネイティブモジュールの実行検査、本番向けの依存関係の監査、Compose 設定検証、Docker ビルドが成功 |
+| 実機検証の履歴 | 以前の UI を使い、実際の Discord・Soniox 環境で日韓1人通話、字幕、読み上げ、8発話の区間遅延を確認 |
+| 現行版で未検証 | セッションカード、専用スレッド、仮字幕、2つの再生モード、話者別の音声を含む、実際の Discord・Soniox 環境での E2E |
+| 規模・継続運転で未検証 | 2〜3人通話、日英・韓英、30分継続、実請求額との照合精度、複数サーバーの同時運転 |
+
+過去の実機検証は、現行版全体の受入完了を意味しません。また、300 ms以内の再生開始は、発話境界を確定してから音声合成へ本文を送る現行方式と両立しません。そのため、実用最小限の製品（MVP）の必須条件にはしていません。
+
+Discord の音声受信は、Discord が安定版 API として正式に文書化している機能ではありません。`@discordjs/voice`は`0.19.2`へ固定しています。更新時には、実際の Discord 環境で音声受信を再検証してください。
+
+## 動作の概要
+
+1. 利用者が音声チャンネルへ参加し、テキストチャンネルで`/translate start`を実行します。
+2. Bot がサーバー、利用者、参加人数、Discord 権限、利用上限、Soniox の同時実行枠を確認します。
+3. Bot が親テキストチャンネルへセッションカードを投稿し、そのカードから公開スレッドを作ります。
+4. 発話者ごとに音声を Soniox の音声認識・翻訳（STT）へ送り、認識中の仮字幕を最大500 ms間隔で更新します。
+5. Soniox の`endpoint`、Discord の発話終了後の manual finalize（手動確定）、認識停滞3秒、または発話長上限によって発話を確定します。
+6. 確定字幕の投稿と音声合成（TTS）を並行して始め、確定順を保って翻訳音声を再生します。
+
+`conversation`（会話優先）では、待ち時間が2.5秒を超えた音声を省略し、新しい発話が始まると再生中の翻訳を中断します。`accuracy`（正確さ優先）では、遅延を表示しながら、先に確定した発話から再生する順序（FIFO）を維持します。
 
 ## 事前に必要なもの
 
-- Discord ApplicationのBot TokenとApplication ID
-- Soniox Project専用API Key
-- 許可するDiscord Server IDとUser ID
-- セットアップ、設定確認、起動補助コマンド用のNode.js 24.17.0以上とpnpm 11.3.0
-- Docker実行の場合は、上記に加えてDocker EngineとCompose
+- Discord Application の Bot Token と Application ID
+- Soniox アカウント。専用 Project と API Key はセットアップ中に作成します。
+- 許可する Discord Server ID と User ID
+- Node.js 24.17.0以上
+- pnpm 11.3.0
+- Docker で実行する場合は Docker Engine と Docker Compose
+- 本書のコマンド例は、Git から取得した作業ツリーと Linux のシェルを前提とします。`git`、`openssl`、GNU coreutils、ログ確認用の`rg`が必要です。ソースアーカイブだけを取得した場合は、受入試験でコミット SHA を記録できません。
 
-一人でも、VCへ参加して自分の発話が反対言語で返るところまでは確認できます。双方向会話と話者別処理の確認には、`ALLOWED_USER_IDS`へ追加したもう一人が必要です。
+一人でも、自分の発話が、選択した言語ペアのもう一方の言語で返るところまでは確認できます。双方向会話や話者別処理を確認する場合は、`ALLOWED_USER_IDS`へ追加した参加者がもう一人以上必要です。
 
-## 1. Discordを設定する
+## セットアップ
 
-1. [Discord Developer Portal](https://discord.com/developers/applications)で対象Applicationを開きます。
-2. `Bot`画面でBot Tokenを発行します。TokenをチャットやGitへ貼らないでください。
-3. `Public Bot`をOFFにします。
-4. `Installation`画面でInstallation Contextsを`Guild Install`だけにし、Install Linkを`None`にします。
-5. Application OwnerがOAuth2 URL Generatorを一時的に使い、`bot`と`applications.commands`、次のBot権限だけを選んでテストサーバーへ追加します。URLは配布しません。
+### 1. Discord Application を設定する
+
+1. [Discord Developer Portal](https://discord.com/developers/applications)で対象の Application を開きます。
+2. `Bot`画面で Bot Token を発行します。Token はチャットや Git へ貼らないでください。
+3. 第三者が追加できないように、`Public Bot`を OFF にします。
+4. `Installation`画面では、Installation Contexts を`Guild Install`だけにし、常設の Install Link を無効にします。
+5. Application の所有者が OAuth2 URL Generator を一時的に使い、`bot`と`applications.commands`、次の Bot 権限だけを選んでテスト用サーバーへ追加します。生成した URL は配布しません。
+
    - View Channels
    - Send Messages
    - Create Public Threads
@@ -37,265 +64,279 @@ Discordの音声受信はDiscord側で正式に文書化された安定APIでは
    - Manage Threads
    - Connect
    - Speak
-6. Discordの`ユーザー設定 > 詳細設定 > 開発者モード`をONにします。サーバーと自分を右クリックして、それぞれ`IDをコピー`します。
 
-IDは、公開を防ぐruntime許可リストに必要です。自分一人のデバッグでもServer IDと自分のUser IDは設定します。既存のBotへ今回の更新を適用する場合は、Botロールへ上記3つのスレッド権限を追加するか、権限を選び直して再招待してください。
+6. Discord の`ユーザー設定 > 詳細設定 > 開発者モード`を ON にします。対象サーバーと利用者を右クリックし、Server ID と User ID をコピーします。
 
-## 2. 環境変数を用意する
+Bot は、実行時にもサーバーと全参加者を許可リストで検証します。自分一人で試す場合も、Server ID と自分の User ID が必要です。
 
-最初に依存関係をインストールします。
+### 2. 依存関係とローカル設定を用意する
 
 ```bash
 pnpm install --frozen-lockfile
 ```
 
-続いて、設定ファイルを用意します。すでに`.env.local`がある場合は、秘密値を消さないよう、このコピー操作は実行しないでください。
+`.env.local`がまだない場合だけ、公開用テンプレートをコピーします。既存ファイルがある場合は、秘密値を失うため、このコピーを実行しないでください。
 
 ```bash
-cp .env.example .env.local
+cp -n .env.example .env.local
 chmod 600 .env.local
 openssl rand -hex 32
 ```
 
-最後のコマンドの出力を`LOG_ID_HMAC_KEY`へ設定します。続いて、DiscordのToken、Application ID、Server ID、User IDを入力します。SonioxのAPI Keyは次の手順で入力します。
+最後のコマンドの出力を`LOG_ID_HMAC_KEY`へ設定します。続いて、次の項目を`.env.local`へ入力します。
 
-ローカルで直接起動する場合はSQLiteの絶対パスを作ります。
+- `DISCORD_TOKEN`
+- `DISCORD_APPLICATION_ID`
+- `ALLOWED_GUILD_IDS`: カンマ区切りの Server ID
+- `ALLOWED_USER_IDS`: カンマ区切りの User ID。発話する全員を含めます。
+
+`.env.example`にある数値は、コード内の既定値ではなく配布時の初期値です。Bot は設定不足を起動時にエラーとして扱います。唯一、省略時のコード既定値を持つ項目は`SONIOX_TTS_SPEED=1.15`です。
+
+ローカルで直接起動する場合は、SQLite の保存先を作り、表示された絶対パスを`SQLITE_PATH`へ設定します。
 
 ```bash
 install -d -m 700 .data
 realpath .data/usage.sqlite
 ```
 
-表示されたパスを`SQLITE_PATH`へ設定してください。Docker Composeでは、ホスト側の設定にかかわらずコンテナ内の`/data/usage.sqlite`を使用します。
+Docker Compose では、`SQLITE_PATH`の設定にかかわらず、コンテナ内の`/data/usage.sqlite`を名前付きボリュームへ保存します。
 
-用語設定を使う場合は、[translation-terms.example.json](./config/translation-terms.example.json)をGit管理外のファイルへコピーし、その絶対パスを`TRANSLATION_TERMS_PATH`へ設定します。
+翻訳用語を指定する場合は、例を Git 管理外のファイルへコピーし、その絶対パスを`TRANSLATION_TERMS_PATH`へ設定します。
 
 ```bash
 cp config/translation-terms.example.json config/translation-terms.json
 realpath config/translation-terms.json
 ```
 
-Docker Composeは、このホスト側ファイルをコンテナ内の`/config/translation-terms.json`へ読み取り専用でマウントします。未使用なら空欄のままで構いません。その場合は、空の既定用語集をマウントします。`pnpm config:check`は指定ファイルの存在とJSON内容も検証します。
+用語を使わない場合は、`TRANSLATION_TERMS_PATH`を空欄のままにします。Docker Compose は空の用語集を読み取り専用でマウントします。
 
-## 3. Sonioxを設定する
+### 3. Soniox Project を設定する
 
-1. Soniox ConsoleでこのBot専用Projectを作り、Project API Keyを発行します。
-2. API Keyを`.env.local`の`SONIOX_API_KEY`へ入力します。
-3. Console上部が`Region: United States`なら、`SONIOX_REGION=us`のままにします。別途有効化するスイッチはありません。
-4. Organization月額上限を`$15`、Project月額上限を`$5`として設定済みなら、`.env.example`の初期値と一致しています。
-5. 利用可能なモデルとvoice IDを実APIで確認します。
+1. [Soniox Console](https://console.soniox.com/)で、この Bot 専用の Project を作成します。
+2. Project のリージョンと同じ値を`SONIOX_REGION`へ設定します。指定できる値は`us`、`eu`、`jp`です。
+3. Project API Key を`SONIOX_API_KEY`へ設定します。
+4. Soniox Console で Project の月額上限を決めます。同じ金額を microUSD へ換算し、`SONIOX_PROJECT_MONTHLY_BUDGET_MICROUSD`へ設定します。たとえば5 USDは`5000000` microUSDです。
+5. 4段階の上限が、次の大小関係を満たすように設定します。
+
+   ```text
+   USER <= GUILD <= GLOBAL < SONIOX_PROJECT
+   ```
+
+6. [Soniox の公式料金表](https://soniox.com/pricing)で最新単価を確認します。`STT_COST_MICROUSD_PER_HOUR`、`TTS_COST_MICROUSD_PER_HOUR`、`TEXT_COST_MICROUSD_PER_MILLION_CHARACTERS_UPPER_BOUND`を見直し、確認日を`PRICING_CONFIRMED_AT`へ設定してください。テキスト単価の上限は、`（100万トークン当たりのUSD単価）×4×1,000,000` microUSD/100万文字で求めます。ここでは、1文字当たり最大4トークンとして計算しています。料金が変わっていない場合も、日付だけを機械的に更新せず、実際に確認してから更新します。
+7. 利用できる STT・TTS モデル、対応言語、voice を実 API で確認します。
 
 ```bash
 pnpm soniox:inspect
 ```
 
-`tts-rt-v2`とvoice IDが表示されれば、Sonioxの準備は完了です。`SONIOX_VOICE_JA`、`SONIOX_VOICE_KO`、`SONIOX_VOICE_EN`という既存の設定名は互換性のため残していますが、現在は言語別ではなく参加者1〜3のvoice枠として使います。3件には重複しない多言語voiceを指定してください。同じ参加者には翻訳先言語が変わっても同じvoiceが割り当てられます。読み上げ速度は`SONIOX_TTS_SPEED`で0.7〜1.3の範囲に設定でき、省略時は1.15倍です。
+出力された`stt_models`と`tts_models`に、設定するモデルが含まれることを確認します。TTS モデルでは、3言語と3つの`voice`設定も確認してください。`SONIOX_VOICE_JA`、`SONIOX_VOICE_KO`、`SONIOX_VOICE_EN`という設定名は互換性のために残しています。現在は言語別ではなく、参加者1〜3の音声枠です。3つの設定には、互いに異なる多言語 voice を指定してください。同じ参加者には、翻訳先言語が変わっても同じ voice を割り当てます。
 
-最後に、TokenやAPI Keyを表示せず、不足している設定名と理由を確認します。
+### 4. 設定を検証する
 
 ```bash
 pnpm config:check
 ```
 
-`設定は有効です。Botを起動できます。`と表示されるまで、指摘された項目を修正してください。既存の`.env.local`に初期値が足りない場合は、ファイルを上書きせず、`.env.example`の同名項目だけをコピーしてください。
+`設定は有効です。Botを起動できます。`と表示されるまで、指摘された設定を修正してください。このコマンドは Token や API Key の値を表示しません。料金確認日が`PRICING_MAX_AGE_DAYS`を超えている場合も失敗するため、前の手順へ戻って単価と確認日を見直します。
 
-## 4. Slash Commandを登録する
+起動時には、設定ファイルの形式だけでなく、Soniox のモデル・言語ペア・voice・速度・同時実行枠と、利用量照合の成功も確認します。これらを確認できない場合は Discord へ接続しません。
+
+### 5. Slash Command を登録する
 
 ```bash
 pnpm register-commands
 ```
 
-コマンドは`ALLOWED_GUILD_IDS`のGuildだけへ登録されます。`default_member_permissions`は`0`なので、最初は管理者だけが利用できます。一般メンバーにも許可する場合は、Discordの`サーバー設定 > 連携サービス（Integrations） > 対象Bot > /translate`で対象ロールまたはメンバーを明示的に許可してください。runtimeのGuild/User許可リストは、この設定とは別に必ず検証されます。
+許可したサーバーごとに`"event":"guild_commands_registered"`が1件出れば、登録は成功です。失敗した場合は、Application ID、Bot Token、対象サーバーへの追加状態を確認してから再実行します。
 
-## 5. Botを起動する
+`/translate`は`ALLOWED_GUILD_IDS`にあるサーバーだけへ登録します。`default_member_permissions`は`0`なので、最初は管理者だけが利用できます。一般メンバーへ許可する場合は、Discord の`サーバー設定 > 連携サービス（Integrations） > 対象 Bot > /translate`で対象ロールまたは利用者を明示的に許可してください。Discord 側の権限とは別に、Bot は実行時のサーバー・利用者許可リストも検証します。
 
-SQLiteはDocker管理の永続volumeへ保存します。通常のPCでは、次のコマンドで起動します。
+現在の登録スクリプトは、許可リストから削除したサーバーの既存コマンドを消しません。実行時には、そのサーバーからの操作を引き続き拒否します。コマンド表示も消す場合は、公開前に登録解除の運用を別途行ってください。
+
+## 起動する
+
+### Docker Compose
 
 ```bash
-pnpm docker:down
 pnpm docker:up
 pnpm docker:status
-```
-
-今回のように`failed to add the host ... veth ... operation not supported`が出るPCでは、Dockerのbridgeネットワークを作れません。そのPCだけ、明示的なhost network用設定を使って次の3行を実行します。
-
-```bash
-pnpm docker:host:down
-pnpm docker:host:up
-pnpm docker:host:status
-```
-
-このBotはポートを待ち受けませんが、host networkはDockerのネットワーク分離を弱めます。そのため、標準設定にはせず、上記のエラーが出るPCでだけ使用します。
-
-最後の出力で`discord-translate-bot-1`の状態が`Up`になれば、コンテナは動いています。続いて起動ログを確認します。
-
-```bash
-# 通常のPC
 pnpm docker:logs
-
-# 今回のvethエラーが出るPC
-pnpm docker:host:logs
 ```
 
-ログに`"event":"application_ready"`があれば、DiscordとSonioxへの接続準備は完了です。
-エラーがある場合は、省略せずこのコマンドの出力を共有してください。TokenやAPI Keyそのものはログへ出ません。
+ログに`"event":"application_ready"`があれば、起動準備は完了です。設定や Soniox の事前確認に失敗した場合、Node.js のプロセスは Discord へ接続せずに終了します。ただし、Compose の`restart: unless-stopped`により、コンテナは再起動を繰り返します。
 
-コードを更新した後は、`down`を先に実行する必要はありません。このPCでは次のコマンドがイメージを再ビルドし、Botコンテナを作り直します。
+`application_ready`が出ず、`application_start_failed`が繰り返される場合は、`pnpm docker:logs`を確認します。`config_issues`、表示されている場合は`error_code`、最後に`error_name`を手掛かりにしてください。その後、`pnpm docker:down`で再起動を止めます。設定を修正し、`pnpm config:check`を通してから、もう一度`pnpm docker:up`を実行します。
 
-```bash
-pnpm docker:host:up
-pnpm docker:host:status
-```
-
-翻訳が遅いと感じた場合は、発話内容を表示せず区間時間だけを確認できます。
+停止する場合は、次を実行します。
 
 ```bash
-# 今回のvethエラーが出るPC
-docker compose --env-file .env.local -f compose.yaml -f compose.host.yaml logs --since=30m bot \
-  | rg '"event":"(translation_latency|translation_flow)"'
-
-# 通常のPC
-docker compose --env-file .env.local logs --since=30m bot \
-  | rg '"event":"(translation_latency|translation_flow)"'
-```
-
-`translation_latency`では、同じ`trace_id`が1発話です。`stage:"playback_started"`の`total_ms`が、最後の音声packetからDiscordで再生を始めるまでの時間です。`stt_endpoint`というstage名は互換性のため維持しており、semantic endpointとmanual finalize後の`finalized` eventのどちらで確定した場合も記録します。
-`stage_ms`は直前に観測したstageとの差であり、字幕POSTとTTSは並行するため、常に同じstage順にはなりません。
-音声再生は字幕POST完了を待たないため、`caption_posted`が`playback_started`より後に出る場合も正常です。
-
-TTSのconfigと確定翻訳本文は、`stt_endpoint`の後にだけ送ります。Discordの`voice_speaking_started`で行うのはWebSocket接続だけで、config、本文、PCMは送りません。
-
-`translation_flow`は本文やDiscord IDを含まない段階ログです。`stt_manual_finalize_speaking_end`はDiscordの終了検出から確定した通常経路、`stt_manual_finalize_inactivity`は扇風機などで終了検出が来なくても認識テキストの3秒停滞で確定した上限経路です。ノイズを文字として誤認識し続けた場合も、`stt_manual_finalize_max_duration`で既定30秒の発話上限を適用します。`voice_packet_dropped`は、Discordから受け取ったOpus packetを破損packetとして1件だけ破棄したことを表します。`translation_runtime_warning`の`operation: "voice_receive_stream_recovering"`は、Discord Voiceの受信streamが復号またはpacket解析エラーで閉じ、200 ms後の再購読を試みている状態です。どちらも1回ではセッションを停止しません。正常packetを挟まず4回連続で受信streamを復旧できない場合だけ`VOICE_CONNECTION_LOST`で停止します。`voice_startup_buffer_overflow`は、STT接続待ちの音声bufferが上限へ達してセッションを停止したことを表します。
-
-音声のFIFO順は、Sonioxの`endpoint`または`finalized` eventでBotが発話境界を確定した順です。先行音声が再生中なら、確定済みの後続1件だけをTTS生成して待機しますが、再生順を追い越しません。再生待ちは同じ`trace_id`の`playback_slot_ready.total_ms - queue_enqueued.total_ms`で確認します。
-
-通常の発話後の遅延は、ミュート操作をせずに次の順で確認します。
-
-- `voice_speaking_ended`の直後に`stt_manual_finalize_speaking_end`がある: Discordが通常の発話終了を検出し、Botが確定を要求した経路です。
-- `stt_manual_finalize_inactivity`がある: Discordがノイズを送り続けた可能性があり、認識停滞の3秒上限で確定した経路です。Discordの入力感度とKrispを確認してください。
-- `stt_manual_finalize_max_duration`がある: ノイズを文字として誤認識し続けた可能性があり、`UTTERANCE_MAX_SOURCE_SECONDS`の絶対上限で確定した経路です。
-- 連続ノイズの経路ではDiscordの最新packet時刻も更新され続けるため、`stt_endpoint.total_ms`だけでは3秒または30秒の待ち全体を表しません。`translation_flow`のmanual finalize stageと、そのログ時刻を併せて確認してください。
-- `stt_endpoint.total_ms`が大きい: 最後のDiscord音声packetからSonioxの発話確定までが遅い状態です。
-- `stt_endpoint`から`tts_first_audio`までが大きい: endpoint確定後のTTS生成待ちです。
-- `queue_enqueued`から`playback_slot_ready`までが大きい: FIFO内と先行音声の再生待ちです。
-- `queue_enqueued`から`queue_started`までが大きい: 先行する確定発話のTTS生成開始待ちです。
-- `playback_slot_ready`から`playback_started`までが大きい: 再生枠は空いていますが、TTS音声の準備などが終わっていません。
-
-起動後によく使うコマンドは次のとおりです。
-
-```bash
-# 通常のPCで現在の状態を確認
-pnpm docker:status
-
-# 通常のPCでBotを停止してコンテナを削除
 pnpm docker:down
-
-# vethエラーが出るPCで停止してコンテナを削除
-pnpm docker:host:down
 ```
 
-停止しても、永続volumeのSQLiteは残ります。
+### Node.js
 
-SQLiteを含む永続volumeまで削除する`docker compose down -v`は、データを初期化するとき以外は実行しないでください。
-
-### SQLiteをバックアップ・復元する
-
-バックアップ時はBotを停止し、停止済みコンテナからSQLiteをコピーします。`down`はコンテナを削除するため、コピーが終わる前に実行しないでください。
-
-```bash
-install -d -m 700 backups
-docker compose --env-file .env.local stop bot
-bot_container="$(docker compose --env-file .env.local ps --all -q bot)"
-test -n "$bot_container"
-docker cp "$bot_container:/data/usage.sqlite" \
-  "backups/usage-$(date +%Y%m%d-%H%M%S).sqlite"
-docker compose --env-file .env.local start bot
-```
-
-復元時は対象ファイルを明示し、Botを停止したまま永続volumeへ配置します。次の`backup_path`だけを実在するバックアップへ変更してください。
-
-```bash
-backup_path="$(realpath backups/usage-YYYYMMDD-HHMMSS.sqlite)"
-test -f "$backup_path"
-docker compose --env-file .env.local stop bot
-docker compose --env-file .env.local run --rm --no-deps --user root \
-  --entrypoint sh \
-  -e BACKUP_FILE="$(basename "$backup_path")" \
-  -v "$(dirname "$backup_path"):/backup:ro" \
-  bot -c 'install -o node -g node -m 600 "/backup/$BACKUP_FILE" /data/usage.sqlite.restore && rm -f /data/usage.sqlite-wal /data/usage.sqlite-shm && mv /data/usage.sqlite.restore /data/usage.sqlite'
-docker compose --env-file .env.local start bot
-```
-
-host network設定を使うPCでは、各`docker compose`へ`-f compose.yaml -f compose.host.yaml`を追加します。Botの構造化ログは永続volumeではなく標準出力へ出ます。Dockerのログドライバーまたは外部の収集基盤で、保存期間とrotationを設定してください。
-
-`SIGINT`または`SIGTERM`を受けると、新規コマンドを拒否し、音声・Soniox接続・Discord接続・SQLiteを順に閉じます。
-
-ローカル開発としてDockerを使わず起動する場合は、次を実行します。
+開発実行では TypeScript を直接起動できます。
 
 ```bash
 pnpm dev
 ```
 
-## 6. Discordで一人テストする
-
-`pair:ja-ko`は日本語から韓国語だけではなく、日本語と韓国語の双方向翻訳です。話した言語を自動判定して、もう片方の言語で読み上げます。
-
-1. Discordのメンバー一覧でBotがオンラインになったことを確認します。
-2. `ALLOWED_USER_IDS`へ登録した自分が、通常のボイスチャンネルへ参加します。
-3. 音声の回り込みを避けるため、イヤホンまたはヘッドホンを使用します。
-4. 字幕を表示したいテキストチャンネルで`/translate start`と入力します。
-5. `pair`で`日本語 ⇄ 韓国語`を選び、必要なら`mode`で`会話優先`または`正確さ優先`を選択します。省略時は`会話優先`です。
-6. Botが同じボイスチャンネルへ参加し、親チャンネルへ`🟢 翻訳中`カードを1件だけ投稿し、そのカードから専用スレッドを作成したことを確認します。
-7. 日本語で短く話します。スレッド内の1件が`認識中`・`翻訳中`から確定字幕へ置き換わり、`🔊 再生済み`になって韓国語音声が返れば成功です。
-8. カードの`停止`または`/translate stop`を実行します。Botがボイスチャンネルから退出し、カードが終了表示へ変わり、専用スレッドがアーカイブされれば終了です。
-
-会話優先では、再生待ちが2.5秒を超えた発話の音声だけを省略し、字幕へ`⏭ 遅延回避のため音声省略`と表示してセッションを継続します。人が新しく話し始めた場合も、古い翻訳音声を中断します。正確さ優先では全発話を確定順に再生し、遅延が2.5秒を超えるとカードへ実測値を警告表示します。カードの`字幕のみへ変更`と`設定`は、開始者、対象ボイスチャンネルの参加者、または`ManageGuild`保持者が操作できます。
-
-扇風機などの環境音でDiscordの発話表示が点灯し続ける場合は、`ユーザー設定 > 音声・ビデオ`で[Krisp](https://support.discord.com/hc/en-us/articles/360040843952-Krisp-FAQ)を有効にしてください。それでも続く場合は[入力感度](https://support.discord.com/hc/en-us/articles/211376518-Voice-Input-Modes-101-Push-to-Talk-Voice-Activated)の自動判定をOFFにし、無発話時のノイズより高く、最も小さい声より低い位置へ閾値を調整します。Bot側にも認識停滞3秒と発話30秒の確定上限があるため、終了イベントが欠けても無期限には待ちません。
-
-参加者に関する注意点:
-
-- 自分一人のテストでも、自分のUser IDを`ALLOWED_USER_IDS`へ設定します。
-- 同じボイスチャンネルに別の人間がいる場合、その人も`ALLOWED_USER_IDS`へ登録されていないと開始を拒否します。
-- 実行中に未許可の人間が参加した場合は、APIの不正利用を防ぐためセッションを自動停止します。
-- 複数人で双方向会話を試す場合は、参加者全員を`ALLOWED_USER_IDS`へ登録します。
-- 同時利用人数は`MAX_SPEAKERS_PER_SESSION`で1〜3人に設定します。
-
-自動停止条件は、最大30分、120秒無音、参加者不在、未許可Userの参加、設定人数を超える参加、利用上限、外部接続障害です。再生待ち時間だけではセッションを停止しません。
-
-### 3言語ペアの受入確認
-
-自動テストでは、次の6方向について確定原文・確定翻訳とSonioxの双方向設定を確認します。実Discordと実Sonioxを使う受入確認は別途必要です。
-
-| pair | 確認する方向 |
-| --- | --- |
-| `ja-ko` | 日本語→韓国語、韓国語→日本語 |
-| `ja-en` | 日本語→英語、英語→日本語 |
-| `ko-en` | 韓国語→英語、英語→韓国語 |
-
-各pairで両方向の短い発話、字幕、読み上げ、停止を確認した後、許可済みの3人で30分継続します。開始失敗、途中停止、字幕欠落、再生順、`translation_latency`のp50・p95・最大値、Soniox利用ログの実料金を記録してください。この3人・30分・日英・韓英の実機受入は、現時点では未実施です。
-
-### `/translate`が表示されない場合
-
-まずGuild Commandを登録し直します。
+本番相当の JavaScript を起動する場合は、先にビルドします。
 
 ```bash
-pnpm register-commands
+pnpm build
+pnpm start
 ```
 
-それでも表示されない場合は、Discordの`サーバー設定 > 連携サービス（Integrations） > 対象Bot > /translate`で、自分または自分のロールが許可されているか確認します。
+どちらの起動方法でも、`"event":"application_ready"`が出れば準備完了です。失敗時は、端末に出る`application_start_failed`の`config_issues`を確認します。表示されている場合は`error_code`も確認し、それらがない場合は`error_name`を手掛かりにします。
 
-### Dockerで同じvethエラーが出る場合
+## 使い方
 
-標準の[compose.yaml](./compose.yaml)へ、明示的な[compose.host.yaml](./compose.host.yaml)を重ねます。次の3行をそのまま実行してください。
+1. 許可された利用者全員が、同じ音声チャンネルへ参加します。
+2. 字幕を表示してよい親テキストチャンネルで、`/translate start`を実行します。
+3. `pair`で言語ペアを選びます。`mode`を省略すると会話優先になります。
+4. 親チャンネルに表示されたカードからセッションを停止できます。また、音声再生の有無、再生モード、字幕送信失敗時の方針を変更できます。
+5. 終了時はカードの停止ボタン、または`/translate stop`を使います。
+
+カードを操作できるのは、開始者、対象音声チャンネルに現在参加している利用者、または`Manage Guild`権限を持つ利用者です。
+
+字幕用スレッドは公開スレッドです。親チャンネルを閲覧できるメンバーは字幕も閲覧できます。音声と字幕を外部サービスと Discord へ送ることについて、参加者の同意を得たうえで、機密情報を話さないチャンネルで使用してください。スレッドは終了後にアーカイブされますが、自動削除はされません。
+
+## 動作を確認する
+
+一人で日韓翻訳を確認する場合は、次の順に進めます。
+
+1. 起動ログに`"event":"application_ready"`があり、自分の User ID が`ALLOWED_USER_IDS`に含まれていることを確認します。
+2. 音声チャンネルへ参加します。
+3. `/translate start pair:日本語 ⇄ 韓国語 mode:会話優先`を実行します。
+4. 普通の長さの日本語を話します。
+5. 専用スレッドで仮字幕が更新され、確定字幕へ変わることを確認します。
+6. 音声チャンネルで韓国語の読み上げが始まり、字幕の状態が`再生済み`へ変わることを確認します。
+7. カードから字幕のみへ切り替え、以後の字幕は続く一方で音声が再生されないことを確認します。
+8. 停止ボタンを押し、Bot が音声チャンネルから退出してカードが終了状態になることを確認します。
+
+この手順では、次の項目を確認できません。
+
+- 双方向の会話
+- 複数人の発話分離
+- 話者別の voice
+- 他の言語ペア
+- 長時間の継続運転
+
+### 受入試験の証跡を残す
+
+限定公開版の受入試験では、[設計書の第16章](./docs/design.md#16-限定公開の試用版に対する受入条件)にあるシナリオを実行し、試験前に合格基準を決めます。開始時と終了時に、コミット SHA、メモリ使用量、発話処理ログを記録してください。
+
+次は、Docker Compose の配置を受入対象とする場合の採取例です。Node.js で直接起動する経路を受入対象にする場合は、次の証跡を、Compose 経路と同様に開始時と終了時に残す手順を試験前に定めてください。
+
+- プロセスの管理方法
+- 対象 PID のメモリ
+- 標準出力ログ
+- `SQLITE_PATH`から取得する利用量の集計
+
+次の Compose 用コマンドは、Node.js の直接起動にはそのまま流用できません。
 
 ```bash
-pnpm docker:host:down
+git status --porcelain=v1
+git rev-parse HEAD
+docker stats --no-stream --format '{{.Name}}\t{{.MemUsage}}' \
+  "$(docker compose --env-file .env.local ps -q bot)"
+docker compose --env-file .env.local logs --since=30m bot \
+  | rg '"event":"(application_ready|translation_latency|translation_flow|translation_runtime_warning|translation_runtime_failed)"'
+```
+
+最初の`git status`で何も出力されないことを、受入試験を始める前提条件とします。差分が出た場合は、受入対象に含める変更をコミットしてから試験をやり直してください。
+
+Compose で実行中の SQLite から、IDを含まない Global 集計だけを確認する場合は、次を使います。
+
+```bash
+docker compose --env-file .env.local exec -T bot \
+  node --input-type=module - <<'NODE'
+import Database from "better-sqlite3";
+
+const database = new Database("/data/usage.sqlite", { readonly: true });
+const row = database.prepare(`
+  SELECT period, stt_stream_ms, tts_audio_ms, text_character_count,
+         estimated_cost_microusd, reconciled_cost_microusd
+  FROM monthly_usage
+  WHERE scope_type = 'global' AND scope_id = 'global'
+  ORDER BY period DESC
+  LIMIT 1
+`).get();
+console.log(JSON.stringify(row));
+database.close();
+NODE
+```
+
+`reconciled_cost_microusd`は Soniox `usage logs`との照合額です。[Soniox Console](https://console.soniox.com/)の Project 利用量・請求額も同じ時点で記録し、ローカル見積額、照合額、実請求額を比較します。発話本文や生の Discord ID は証跡へ残さないでください。
+
+## 運用とトラブルシューティング
+
+### 翻訳が遅い
+
+本文や Discord ID を出さず、区間時間と処理段階を確認できます。
+
+```bash
+docker compose --env-file .env.local logs --since=30m bot \
+  | rg '"event":"(translation_latency|translation_flow)"'
+```
+
+同じ`trace_id`が1発話です。`playback_started.total_ms`は、最後の音声パケットを受信してから、Discord で再生を始めるまでの時間です。字幕投稿と TTS は並行するため、`caption_posted`と`playback_started`の順序は一定ではありません。
+
+主な`translation_flow`は次のとおりです。
+
+| stage | 意味 |
+|---|---|
+| `stt_manual_finalize_speaking_end` | Discord の発話終了を受けて、100 ms後に確定を要求した |
+| `stt_manual_finalize_inactivity` | 認識内容が3秒進まなかったため、確定を要求した |
+| `stt_manual_finalize_max_duration` | 発話長が`UTTERANCE_MAX_SOURCE_SECONDS`に達した |
+| `voice_packet_dropped` | 破損した Opus パケットを1件だけ破棄した |
+| `voice_startup_buffer_overflow` | STT 接続待ちの音声バッファが上限に達し、停止した |
+
+### ログに実行時警告が出る
+
+```bash
+docker compose --env-file .env.local logs --since=30m bot \
+  | rg '"event":"translation_runtime_warning"'
+```
+
+主な`translation_runtime_warning`と対処は次のとおりです。
+
+| operation | 意味と対処 |
+|---|---|
+| `voice_receive_stream_recovering` | 200 ms後に受信ストリームを再購読する。繰り返す場合は Discord Voice の接続状態を確認する |
+| `caption_preview`、`caption_post`、`caption_update`、`unsupported_language_warning` | 字幕の作成・更新に失敗した。スレッドの閲覧状態、Bot の送信権限、Discord の障害情報を確認する |
+| `card_update`、`stop_notice`、`thread_archive` | カードや終了表示の更新に失敗した。Bot の権限を確認し、必要ならスレッドを手動でアーカイブする |
+
+受信ストリームが`data`パケットを1件受け取ると、復旧回数は0に戻ります。1件も受け取れないまま復旧に4回連続で失敗した場合は、`VOICE_CONNECTION_LOST`でセッションを停止します。
+
+### 環境音で発話が確定しない
+
+扇風機などの環境音で Discord の発話表示が点灯し続ける場合は、Discord の`ユーザー設定 > 音声・ビデオ`で[Krisp](https://support.discord.com/hc/en-us/articles/360040843952-Krisp-FAQ)を有効にしてください。それでも続く場合は、[入力感度](https://support.discord.com/hc/en-us/articles/211376518-Voice-Input-Modes-101-Push-to-Talk-Voice-Activated)の自動判定を OFF にし、無発話時のノイズより高く、最も小さい声より低い位置に閾値を調整します。
+
+Bot 側にも認識停滞3秒と発話長上限があるため、終了イベントが欠けても無期限には待ちません。
+
+### Docker がブリッジネットワークを作れない
+
+`failed to add the host ... veth ... operation not supported`が出るホストでは、明示的なホストネットワーク設定を使えます。
+
+```bash
 pnpm docker:host:up
+pnpm docker:host:status
 pnpm docker:host:logs
 ```
 
-## 開発時の確認
+停止時は次を実行します。
+
+```bash
+pnpm docker:host:down
+```
+
+この Bot はポートを待ち受けませんが、ホストネットワークは Docker のネットワーク分離を弱めます。標準構成では使わず、ブリッジを作れないホストだけで使用してください。
+
+## 開発と検証
+
+通常の変更では、次を実行します。
 
 ```bash
 pnpm check
@@ -303,20 +344,26 @@ pnpm build
 pnpm smoke:runtime
 pnpm audit --prod
 pnpm diagrams:sync
-docker compose --env-file .env.local config -q
-# 通常のPC
-docker build --tag discord-translate:local .
-
-# vethエラーが出るこのPC
-docker build --network=host --tag discord-translate:local .
+git diff --exit-code -- docs/diagrams
 ```
 
-実APIへ接続しないテストは、Soniox TTS WebSocketのローカルfixtureを含めて実行されます。実機E2Eの記録項目と合格条件は[検証方針](./docs/design.md#検証方針)にあります。
+Compose とイメージも確認する場合は、セットアップ済みの`.env.local`を使います。`config -q`は設定内容を表示せず、Bot も起動しません。次の`docker build`は、ローカルの Docker daemonを使う場合の例です。`.dockerignore`を修正するまでは、Git 管理外のブラウザー出力を持つ作業ツリーからリモートビルダーを使わないでください。
 
-## セキュリティ上の注意
+```bash
+docker compose --env-file .env.local config -q
+docker build --tag discord-translate:check .
+```
 
-- `.env.local`はGitとDocker build contextから除外されています。
-- Botは外部向けHTTPポートを開きません。
-- API KeyをDiscordへ渡さず、BotプロセスからだけSonioxへ接続します。
-- 音声、原文、翻訳文、表示名はSQLiteや構造化ログへ保存しません。字幕はセッション専用の公開スレッド内に残り、終了時に自動アーカイブされます。
-- 公開Botへ変更する場合は、運営者のAPI Keyを共有する方式を継続せず、BYOKまたは利用者別課金を先に設計してください。
+`-q`を外した Compose の出力には、展開後の環境変数が含まれる可能性があります。実際の`.env.local`や展開結果を、検証ログへ出力しないでください。CI でも前記の検証を実行し、Compose 設定と Docker ビルドまで確認します。
+
+## セキュリティとプライバシー
+
+- `.env.local`、SQLite、実運用の翻訳用語ファイルは Git 管理外です。
+- Docker のビルドコンテキストから、`.env`系の実設定、SQLite、`.data/`、`docs/`、`test/`、`node_modules/`、`output/`を除外しています。リポジトリ直下の Markdown 文書、`.playwright-cli/`、`coverage/`は除外していません。Dockerfile はこれらをイメージへ`COPY`しませんが、`.dockerignore`を直すまではリモートビルダーを使わないでください。
+- Bot は Discord ID を HMAC で仮名化して記録し、ログへ発話本文、字幕本文、表示名、Token、API Key、例外メッセージを出しません。
+- 字幕の Markdown をエスケープし、Discord のメンション展開を無効にしています。
+- SQLite には利用量と運用メタデータを保存します。音声、字幕本文、表示名は保存しません。ただし、Discord の User ID、Guild ID、Channel ID は保存します。
+- Soniox への接続先は`us`、`eu`、`jp`に対応する固定 HTTPS・WSS エンドポイントだけです。Project のリージョンと API Key を一致させてください。
+- セッションを終了しても、Discord の公開スレッドと字幕メッセージは削除しません。必要に応じて Discord 側で削除してください。
+
+現時点の公開前調査では、追跡中ファイルと Git 履歴に実 API Key や Bot Token は検出されず、本番向けの依存関係にある既知脆弱性も0件でした。ただし、自動検出には限界があり、秘密情報や個人情報を見逃す可能性があります。公開直前に、[security_best_practices_report.md](./security_best_practices_report.md)の未解決事項と手動確認項目を再確認してください。
