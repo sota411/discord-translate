@@ -384,7 +384,9 @@ Sonioxの401・403は認証失敗、402は予算到達、429は同時実行上�
 
 ### モジュールの分け方
 
-認可とセッション状態はDiscordの入出力から分離する。各コンポーネントの責務は第4節の表に示した。外部サービス固有のエラーは、アプリ内の共通エラー型`ApplicationError`へ境界で変換する。上位層は固定コードだけで動作を決める。
+小さいうちから一般的なlayer名を増やさず、別の理由で変更される責務が現れたときに境界を作る。`src/index.ts`はprocessの起動と終了、`src/app.ts`は依存関係の組み立てに絞る。Discord APIの変更は`src/discord/`、Soniox APIの変更は`src/soniox/`、永続化と費用規則の変更は`src/usage/`で受ける。これらは外部依存と変更理由が異なるため分けている。
+
+認可とセッション状態はDiscordの入出力から分離する。各コンポーネントの責務は第4節の表に示した。外部サービス固有のエラーは、アプリ内の共通エラー型`ApplicationError`へ境界で変換する。上位層は固定コードだけで動作を決める。ディレクトリごとの判断と追加条件は[開発・引き継ぎガイド](../CONTRIBUTING.md)を正本とする。
 
 テストは外部から観測できる境界を対象にする。複雑な純粋ロジックだけ、補助的な単体テストで確認する。詳細は第8節に示す。
 
@@ -460,6 +462,8 @@ Dockerfileはビルド用と実行用を分ける。実行用ステージはNode
 
 Compose設定の検査には`docker compose --env-file .env.local config -q`を使う。`-q`を外すと展開後の秘密値が表示されるため、出力を保存または共有しない。ブリッジネットワークを作れないホストでは`compose.host.yaml`を使えるが、ホストネットワークは分離を弱めるため標準構成にしない。
 
+Pull Requestでは検証後に`linux/amd64`のDocker imageをbuildする。`main`へのmerge後は、同じcommitを再検証してから`sha-<40文字のcommit SHA>`をGHCRへ公開する。`v1.2.3`形式のGit tagでは、同じSHA tagに加えて完全なversion tagの`1.2.3`を公開する。GitHub Actionsは実行ホストへ接続せず、配備と巻き戻しは[運用手順](./operations.md)に従う。
+
 SIGINTまたはSIGTERMを受けると、新規コマンドを拒否して全Guildのセッションを停止する。必須の利用量照合を待ち、Discordリスナーとクライアント、TTS WebSocket、SQLiteを閉じる。
 
 ### 外部仕様の参照先
@@ -531,15 +535,14 @@ Discordの参照先:
 変更後の基本確認は次のコマンドで行う。
 
 ```bash
-pnpm check
-pnpm build
-pnpm smoke:runtime
+pnpm verify
 pnpm config:check
 pnpm audit --prod
 docker compose --env-file .env.local config -q
+docker build --tag discord-translate:local .
 ```
 
-図版を変更した場合は`pnpm diagrams:sync`も実行し、HTMLとSVGを同期する。Dockerfileまたは依存関係を変更した場合は、Dockerビルドも実行する。
+`pnpm verify`はlint、型検査、自動テスト、production build、native module smoke、図の同期checkをまとめて実行する。図版を変更した場合は、先に`pnpm diagrams:sync`でHTMLとSVGを同期する。実Discord・実Sonioxの受入は、この自動検証とは分ける。
 
 ### 実サービスでの受入
 
