@@ -17,6 +17,22 @@ Discordの音声チャンネルで、日本語・韓国語・英語の会話を�
 - Dockerで動かす場合はDocker EngineとDocker Compose
 - Linuxシェル、`openssl`
 
+## まずビルドとテストを再現する
+
+秘密情報を用意する前に、リポジトリをcloneしてローカル検証を通す。`pnpm verify`はDiscordやSonioxへ接続しない。
+
+```bash
+git clone https://github.com/sota411/discord-translate.git
+cd discord-translate
+
+node --version
+pnpm --version
+pnpm install --frozen-lockfile
+pnpm verify
+```
+
+`pnpm`がない場合は、Node.jsを導入した後に`npm install --global pnpm@11.3.0`で用意する。Node.jsは24.17.0以上、pnpmは11.3.0を使う。検証ではlint、型検査、自動テスト、本番用build、SQLiteとDiscord Opusの読み込み、設計図の同期を確認する。
+
 ## セットアップ
 
 ### 1. Discord Applicationを設定する
@@ -40,7 +56,6 @@ Discordの音声チャンネルで、日本語・韓国語・英語の会話を�
 ### 2. `.env.local`を作る
 
 ```bash
-pnpm install --frozen-lockfile
 cp -n .env.example .env.local
 chmod 600 .env.local
 openssl rand -hex 32
@@ -173,6 +188,8 @@ Node.jsで直接起動した場合は、`Ctrl+C`で停止する。
 
 ## 詳細資料
 
+- [開発・引き継ぎガイド](./CONTRIBUTING.md)
+- [配備・巻き戻し手順](./docs/operations.md)
 - [現行設計・図解・設定一覧・受入条件](./docs/design.md)
 - [公開前セキュリティ監査](./security_best_practices_report.md)
 - [環境変数の配布例](./.env.example)
