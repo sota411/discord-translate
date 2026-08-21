@@ -1,5 +1,6 @@
 services:
   bot:
+    image: ${BOT_IMAGE:-discord-translate:local}
     build:
       context: .
     init: true

@@ -14,6 +14,7 @@
     "config:check": "node --env-file-if-exists=.env.local --import tsx src/check-config.ts",
     "dev": "node --env-file-if-exists=.env.local --import tsx src/index.ts",
     "diagrams:sync": "node scripts/sync-diagram-svg.mjs",
+    "diagrams:check": "node scripts/sync-diagram-svg.mjs --check",
     "docker:down": "docker compose --env-file .env.local down --remove-orphans",
     "docker:host:down": "docker compose --env-file .env.local -f compose.yaml -f compose.host.yaml down --remove-orphans",
     "docker:host:logs": "docker compose --env-file .env.local -f compose.yaml -f compose.host.yaml logs --tail=100 bot",
@@ -28,7 +29,8 @@
     "smoke:runtime": "node scripts/smoke-runtime.mjs",
     "start": "node --env-file-if-exists=.env.local dist/index.js",
     "test": "tsx --test test/**/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify": "pnpm check && pnpm build && pnpm smoke:runtime && pnpm diagrams:check"
   },
   "dependencies": {
     "@discordjs/opus": "0.10.0",
