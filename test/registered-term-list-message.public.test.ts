@@ -91,6 +91,23 @@ void test("登録用語がなければ次の操作を示し、ページボタン
   assert.equal(collectComponents(json, ComponentType.Button).length, 0);
 });
 
+void test("defer済み応答をComponents V2へ切り替え、1ページでもボタンIDを重複させない", () => {
+  const payload = createRegisteredTermListMessagePayload({
+    terms: terms(1),
+    filter: "all",
+    requestedPage: 0,
+  });
+  const buttons = collectComponents(
+    componentJson(payload),
+    ComponentType.Button,
+  );
+  const customIds = buttons.map((button) => button.custom_id);
+
+  assert.equal(payload.content, null);
+  assert.equal(buttons.length, 2);
+  assert.equal(new Set(customIds).size, buttons.length);
+});
+
 void test("用語をMarkdownやmentionとして解釈させず、1ページを上限内に保つ", () => {
   const longTerms = terms(10).map((term, index) => ({
     ...term,

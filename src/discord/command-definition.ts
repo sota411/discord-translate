@@ -72,7 +72,7 @@ export const exportCommand = new SlashCommandBuilder()
 
 export const registerCommand = new SlashCommandBuilder()
   .setName("register")
-  .setDescription("特殊な用語と希望する翻訳を管理します")
+  .setDescription("特殊な用語の登録・一覧表示・削除を管理します")
   .setContexts(InteractionContextType.Guild)
   .addSubcommand((subcommand) =>
     subcommand

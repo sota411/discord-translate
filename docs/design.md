@@ -491,7 +491,7 @@ Discordの参照先:
 現行環境では次が成功している。
 
 - ESLintとTypeScript型検査
-- 公開境界・統合テスト186件
+- 公開境界・統合テスト187件
 - 本番用ビルド
 - SQLiteとOpusの実行検査
 - Compose設定検査とDockerビルド

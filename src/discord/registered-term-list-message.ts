@@ -18,6 +18,10 @@ import type { ComponentsMessagePayload } from "./message-payload.js";
 
 export type RegisteredTermListFilter = LanguagePair | "all";
 
+type RegisteredTermListMessagePayload = ComponentsMessagePayload & {
+  content: null;
+};
+
 const termsPerPage = 10;
 const pageTextCharacterLimit = 3_500;
 
@@ -25,7 +29,7 @@ export function createRegisteredTermListMessagePayload(input: {
   terms: readonly RegisteredTranslationTerm[];
   filter: RegisteredTermListFilter;
   requestedPage: number;
-}): ComponentsMessagePayload {
+}): RegisteredTermListMessagePayload {
   const pages = paginate(input.terms, pageTermTextBudget(input.terms.length));
   const pageCount = Math.max(1, pages.length);
   const pageIndex = Math.min(
@@ -52,7 +56,7 @@ export function createRegisteredTermListMessagePayload(input: {
           .setStyle(ButtonStyle.Secondary)
           .setDisabled(pageIndex === 0),
         new ButtonBuilder()
-          .setCustomId(`register:list:${input.filter}:${String(Math.min(pageCount - 1, pageIndex + 1))}`)
+          .setCustomId(`register:list:${input.filter}:${String(pageIndex + 1)}`)
           .setLabel("次へ")
           .setStyle(ButtonStyle.Secondary)
           .setDisabled(pageIndex === pageCount - 1),
@@ -61,6 +65,7 @@ export function createRegisteredTermListMessagePayload(input: {
   }
 
   return {
+    content: null,
     components: [container],
     flags: MessageFlags.IsComponentsV2,
     allowedMentions: { parse: [] },
