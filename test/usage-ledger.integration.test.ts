@@ -175,6 +175,32 @@ void test("Guild別翻訳用語をSQLiteへ保存し、再起動後もsource順�
         reopened.listRegisteredTranslationTerms("999999999999999999", "ja-ko"),
         [{ source: "ult", target: "필살기" }],
       );
+      assert.equal(
+        reopened.deleteRegisteredTranslationTerm(
+          "223456789012345678",
+          "ja-ko",
+          "ult",
+        ),
+        true,
+      );
+      assert.equal(
+        reopened.deleteRegisteredTranslationTerm(
+          "223456789012345678",
+          "ja-ko",
+          "missing",
+        ),
+        false,
+      );
+      assert.deepEqual(
+        reopened.listRegisteredTranslationTerms("223456789012345678", "ja-ko"),
+        [{ source: "ace", target: "에이스" }],
+      );
+      const inspection = new Database(databasePath, { readonly: true });
+      try {
+        assert.equal(inspection.pragma("user_version", { simple: true }), 2);
+      } finally {
+        inspection.close();
+      }
     } finally {
       reopened.close();
     }

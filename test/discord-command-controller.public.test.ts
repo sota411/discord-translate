@@ -5,7 +5,10 @@ import {
   ChannelType,
   Collection,
   ComponentType,
+  MessageFlags,
   PermissionFlagsBits,
+  type AutocompleteInteraction,
+  type ButtonInteraction,
   type ChatInputCommandInteraction,
   type Client,
 } from "discord.js";
@@ -92,7 +95,7 @@ void test("statusを認可サービスへ渡し、参加者名を含む状態を
   assert.match(String(edits[0]), /字幕スレッド: <#thread-1>/u);
 });
 
-void test("registerの3引数を認可サービスへそのまま渡す", async () => {
+void test("register addの3引数を認可サービスへそのまま渡す", async () => {
   const inputs: TranslationCommandInput[] = [];
   const edits: unknown[] = [];
   const controller = new DiscordBotController({
@@ -114,7 +117,10 @@ void test("registerの3引数を認可サービスへそのまま渡す", async 
     commandName: "register",
     guildId: "guild-1",
     user: { id: "user-1" },
-    options: { getString: (name: string) => values.get(name) },
+    options: {
+      getSubcommand: () => "add",
+      getString: (name: string) => values.get(name),
+    },
     deferReply: () => Promise.resolve(),
     editReply: (value: unknown) => {
       edits.push(value);
@@ -126,6 +132,7 @@ void test("registerの3引数を認可サービスへそのまま渡す", async 
 
   assert.deepEqual(inputs, [{
     kind: "register",
+    action: "add",
     pair: "ja-en",
     source: "技術室",
     target: "technology room",
@@ -133,6 +140,333 @@ void test("registerの3引数を認可サービスへそのまま渡す", async 
     actorId: "user-1",
   }]);
   assert.deepEqual(edits, ["翻訳用語を登録しました。"]);
+});
+
+void test("register listは任意のpairを渡し、Components V2一覧をephemeral表示する", async () => {
+  const inputs: TranslationCommandInput[] = [];
+  const edits: unknown[] = [];
+  const controller = new DiscordBotController({
+    client: {} as Client,
+    commands: commands(inputs, {
+      ok: true,
+      ephemeral: true,
+      interactionMessage: "登録済みの翻訳用語を表示します。",
+      registeredTerms: [
+        { pair: "ja-ko", source: "ult", target: "궁극기" },
+        { pair: "ja-ko", source: "ace", target: "에이스" },
+      ],
+    }),
+    logger: logger(),
+  });
+  const interaction = {
+    isChatInputCommand: () => true,
+    commandName: "register",
+    guildId: "guild-1",
+    user: { id: "user-1" },
+    options: {
+      getSubcommand: () => "list",
+      getString: (name: string) => name === "pair" ? "ja-ko" : null,
+    },
+    deferReply: () => Promise.resolve(),
+    editReply: (value: unknown) => {
+      edits.push(value);
+      return Promise.resolve();
+    },
+  } as unknown as ChatInputCommandInteraction;
+
+  await controller.handleInteraction(interaction);
+
+  assert.deepEqual(inputs, [{
+    kind: "register",
+    action: "list",
+    pair: "ja-ko",
+    guildId: "guild-1",
+    actorId: "user-1",
+  }]);
+  assert.equal((edits[0] as { flags?: number }).flags, MessageFlags.IsComponentsV2);
+  assert.match(JSON.stringify(edits[0]), /ult/u);
+});
+
+void test("register deleteはpairとsourceを渡して即時削除する", async () => {
+  const inputs: TranslationCommandInput[] = [];
+  const edits: unknown[] = [];
+  const controller = new DiscordBotController({
+    client: {} as Client,
+    commands: commands(inputs, {
+      ok: true,
+      ephemeral: true,
+      interactionMessage: "翻訳用語を削除しました。",
+    }),
+    logger: logger(),
+  });
+  const interaction = {
+    isChatInputCommand: () => true,
+    commandName: "register",
+    guildId: "guild-1",
+    user: { id: "user-1" },
+    options: {
+      getSubcommand: () => "delete",
+      getString: (name: string) => name === "pair" ? "ja-ko" : "ult",
+    },
+    deferReply: () => Promise.resolve(),
+    editReply: (value: unknown) => {
+      edits.push(value);
+      return Promise.resolve();
+    },
+  } as unknown as ChatInputCommandInteraction;
+
+  await controller.handleInteraction(interaction);
+
+  assert.deepEqual(inputs, [{
+    kind: "register",
+    action: "delete",
+    pair: "ja-ko",
+    source: "ult",
+    guildId: "guild-1",
+    actorId: "user-1",
+  }]);
+  assert.deepEqual(edits, ["翻訳用語を削除しました。"]);
+});
+
+void test("delete sourceの入力補完は認可済み一覧を部分一致で最大25件返す", async () => {
+  const inputs: TranslationCommandInput[] = [];
+  const responses: unknown[] = [];
+  const registeredTerms = Array.from({ length: 30 }, (_, index) => ({
+    pair: "ja-ko" as const,
+    source: `Source-${String(index).padStart(2, "0")}`,
+    target: `Target-${String(index).padStart(2, "0")}`,
+  }));
+  const controller = new DiscordBotController({
+    client: {} as Client,
+    commands: commands(inputs, {
+      ok: true,
+      ephemeral: true,
+      interactionMessage: "登録済みの翻訳用語を表示します。",
+      registeredTerms,
+    }),
+    logger: logger(),
+  });
+  const interaction = {
+    commandName: "register",
+    guildId: "guild-1",
+    user: { id: "user-1" },
+    options: {
+      getSubcommand: () => "delete",
+      getString: () => "ja-ko",
+      getFocused: () => ({ name: "source", value: "SOURCE" }),
+    },
+    respond: (value: unknown) => {
+      responses.push(value);
+      return Promise.resolve();
+    },
+  } as unknown as AutocompleteInteraction;
+
+  await controller.handleAutocomplete(interaction);
+
+  assert.deepEqual(inputs, [{
+    kind: "register",
+    action: "list",
+    pair: "ja-ko",
+    guildId: "guild-1",
+    actorId: "user-1",
+  }]);
+  const choices = responses[0] as { name: string; value: string }[];
+  assert.equal(choices.length, 25);
+  const firstChoice = choices[0];
+  assert.ok(firstChoice);
+  assert.equal(firstChoice.value, "Source-00");
+  assert.match(firstChoice.name, /Source-00.*Target-00/u);
+});
+
+void test("register delete以外の入力補完には空候補を1回だけ返す", async () => {
+  const inputs: TranslationCommandInput[] = [];
+  const responses: unknown[] = [];
+  const controller = new DiscordBotController({
+    client: {} as Client,
+    commands: commands(inputs, {
+      ok: true,
+      ephemeral: true,
+      interactionMessage: "使用されません。",
+    }),
+    logger: logger(),
+  });
+  const interaction = {
+    commandName: "register",
+    guildId: "guild-1",
+    user: { id: "user-1" },
+    options: {
+      getSubcommand: () => "add",
+    },
+    respond: (value: unknown) => {
+      responses.push(value);
+      return Promise.resolve();
+    },
+  } as unknown as AutocompleteInteraction;
+
+  await controller.handleAutocomplete(interaction);
+
+  assert.deepEqual(inputs, []);
+  assert.deepEqual(responses, [[]]);
+});
+
+void test("未認可の利用者にはdelete sourceの入力候補を返さない", async () => {
+  const inputs: TranslationCommandInput[] = [];
+  const responses: unknown[] = [];
+  const controller = new DiscordBotController({
+    client: {} as Client,
+    commands: commands(inputs, {
+      ok: false,
+      ephemeral: true,
+      code: "USER_NOT_ALLOWED",
+      interactionMessage: "このBotを利用できないユーザーです。",
+    }),
+    logger: logger(),
+  });
+  const interaction = {
+    commandName: "register",
+    guildId: "guild-1",
+    user: { id: "user-not-allowed" },
+    options: {
+      getSubcommand: () => "delete",
+      getString: () => "ja-ko",
+      getFocused: () => ({ name: "source", value: "secret" }),
+    },
+    respond: (value: unknown) => {
+      responses.push(value);
+      return Promise.resolve();
+    },
+  } as unknown as AutocompleteInteraction;
+
+  await controller.handleAutocomplete(interaction);
+
+  assert.deepEqual(inputs, [{
+    kind: "register",
+    action: "list",
+    pair: "ja-ko",
+    guildId: "guild-1",
+    actorId: "user-not-allowed",
+  }]);
+  assert.deepEqual(responses, [[]]);
+});
+
+void test("delete sourceの入力候補名は100文字以内で、値はsourceを保持する", async () => {
+  const responses: unknown[] = [];
+  const source = "s".repeat(100);
+  const controller = new DiscordBotController({
+    client: {} as Client,
+    commands: commands([], {
+      ok: true,
+      ephemeral: true,
+      interactionMessage: "登録済みの翻訳用語を表示します。",
+      registeredTerms: [{ pair: "ja-en", source, target: "t".repeat(100) }],
+    }),
+    logger: logger(),
+  });
+  const interaction = {
+    commandName: "register",
+    guildId: "guild-1",
+    user: { id: "user-1" },
+    options: {
+      getSubcommand: () => "delete",
+      getString: () => "ja-en",
+      getFocused: () => ({ name: "source", value: "" }),
+    },
+    respond: (value: unknown) => {
+      responses.push(value);
+      return Promise.resolve();
+    },
+  } as unknown as AutocompleteInteraction;
+
+  await controller.handleAutocomplete(interaction);
+
+  const choices = responses[0] as { name: string; value: string }[];
+  const choice = choices[0];
+  assert.ok(choice);
+  assert.equal(Array.from(choice.name).length, 100);
+  assert.equal(choice.value, source);
+});
+
+void test("register listのページボタンは一覧を読み直して有効な最終ページへ補正する", async () => {
+  const inputs: TranslationCommandInput[] = [];
+  const edits: unknown[] = [];
+  const controller = new DiscordBotController({
+    client: {} as Client,
+    commands: commands(inputs, {
+      ok: true,
+      ephemeral: true,
+      interactionMessage: "登録済みの翻訳用語を表示します。",
+      registeredTerms: Array.from({ length: 23 }, (_, index) => ({
+        pair: "ja-ko" as const,
+        source: `source-${String(index).padStart(2, "0")}`,
+        target: `target-${String(index).padStart(2, "0")}`,
+      })),
+    }),
+    logger: logger(),
+  });
+  const interaction = {
+    customId: "register:list:all:99",
+    guildId: "guild-1",
+    user: { id: "user-1" },
+    deferUpdate: () => Promise.resolve(),
+    editReply: (value: unknown) => {
+      edits.push(value);
+      return Promise.resolve();
+    },
+  } as unknown as ButtonInteraction;
+
+  await controller.handleComponentInteraction(interaction);
+
+  assert.deepEqual(inputs, [{
+    kind: "register",
+    action: "list",
+    guildId: "guild-1",
+    actorId: "user-1",
+  }]);
+  assert.match(JSON.stringify(edits[0]), /23件 · 3 \/ 3ページ/u);
+  assert.match(JSON.stringify(edits[0]), /source-22/u);
+});
+
+void test("register listのページ操作でも再認可し、失敗時は一覧を更新しない", async () => {
+  const inputs: TranslationCommandInput[] = [];
+  const edits: unknown[] = [];
+  const followUps: unknown[] = [];
+  const controller = new DiscordBotController({
+    client: {} as Client,
+    commands: commands(inputs, {
+      ok: false,
+      ephemeral: true,
+      code: "USER_NOT_ALLOWED",
+      interactionMessage: "このBotを利用できないユーザーです。",
+    }),
+    logger: logger(),
+  });
+  const interaction = {
+    customId: "register:list:ja-ko:1",
+    guildId: "guild-1",
+    user: { id: "user-not-allowed" },
+    deferUpdate: () => Promise.resolve(),
+    editReply: (value: unknown) => {
+      edits.push(value);
+      return Promise.resolve();
+    },
+    followUp: (value: unknown) => {
+      followUps.push(value);
+      return Promise.resolve();
+    },
+  } as unknown as ButtonInteraction;
+
+  await controller.handleComponentInteraction(interaction);
+
+  assert.deepEqual(inputs, [{
+    kind: "register",
+    action: "list",
+    pair: "ja-ko",
+    guildId: "guild-1",
+    actorId: "user-not-allowed",
+  }]);
+  assert.deepEqual(edits, []);
+  assert.equal(followUps.length, 1);
+  assert.match(JSON.stringify(followUps[0]), /このBotを利用できないユーザーです/u);
 });
 
 type ExportHarness = {

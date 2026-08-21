@@ -17,12 +17,23 @@ export type RegisteredTranslationTermInput = {
   updatedAt: Date;
 };
 
+export type RegisteredTranslationTerm = TranslationTerm & {
+  pair: LanguagePair;
+};
+
+export const registeredTranslationTermMaxLength = 100;
+
 export type TranslationTermStore = {
   listRegisteredTranslationTerms(
     guildId: string,
     pair: LanguagePair,
   ): readonly TranslationTerm[];
   upsertRegisteredTranslationTerm(input: RegisteredTranslationTermInput): void;
+  deleteRegisteredTranslationTerm(
+    guildId: string,
+    pair: LanguagePair,
+    source: string,
+  ): boolean;
 };
 
 export type RegisterTranslationTermInput = {
@@ -31,6 +42,12 @@ export type RegisterTranslationTermInput = {
   source: string;
   target: string;
   at: Date;
+};
+
+export type DeleteTranslationTermInput = {
+  guildId: string;
+  pair: LanguagePair;
+  source: string;
 };
 
 export class TranslationTermCatalog {
@@ -77,6 +94,15 @@ export class TranslationTermCatalog {
         "sourceとtargetには空でない用語を指定してください。",
       );
     }
+    if (
+      Array.from(source).length > registeredTranslationTermMaxLength ||
+      Array.from(target).length > registeredTranslationTermMaxLength
+    ) {
+      throw new ApplicationError(
+        "TRANSLATION_TERM_INVALID",
+        `sourceとtargetはそれぞれ${String(registeredTranslationTermMaxLength)}文字以内で指定してください。`,
+      );
+    }
     if (this.#staticTerms[input.pair].some((entry) => entry.source === source)) {
       throw new ApplicationError(
         "TRANSLATION_TERM_CONFLICT",
@@ -119,6 +145,55 @@ export class TranslationTermCatalog {
     return existing ? "updated" : "created";
   }
 
+  public listRegisteredTerms(
+    guildId: string,
+    pair?: LanguagePair,
+  ): readonly RegisteredTranslationTerm[] {
+    const pairs = pair === undefined ? languagePairs : [pair];
+    return pairs.flatMap((currentPair) =>
+      this.#listRegistered(guildId, currentPair).map((term) => ({
+        pair: currentPair,
+        source: term.source,
+        target: term.target,
+      })));
+  }
+
+  public delete(input: DeleteTranslationTermInput): void {
+    const source = input.source;
+    if (source.trim().length === 0) {
+      throw new ApplicationError(
+        "TRANSLATION_TERM_INVALID",
+        "削除するsourceを指定してください。",
+      );
+    }
+    if (this.#staticTerms[input.pair].some((entry) => entry.source === source)) {
+      throw new ApplicationError(
+        "TRANSLATION_TERM_CONFLICT",
+        "このsourceは運用者の静的用語ファイルにあり、コマンドでは削除できません。",
+      );
+    }
+    let deleted: boolean;
+    try {
+      deleted = this.#store.deleteRegisteredTranslationTerm(
+        input.guildId,
+        input.pair,
+        source,
+      );
+    } catch (error) {
+      throw new ApplicationError(
+        "TRANSLATION_TERM_STORE_UNAVAILABLE",
+        "翻訳用語を削除できませんでした。時間を置いて再実行してください。",
+        { cause: error },
+      );
+    }
+    if (!deleted) {
+      throw new ApplicationError(
+        "TRANSLATION_TERM_NOT_FOUND",
+        "削除する登録用語が見つかりません。一覧または入力候補から選び直してください。",
+      );
+    }
+  }
+
   public assertGuildsValid(guildIds: ReadonlySet<string>): void {
     for (const guildId of guildIds) {
       for (const pair of languagePairs) {
@@ -137,8 +212,9 @@ export class TranslationTermCatalog {
   }
 
   #listRegistered(guildId: string, pair: LanguagePair): readonly TranslationTerm[] {
+    let terms: readonly TranslationTerm[];
     try {
-      return this.#store.listRegisteredTranslationTerms(guildId, pair);
+      terms = this.#store.listRegisteredTranslationTerms(guildId, pair);
     } catch (error) {
       throw new ApplicationError(
         "TRANSLATION_TERM_STORE_UNAVAILABLE",
@@ -146,5 +222,14 @@ export class TranslationTermCatalog {
         { cause: error },
       );
     }
+    if (terms.some((term) =>
+      Array.from(term.source).length > registeredTranslationTermMaxLength ||
+      Array.from(term.target).length > registeredTranslationTermMaxLength)) {
+      throw new ApplicationError(
+        "TRANSLATION_TERM_INVALID",
+        `保存済みのsourceとtargetはそれぞれ${String(registeredTranslationTermMaxLength)}文字以内である必要があります。運営者へ連絡してください。`,
+      );
+    }
+    return terms;
   }
 }

@@ -6,6 +6,7 @@ import {
   type StartCommandInput,
 } from "../src/commands/translation-command-service.js";
 import type { TranslationTerm } from "../src/config/translation-terms.js";
+import type { RegisteredTranslationTerm } from "../src/config/translation-term-catalog.js";
 import { ApplicationError } from "../src/domain/application-error.js";
 import type { LanguagePair } from "../src/domain/language-pair.js";
 import {
@@ -28,12 +29,19 @@ type Harness = {
 class RecordingTermCatalog {
   public snapshotResult: readonly TranslationTerm[] = [];
   public registerResult: "created" | "updated" = "created";
+  public listResult: readonly RegisteredTranslationTerm[] = [];
   public readonly snapshots: { guildId: string; pair: LanguagePair }[] = [];
   public readonly registrations: {
     guildId: string;
     pair: LanguagePair;
     source: string;
     target: string;
+  }[] = [];
+  public readonly lists: { guildId: string; pair?: LanguagePair }[] = [];
+  public readonly deletions: {
+    guildId: string;
+    pair: LanguagePair;
+    source: string;
   }[] = [];
 
   public snapshot(guildId: string, pair: LanguagePair): readonly TranslationTerm[] {
@@ -54,6 +62,22 @@ class RecordingTermCatalog {
       target: input.target,
     });
     return this.registerResult;
+  }
+
+  public listRegisteredTerms(
+    guildId: string,
+    pair?: LanguagePair,
+  ): readonly RegisteredTranslationTerm[] {
+    this.lists.push({ guildId, ...(pair === undefined ? {} : { pair }) });
+    return this.listResult.map((term) => ({ ...term }));
+  }
+
+  public delete(input: {
+    guildId: string;
+    pair: LanguagePair;
+    source: string;
+  }): void {
+    this.deletions.push({ ...input });
   }
 }
 
@@ -662,6 +686,7 @@ void test("registerは許可利用者の入力をGuild用語へ渡し、次回�
 
   const result = await harness.service.execute({
     kind: "register",
+    action: "add",
     guildId: "223456789012345678",
     actorId: "323456789012345678",
     pair: "ja-ko",
@@ -681,6 +706,7 @@ void test("registerは許可利用者の入力をGuild用語へ渡し、次回�
 
   const denied = await harness.service.execute({
     kind: "register",
+    action: "add",
     guildId: "223456789012345678",
     actorId: "999999999999999999",
     pair: "ja-ko",
@@ -690,6 +716,59 @@ void test("registerは許可利用者の入力をGuild用語へ渡し、次回�
   assert.equal(denied.ok, false);
   assert.equal(denied.code, "USER_NOT_ALLOWED");
   assert.equal(harness.terms.registrations.length, 1);
+});
+
+void test("register listとdeleteは同じ認可を使い、削除を次回セッションだけへ反映する", async () => {
+  const harness = createHarness();
+  harness.terms.snapshotResult = [{ source: "ult", target: "궁극기" }];
+  harness.terms.listResult = [
+    { pair: "ja-ko", source: "ult", target: "궁극기" },
+    { pair: "ja-en", source: "技術室", target: "technology room" },
+  ];
+
+  assert.equal((await harness.service.execute(validStart())).ok, true);
+  const listed = await harness.service.execute({
+    kind: "register",
+    action: "list",
+    guildId: "223456789012345678",
+    actorId: "323456789012345678",
+    pair: "ja-ko",
+  });
+  assert.equal(listed.ok, true);
+  assert.deepEqual(listed.registeredTerms, harness.terms.listResult);
+  assert.deepEqual(harness.terms.lists, [{
+    guildId: "223456789012345678",
+    pair: "ja-ko",
+  }]);
+
+  const deleted = await harness.service.execute({
+    kind: "register",
+    action: "delete",
+    guildId: "223456789012345678",
+    actorId: "323456789012345678",
+    pair: "ja-ko",
+    source: "ult",
+  });
+  assert.equal(deleted.ok, true);
+  assert.match(deleted.interactionMessage, /次に開始/u);
+  assert.deepEqual(harness.terms.deletions, [{
+    guildId: "223456789012345678",
+    pair: "ja-ko",
+    source: "ult",
+  }]);
+  assert.deepEqual(harness.driver.starts[0]?.translationTerms, [
+    { source: "ult", target: "궁극기" },
+  ]);
+
+  const denied = await harness.service.execute({
+    kind: "register",
+    action: "list",
+    guildId: "223456789012345678",
+    actorId: "999999999999999999",
+  });
+  assert.equal(denied.ok, false);
+  assert.equal(denied.code, "USER_NOT_ALLOWED");
+  assert.equal(harness.terms.lists.length, 1);
 });
 
 void test("export認可は未許可利用者をDiscord履歴取得前に拒否する", async () => {

@@ -345,6 +345,18 @@ export class UsageLedger implements UsageGate, TranslationTermStore {
     );
   }
 
+  public deleteRegisteredTranslationTerm(
+    guildId: string,
+    pair: LanguagePair,
+    source: string,
+  ): boolean {
+    const result = this.#database.prepare(`
+      DELETE FROM registered_translation_term
+      WHERE guild_id = ? AND pair = ? AND source = ?
+    `).run(guildId, pair, source);
+    return result.changes === 1;
+  }
+
   public createSession(input: CreateSessionInput): void {
     this.#database.prepare(`
       INSERT INTO session_usage (

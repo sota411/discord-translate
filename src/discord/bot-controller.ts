@@ -4,6 +4,7 @@ import {
   Events,
   MessageFlags,
   PermissionFlagsBits,
+  type AutocompleteInteraction,
   type ChatInputCommandInteraction,
   type ButtonInteraction,
   type Client,
@@ -15,11 +16,17 @@ import {
 
 import type {
   CommandResult,
+  RegisterCommandInput,
   TranslationCommandService,
 } from "../commands/translation-command-service.js";
 import { ApplicationError } from "../domain/application-error.js";
+import { isLanguagePair } from "../domain/language-pair.js";
 import type { SafeLogger } from "../observability/logger.js";
 import { createSessionSettingsMessagePayload } from "./message-payload.js";
+import {
+  createRegisteredTermListMessagePayload,
+  type RegisteredTermListFilter,
+} from "./registered-term-list-message.js";
 import { createSessionStatusMessage } from "./status-message.js";
 import { exportThreadToMarkdown } from "./thread-export.js";
 
@@ -51,6 +58,14 @@ export class DiscordBotController {
     this.#logger = options.logger;
     this.#now = options.now ?? (() => new Date());
     this.#interactionListener = (interaction) => {
+      if (interaction.isAutocomplete()) {
+        void this.handleAutocomplete(interaction).catch((error: unknown) => {
+          this.#logger.error("discord_autocomplete_response_failed", error, {
+            guild_id: this.#guildLogId(interaction.guildId),
+          });
+        });
+        return;
+      }
       if (interaction.isChatInputCommand()) {
         void this.handleInteraction(interaction).catch((error: unknown) => {
           this.#logger.error("discord_interaction_response_failed", error, {
@@ -118,10 +133,7 @@ export class DiscordBotController {
         return;
       }
       if (interaction.commandName === "register") {
-        await this.#completeInteraction(
-          interaction,
-          await this.#commands.execute(this.#registerInput(interaction)),
-        );
+        await this.#handleRegisterCommand(interaction);
         return;
       }
       await this.#handleExportCommand(interaction);
@@ -171,6 +183,74 @@ export class DiscordBotController {
       displayNames,
       this.#now(),
     ));
+  }
+
+  async #handleRegisterCommand(
+    interaction: ChatInputCommandInteraction,
+  ): Promise<void> {
+    const input = this.#registerInput(interaction);
+    const result = await this.#commands.execute(input);
+    if (
+      input.action !== "list" ||
+      !result.ok ||
+      result.registeredTerms === undefined
+    ) {
+      await interaction.editReply(result.interactionMessage);
+      return;
+    }
+    const filter: RegisteredTermListFilter = input.pair === undefined
+      ? "all"
+      : isLanguagePair(input.pair)
+        ? input.pair
+        : "all";
+    await interaction.editReply(createRegisteredTermListMessagePayload({
+      terms: result.registeredTerms,
+      filter,
+      requestedPage: 0,
+    }));
+  }
+
+  public async handleAutocomplete(
+    interaction: AutocompleteInteraction,
+  ): Promise<void> {
+    if (
+      interaction.commandName !== "register" ||
+      interaction.options.getSubcommand(false) !== "delete"
+    ) {
+      await interaction.respond([]);
+      return;
+    }
+    const pair = interaction.options.getString("pair");
+    const focused = interaction.options.getFocused(true);
+    if (
+      !pair ||
+      !isLanguagePair(pair) ||
+      focused.name !== "source" ||
+      typeof focused.value !== "string"
+    ) {
+      await interaction.respond([]);
+      return;
+    }
+    const result = await this.#commands.execute({
+      kind: "register",
+      action: "list",
+      pair,
+      guildId: interaction.guildId ?? undefined,
+      actorId: interaction.user.id,
+    });
+    if (!result.ok || result.registeredTerms === undefined) {
+      await interaction.respond([]);
+      return;
+    }
+    const query = focused.value.toLowerCase();
+    const choices = result.registeredTerms
+      .filter((term) => term.source.toLowerCase().includes(query))
+      .slice(0, 25)
+      .map((term) => ({
+        name: truncateChoiceName(`${term.source} → ${term.target}`),
+        value: term.source,
+      }));
+    await interaction.respond(choices);
   }
 
   async #handleExportCommand(
@@ -275,12 +355,11 @@ export class DiscordBotController {
   public async handleComponentInteraction(
     interaction: ButtonInteraction | StringSelectMenuInteraction,
   ): Promise<void> {
+    const registerListPage = /^register:list:(all|ja-ko|ja-en|ko-en):(\d+)$/u
+      .exec(interaction.customId);
     const parsed = /^translate:([^:]+):(stop|toggle_audio|settings|playback_mode|caption_failure_policy)$/u
       .exec(interaction.customId);
-    if (!parsed) return;
-    const sessionId = parsed[1];
-    const action = parsed[2];
-    if (!sessionId || !action) return;
+    if (!registerListPage && !parsed) return;
     if (!this.#acceptingCommands) {
       await interaction.reply({
         content: "Botを停止中です。起動後に再実行してください。",
@@ -288,6 +367,13 @@ export class DiscordBotController {
       });
       return;
     }
+    if (registerListPage) {
+      await this.#handleRegisterListPage(interaction, registerListPage);
+      return;
+    }
+    const sessionId = parsed?.[1];
+    const action = parsed?.[2];
+    if (!sessionId || !action) return;
     const actor = interaction.guild?.members.cache.get(interaction.user.id);
     const common = {
       guildId: interaction.guildId ?? undefined,
@@ -342,6 +428,42 @@ export class DiscordBotController {
           ...common,
         });
     await interaction.editReply(result.interactionMessage);
+  }
+
+  async #handleRegisterListPage(
+    interaction: ButtonInteraction | StringSelectMenuInteraction,
+    parsed: RegExpExecArray,
+  ): Promise<void> {
+    const filterValue = parsed[1];
+    const pageValue = parsed[2];
+    if (
+      !filterValue ||
+      !pageValue ||
+      (filterValue !== "all" && !isLanguagePair(filterValue))
+    ) {
+      return;
+    }
+    await interaction.deferUpdate();
+    const result = await this.#commands.execute({
+      kind: "register",
+      action: "list",
+      ...(filterValue === "all" ? {} : { pair: filterValue }),
+      guildId: interaction.guildId ?? undefined,
+      actorId: interaction.user.id,
+    });
+    if (!result.ok || result.registeredTerms === undefined) {
+      await interaction.followUp({
+        content: result.interactionMessage,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const requestedPage = Number(pageValue);
+    await interaction.editReply(createRegisteredTermListMessagePayload({
+      terms: result.registeredTerms,
+      filter: filterValue,
+      requestedPage: Number.isSafeInteger(requestedPage) ? requestedPage : 0,
+    }));
   }
 
   public async handleVoiceStateUpdate(
@@ -488,15 +610,41 @@ export class DiscordBotController {
     };
   }
 
-  #registerInput(interaction: ChatInputCommandInteraction) {
-    return {
-      kind: "register" as const,
-      pair: interaction.options.getString("pair", true),
-      source: interaction.options.getString("source", true),
-      target: interaction.options.getString("target", true),
+  #registerInput(interaction: ChatInputCommandInteraction): RegisterCommandInput {
+    const common = {
       guildId: interaction.guildId ?? undefined,
       actorId: interaction.user.id,
     };
+    const action = interaction.options.getSubcommand(true);
+    if (action === "add") {
+      return {
+        kind: "register" as const,
+        action,
+        pair: interaction.options.getString("pair", true),
+        source: interaction.options.getString("source", true),
+        target: interaction.options.getString("target", true),
+        ...common,
+      };
+    }
+    if (action === "list") {
+      const pair = interaction.options.getString("pair", false) ?? undefined;
+      return {
+        kind: "register" as const,
+        action,
+        ...(pair === undefined ? {} : { pair }),
+        ...common,
+      };
+    }
+    if (action === "delete") {
+      return {
+        kind: "register" as const,
+        action,
+        pair: interaction.options.getString("pair", true),
+        source: interaction.options.getString("source", true),
+        ...common,
+      };
+    }
+    throw new Error("未対応のregisterサブコマンドです");
   }
 
   async #completeInteraction(
@@ -509,4 +657,11 @@ export class DiscordBotController {
   #guildLogId(guildId: string | null): string {
     return guildId ? this.#logger.pseudonymize(guildId) : "none";
   }
+}
+
+function truncateChoiceName(value: string): string {
+  const characters = Array.from(value);
+  return characters.length <= 100
+    ? value
+    : `${characters.slice(0, 99).join("")}…`;
 }

@@ -2,7 +2,10 @@ import {
   ApplicationError,
   type ErrorCode,
 } from "../domain/application-error.js";
-import type { TranslationTermCatalog } from "../config/translation-term-catalog.js";
+import type {
+  RegisteredTranslationTerm,
+  TranslationTermCatalog,
+} from "../config/translation-term-catalog.js";
 import {
   isLanguagePair,
 } from "../domain/language-pair.js";
@@ -89,14 +92,29 @@ export type ExportCommandInput = {
   actorId: string;
 };
 
-export type RegisterCommandInput = {
+type RegisterCommandCommonInput = {
   kind: "register";
-  pair: string;
-  source: string;
-  target: string;
   guildId: string | undefined;
   actorId: string;
 };
+
+export type RegisterCommandInput = RegisterCommandCommonInput & (
+  | {
+      action: "add";
+      pair: string;
+      source: string;
+      target: string;
+    }
+  | {
+      action: "list";
+      pair?: string;
+    }
+  | {
+      action: "delete";
+      pair: string;
+      source: string;
+    }
+);
 
 export type TranslationCommandInput =
   | StartCommandInput
@@ -112,6 +130,7 @@ export type CommandResult = {
   interactionMessage: string;
   code?: ErrorCode;
   status?: Readonly<SessionDescriptor> | null;
+  registeredTerms?: readonly RegisteredTranslationTerm[];
   publicMessage?: {
     channelId: string;
     content: string;
@@ -123,7 +142,10 @@ type TranslationCommandServiceDependencies = {
   allowedUserIds: ReadonlySet<string>;
   maxSpeakersPerSession: number;
   sessions: SessionManager;
-  terms: Pick<TranslationTermCatalog, "snapshot" | "register">;
+  terms: Pick<
+    TranslationTermCatalog,
+    "snapshot" | "register" | "listRegisteredTerms" | "delete"
+  >;
   now?: () => Date;
 };
 
@@ -143,7 +165,10 @@ export class TranslationCommandService {
   readonly #allowedUserIds: ReadonlySet<string>;
   readonly #maxSpeakersPerSession: number;
   readonly #sessions: SessionManager;
-  readonly #terms: Pick<TranslationTermCatalog, "snapshot" | "register">;
+  readonly #terms: Pick<
+    TranslationTermCatalog,
+    "snapshot" | "register" | "listRegisteredTerms" | "delete"
+  >;
   readonly #now: () => Date;
 
   public constructor(dependencies: TranslationCommandServiceDependencies) {
@@ -327,11 +352,38 @@ export class TranslationCommandService {
   #register(input: RegisterCommandInput): CommandResult {
     const guildId = this.#requireAllowedGuild(input.guildId);
     this.#requireAllowedUser(input.actorId);
+    if (input.action === "list") {
+      if (input.pair !== undefined && !isLanguagePair(input.pair)) {
+        throw new ApplicationError(
+          "UNSUPPORTED_PAIR",
+          "対応していない言語ペアです。コマンドを再登録してください。",
+        );
+      }
+      return {
+        ok: true,
+        ephemeral: true,
+        interactionMessage: "登録済みの翻訳用語を表示します。",
+        registeredTerms: this.#terms.listRegisteredTerms(guildId, input.pair),
+      };
+    }
     if (!isLanguagePair(input.pair)) {
       throw new ApplicationError(
         "UNSUPPORTED_PAIR",
         "対応していない言語ペアです。コマンドを再登録してください。",
       );
+    }
+    if (input.action === "delete") {
+      this.#terms.delete({
+        guildId,
+        pair: input.pair,
+        source: input.source,
+      });
+      return {
+        ok: true,
+        ephemeral: true,
+        interactionMessage:
+          "翻訳用語を削除しました。実行中のセッションは変えず、次に開始するセッションから使用しません。",
+      };
     }
     const result = this.#terms.register({
       guildId,

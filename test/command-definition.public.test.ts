@@ -54,7 +54,7 @@ void test("translateコマンドはGuild専用で既定権限なし、言語ペ�
   );
 });
 
-void test("status・export・registerはGuild全員へ表示し、必要な引数だけを公開する", () => {
+void test("status・export・registerはGuild全員へ表示し、用語管理を3サブコマンドで公開する", () => {
   const status = statusCommand.toJSON();
   const exportJson = exportCommand.toJSON();
   const register = registerCommand.toJSON();
@@ -75,15 +75,33 @@ void test("status・export・registerはGuild全員へ表示し、必要な引�
   ]);
 
   assert.equal(register.name, "register");
-  const pair = register.options?.find((option) => option.name === "pair");
-  const source = register.options?.find((option) => option.name === "source");
-  const target = register.options?.find((option) => option.name === "target");
+  const add = register.options?.find((option) => option.name === "add");
+  const list = register.options?.find((option) => option.name === "list");
+  const remove = register.options?.find((option) => option.name === "delete");
+  assert.ok(add);
+  assert.ok(list);
+  assert.ok(remove);
+  assert.equal(add.type, 1);
+  assert.equal(list.type, 1);
+  assert.equal(remove.type, 1);
+
+  const pair = "options" in add
+    ? add.options?.find((option) => option.name === "pair")
+    : undefined;
+  const source = "options" in add
+    ? add.options?.find((option) => option.name === "source")
+    : undefined;
+  const target = "options" in add
+    ? add.options?.find((option) => option.name === "target")
+    : undefined;
   assert.ok(pair);
   assert.ok(source);
   assert.ok(target);
   assert.equal(pair.required, true);
   assert.equal(source.required, true);
   assert.equal(target.required, true);
+  assert.equal("max_length" in source ? source.max_length : undefined, 100);
+  assert.equal("max_length" in target ? target.max_length : undefined, 100);
   assert.deepEqual(
     "choices" in pair ? pair.choices?.map((choice) => [choice.name, choice.value]) : [],
     [
@@ -92,4 +110,22 @@ void test("status・export・registerはGuild全員へ表示し、必要な引�
       ["韓国語 ⇄ 英語", "ko-en"],
     ],
   );
+
+  const listPair = "options" in list
+    ? list.options?.find((option) => option.name === "pair")
+    : undefined;
+  assert.ok(listPair);
+  assert.equal(listPair.required, false);
+
+  const deletePair = "options" in remove
+    ? remove.options?.find((option) => option.name === "pair")
+    : undefined;
+  const deleteSource = "options" in remove
+    ? remove.options?.find((option) => option.name === "source")
+    : undefined;
+  assert.ok(deletePair);
+  assert.ok(deleteSource);
+  assert.equal(deletePair.required, true);
+  assert.equal(deleteSource.required, true);
+  assert.equal("autocomplete" in deleteSource ? deleteSource.autocomplete : undefined, true);
 });

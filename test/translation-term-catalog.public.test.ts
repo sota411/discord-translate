@@ -30,6 +30,14 @@ class MemoryTermStore implements TranslationTermStore {
       target: input.target,
     });
   }
+
+  public deleteRegisteredTranslationTerm(
+    guildId: string,
+    pair: LanguagePair,
+    source: string,
+  ): boolean {
+    return this.#terms.delete(`${guildId}:${pair}:${source}`);
+  }
 }
 
 const staticTerms = {
@@ -93,12 +101,91 @@ void test("静的用語との衝突、空入力、Soniox context上限を登録�
     (error: unknown) =>
       error instanceof ApplicationError && error.code === "TRANSLATION_TERM_INVALID",
   );
+  const fullStore = new MemoryTermStore();
+  for (let index = 0; index < 80; index += 1) {
+    fullStore.upsertRegisteredTranslationTerm({
+      guildId: "guild-1",
+      pair: "ja-ko",
+      source: `term-${String(index).padStart(2, "0")}`,
+      target: "x".repeat(100),
+      updatedAt: common.at,
+    });
+  }
+  const fullCatalog = new TranslationTermCatalog(staticTerms, fullStore);
   assert.throws(
-    () => catalog.register({ ...common, source: "large", target: "x".repeat(10_000) }),
+    () => fullCatalog.register({ ...common, source: "large", target: "translation" }),
     (error: unknown) =>
       error instanceof ApplicationError &&
       error.code === "TRANSLATION_TERM_LIMIT_REACHED",
   );
+  assert.throws(
+    () => catalog.register({ ...common, source: "x".repeat(101), target: "translation" }),
+    (error: unknown) =>
+      error instanceof ApplicationError && error.code === "TRANSLATION_TERM_INVALID",
+  );
+  assert.throws(
+    () => catalog.register({ ...common, source: "term", target: "x".repeat(101) }),
+    (error: unknown) =>
+      error instanceof ApplicationError && error.code === "TRANSLATION_TERM_INVALID",
+  );
+});
+
+void test("Guild登録用語だけを全ペアまたは指定ペアで一覧化し、完全一致で削除する", () => {
+  const store = new MemoryTermStore();
+  const catalog = new TranslationTermCatalog(staticTerms, store);
+  const at = new Date("2026-08-21T03:00:00Z");
+  catalog.register({
+    guildId: "guild-1",
+    pair: "ja-en",
+    source: "技術室",
+    target: "technology room",
+    at,
+  });
+  catalog.register({
+    guildId: "guild-1",
+    pair: "ja-ko",
+    source: "ult",
+    target: "궁극기",
+    at,
+  });
+  catalog.register({
+    guildId: "guild-2",
+    pair: "ja-ko",
+    source: "ace",
+    target: "에이스",
+    at,
+  });
+
+  assert.deepEqual(catalog.listRegisteredTerms("guild-1"), [
+    { pair: "ja-ko", source: "ult", target: "궁극기" },
+    { pair: "ja-en", source: "技術室", target: "technology room" },
+  ]);
+  assert.deepEqual(catalog.listRegisteredTerms("guild-1", "ja-en"), [
+    { pair: "ja-en", source: "技術室", target: "technology room" },
+  ]);
+
+  catalog.delete({ guildId: "guild-1", pair: "ja-ko", source: "ult" });
+  assert.deepEqual(catalog.listRegisteredTerms("guild-1", "ja-ko"), []);
+  assert.throws(
+    () => catalog.delete({ guildId: "guild-1", pair: "ja-ko", source: "ULT" }),
+    (error: unknown) =>
+      error instanceof ApplicationError && error.code === "TRANSLATION_TERM_NOT_FOUND",
+  );
+  assert.throws(
+    () => catalog.delete({ guildId: "guild-1", pair: "ja-ko", source: "VALORANT" }),
+    (error: unknown) =>
+      error instanceof ApplicationError && error.code === "TRANSLATION_TERM_CONFLICT",
+  );
+
+  store.upsertRegisteredTranslationTerm({
+    guildId: "guild-1",
+    pair: "ja-ko",
+    source: " legacy ",
+    target: "레거시",
+    updatedAt: at,
+  });
+  catalog.delete({ guildId: "guild-1", pair: "ja-ko", source: " legacy " });
+  assert.deepEqual(catalog.listRegisteredTerms("guild-1", "ja-ko"), []);
 });
 
 void test("起動時検査は静的用語と保存済み用語の衝突をFail Fastで報告する", () => {
@@ -116,4 +203,32 @@ void test("起動時検査は静的用語と保存済み用語の衝突をFail F
     () => catalog.assertGuildsValid(new Set(["guild-1"])),
     /静的用語と登録用語でsourceが重複/u,
   );
+});
+
+void test("保存済み用語のsourceまたはtargetが100文字を超えればFail Fastにする", () => {
+  for (const term of [
+    { source: "s".repeat(101), target: "translation" },
+    { source: "term", target: "t".repeat(101) },
+  ]) {
+    const store = new MemoryTermStore();
+    store.upsertRegisteredTranslationTerm({
+      guildId: "guild-1",
+      pair: "ja-en",
+      ...term,
+      updatedAt: new Date("2026-08-21T03:00:00Z"),
+    });
+    const catalog = new TranslationTermCatalog(staticTerms, store);
+
+    assert.throws(
+      () => catalog.listRegisteredTerms("guild-1", "ja-en"),
+      (error: unknown) =>
+        error instanceof ApplicationError &&
+        error.code === "TRANSLATION_TERM_INVALID" &&
+        error.publicMessage.includes("100文字以内"),
+    );
+    assert.throws(
+      () => catalog.assertGuildsValid(new Set(["guild-1"])),
+      /保存済みのsourceとtargetはそれぞれ100文字以内/u,
+    );
+  }
 });
