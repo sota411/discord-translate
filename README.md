@@ -21,6 +21,8 @@ Discordの音声チャンネルで、日本語・韓国語・英語の会話を�
 
 秘密情報を用意する前に、リポジトリをcloneしてローカル検証を通す。`pnpm verify`はDiscordやSonioxへ接続しない。
 
+Node.jsは24.17.0以上、pnpmは11.3.0を使う。`pnpm`がない場合は、Node.jsを導入した後に`npm install --global pnpm@11.3.0`で用意する。
+
 ```bash
 git clone https://github.com/sota411/discord-translate.git
 cd discord-translate
@@ -31,7 +33,7 @@ pnpm install --frozen-lockfile
 pnpm verify
 ```
 
-`pnpm`がない場合は、Node.jsを導入した後に`npm install --global pnpm@11.3.0`で用意する。Node.jsは24.17.0以上、pnpmは11.3.0を使う。検証ではlint、型検査、自動テスト、本番用build、SQLiteとDiscord Opusの読み込み、設計図の同期を確認する。
+検証ではlint、型検査、自動テスト、本番用build、SQLiteとDiscord Opusの読み込み、設計図の同期を確認する。
 
 ## セットアップ
 

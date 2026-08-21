@@ -59,16 +59,18 @@ docker build --tag discord-translate:local .
 
 ## CIは検証し、CDは検証済みcommitを配布する
 
-`.github/workflows/ci.yml`は、同じworkflow内で権限を分けている。
+Pull RequestのCIは`.github/workflows/ci.yml`、main・version tag・手動実行からの公開は`.github/workflows/publish.yml`に分けている。
 
 | 起点 | 実行するjob | 結果 |
 |---|---|---|
 | Pull Request | `verify` → `image` | `pnpm verify`、audit、Compose設定検査の後、`linux/amd64`イメージをbuildする。push権限は持たない |
-| `main`へのpush | `verify` → `publish` | 同じcommitを検証してから、`main`と`sha-<40文字のcommit SHA>`をGHCRへpushする |
-| `v1.2.3`形式のtag | `verify` → `publish` | SHA tagに加え、`1.2.3`、`1.2`、`latest`をGHCRへpushする |
+| `main`へのpush | `verify` → `publish` | 同じcommitを検証してから、`sha-<40文字のcommit SHA>`をGHCRへpushする |
+| `v1.2.3`形式のtag | `verify` → `publish` | SHA tagに加え、完全なversion tagの`1.2.3`をGHCRへpushする |
 | 手動実行 | `verify` → `publish` | 選択したrefを検証し、少なくともSHA tagをpushする |
 
 CIとCDの境界はGHCRへのpushである。PRでは、秘密情報と`packages: write`を渡さず、Dockerfileからイメージを作れるところまで確認する。`publish`だけがjob単位で`packages: write`を持ち、BotのDiscord TokenやSoniox API Keyは参照しない。外部Actionはrelease tagではなくcommit SHAで固定し、Dependabotが更新候補を週次で作る。
+
+公開workflowは、複数のmain・version tag実行が重なっても待機中のrunを置き換えないように、同じrepositoryの公開をキューへ入れて1件ずつ実行する。これにより、通常の連続mergeでも各commitのSHA tagを欠落させず、公開処理とbuild cacheの同時更新を避ける。実行順に依存する`main`、`1.2`、`latest`などの可変tagは作らない。
 
 実行ホストへの自動接続はこのworkflowの責務に含めない。ホスト、認証、稼働確認、失敗判定が決まるまでは、GHCRへ配布可能な成果物を置くところで止める。
 
@@ -93,3 +95,12 @@ workflowがPull Requestで一度動いた後、GitHubの`Settings > Rules > Rule
 - 図のHTMLを変える場合は、`pnpm diagrams:sync`で対応するSVGもcommitする。
 
 引き継ぎ時に判断の背景が不足している場合は、対象PRまたはIssueで確認する。確認できた内容が今後も必要なら、この文書か[設計書](./docs/design.md)へ理由と一緒に追記する。
+
+## 用語
+
+| 用語 | このリポジトリでの意味 |
+|---|---|
+| CI | Pull RequestでソースとDocker imageを検証する仕組み |
+| CD | 検証済みDocker imageをGHCRへ公開するところまでの仕組み。実行ホストへのdeployは含めない |
+| composition root | `src/app.ts`で具体的な外部依存を生成し、アプリケーションへ接続する場所 |
+| runtime smoke | production dependencyのnative moduleを実際に読み込む最小検査 |

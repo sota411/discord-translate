@@ -15,12 +15,9 @@ Pull RequestではソースとDockerイメージを検証する。`main`へのme
 | tag | 更新契機と用途 |
 |---|---|
 | `sha-<40文字のcommit SHA>` | main、version tag、手動公開で作る。通常の配備と巻き戻しに使う |
-| `main` | mainの最新成功版を指す可変tag。確認用 |
 | `1.2.3` | Gitの`v1.2.3` tagから作るversion |
-| `1.2` | 同じ1.2系列の最新versionを指す可変tag |
-| `latest` | 最新の正式version tagを指す可変tag |
 
-本番相当の運用では`main`や`latest`を指定せず、`sha-...`を使う。Docker tag自体は再度pushできるため、厳密に同じimageを固定する必要がある場合は、pull後に`RepoDigests`を記録し、`ghcr.io/sota411/discord-translate@sha256:...`を`BOT_IMAGE`へ指定する。
+公開workflowは、どのcommitかが変わる`main`、`1.2`、`latest`などの可変tagを作らない。本番相当の運用では`sha-...`を使う。Docker tag自体は再度pushできるため、厳密に同じimageを固定する必要がある場合は、pull後に`RepoDigests`を記録し、`ghcr.io/sota411/discord-translate@sha256:...`を`BOT_IMAGE`へ指定する。
 
 ```bash
 docker image inspect "$BOT_IMAGE" --format '{{range .RepoDigests}}{{println .}}{{end}}'
@@ -33,7 +30,8 @@ docker image inspect "$BOT_IMAGE" --format '{{range .RepoDigests}}{{println .}}{
 ```bash
 git clone https://github.com/sota411/discord-translate.git
 cd discord-translate
-git switch --detach <配備する40文字のcommit SHA>
+export DEPLOY_SHA="<配備する40文字のcommit SHA>"
+git switch --detach "$DEPLOY_SHA"
 
 cp -n .env.example .env.local
 chmod 600 .env.local
@@ -57,9 +55,9 @@ printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u sota411 --password-stdin
 
 ```bash
 git fetch origin
-git switch --detach <配備する40文字のcommit SHA>
-
-export BOT_IMAGE="ghcr.io/sota411/discord-translate:sha-<同じ40文字のcommit SHA>"
+export DEPLOY_SHA="<配備する40文字のcommit SHA>"
+git switch --detach "$DEPLOY_SHA"
+export BOT_IMAGE="ghcr.io/sota411/discord-translate:sha-$DEPLOY_SHA"
 
 docker compose --env-file .env.local config -q
 docker compose --env-file .env.local pull bot
@@ -67,6 +65,8 @@ docker compose --env-file .env.local up --no-build --pull always -d bot
 docker compose --env-file .env.local ps
 docker compose --env-file .env.local logs --tail=100 bot
 ```
+
+上のコマンドは同じshellで続けて実行する。新しいshellを開いた場合は、`DEPLOY_SHA`と`BOT_IMAGE`を再設定してからComposeを実行する。
 
 ログに`"event":"application_ready"`が出れば起動は完了している。起動に失敗して再起動を繰り返す場合は、先にBotを停止して原因を確認する。
 
@@ -96,8 +96,9 @@ docker compose --env-file .env.local logs --since=30m bot
 直前に正常稼働していたcommit SHAへ、host checkoutと`BOT_IMAGE`の両方を戻す。
 
 ```bash
-git switch --detach <直前の40文字のcommit SHA>
-export BOT_IMAGE="ghcr.io/sota411/discord-translate:sha-<同じ40文字のcommit SHA>"
+export ROLLBACK_SHA="<直前の40文字のcommit SHA>"
+git switch --detach "$ROLLBACK_SHA"
+export BOT_IMAGE="ghcr.io/sota411/discord-translate:sha-$ROLLBACK_SHA"
 
 docker compose --env-file .env.local config -q
 docker compose --env-file .env.local pull bot
@@ -119,3 +120,14 @@ docker compose --env-file .env.local logs --tail=100 bot
 - ARM64を対象に含める場合、native moduleと実サービス起動をARM64上で確認している
 
 条件が未確定の間は、手動配備の記録へcommit SHA、image digest、実施時刻、確認結果を残す。
+
+## 用語
+
+| 用語 | この文書での意味 |
+|---|---|
+| GHCR | GitHub Container Registry。検証済みDocker imageの配布先 |
+| SHA tag | imageの生成元commitを示す`sha-<40文字のcommit SHA>`形式のtag |
+| digest | image内容から決まる`sha256:...`形式の識別子。tagより厳密に同じimageを指定できる |
+| rollback | 直前に正常稼働していたcommitのCompose定義とimageへ戻す操作 |
+
+配備先固有の判断が必要で、この文書だけでは決められない場合は、対象commitと配備環境を添えてIssueで確認する。
