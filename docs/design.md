@@ -273,7 +273,9 @@ SQLiteは利用量、運用メタデータ、Guild登録用語を保持する。
 
 ### 利用量と費用
 
-ローカル見積額は、STTストリーム時間、TTS音声時間、課金対象テキストの文字数から計算する。設定単価と安全係数を掛け、1 USDの100万分の1を表すmicroUSDの整数へ切り上げる。上限判定には、ローカル見積額とSoniox `usage logs`の照合額の大きい方を使う。
+ローカル見積額は、STT入力音声時間、TTS出力音声時間、課金対象テキストの文字数から計算する。音声とテキストを別々の公式token単価から換算し、その合計へ安全係数を掛け、1 USDの100万分の1を表すmicroUSDの整数へ切り上げる。上限判定には、ローカル見積額とSoniox `usage logs`の照合額の大きい方を使う。
+
+2026-08-22時点の[Soniox公式料金](https://soniox.com/pricing)では、リアルタイムSTTの入力音声が2.00 USD / 100万token、TTSの出力音声が21.50 USD / 100万token、入出力テキストが4.00 USD / 100万tokenである。公式換算目安の音声約30,000 token / 時、テキスト約0.3 token / 文字を使い、STT入力音声を0.06 USD / 時、TTS出力音声を0.645 USD / 時、テキストを1.20 USD / 100万文字として配布する。`TEXT_COST_MICROUSD_PER_MILLION_CHARACTERS_UPPER_BOUND`は互換性のため旧名を維持し、全体の安全側補正は`COST_ESTIMATE_SAFETY_PERCENT`で行う。
 
 ```text
 User <= Guild <= Global < Soniox Project budget
@@ -410,7 +412,7 @@ Sonioxの401・403は認証失敗、402は予算到達、429は同時実行上�
 
 | 設定 | 配布初期値 | 意味 |
 |---|---:|---|
-| `SESSION_MAX_MINUTES` | `30` | セッション最大時間 |
+| `SESSION_MAX_MINUTES` | `120` | セッション最大時間 |
 | `MAX_SPEAKERS_PER_SESSION` | `2` | 最大参加者。許容範囲は1〜3 |
 | `SESSION_IDLE_TIMEOUT_SECONDS` | `120` | 人間の音声パケットがない場合の停止時間 |
 | `PLAYBACK_QUEUE_MAX_MS` | `10000` | 必須。処理器へ渡すが、この値を使う警告判定は現行フローから呼ばれない |
@@ -427,11 +429,11 @@ Sonioxの401・403は認証失敗、402は予算到達、429は同時実行上�
 | `GUILD_MONTHLY_COST_LIMIT_MICROUSD` | `3000000` | Guild月間上限 |
 | `GLOBAL_MONTHLY_COST_LIMIT_MICROUSD` | `4000000` | Bot全体の月間上限 |
 | `SONIOX_PROJECT_MONTHLY_BUDGET_MICROUSD` | `5000000` | ConsoleのProject上限を写す値 |
-| `STT_COST_MICROUSD_PER_HOUR` | `120000` | STT時間単価 |
-| `TTS_COST_MICROUSD_PER_HOUR` | `700000` | TTS音声時間単価 |
-| `TEXT_COST_MICROUSD_PER_MILLION_CHARACTERS_UPPER_BOUND` | `16000000` | テキストの保守的な文字単価上限 |
+| `STT_COST_MICROUSD_PER_HOUR` | `60000` | STT入力音声tokenの時間換算額 |
+| `TTS_COST_MICROUSD_PER_HOUR` | `645000` | TTS出力音声tokenの時間換算額 |
+| `TEXT_COST_MICROUSD_PER_MILLION_CHARACTERS_UPPER_BOUND` | `1200000` | 入出力テキストtokenの文字換算額。変数名は互換性のため維持 |
 | `COST_ESTIMATE_SAFETY_PERCENT` | `125` | 見積額の安全係数 |
-| `PRICING_CONFIRMED_AT` | `2026-08-15` | 単価を一次情報で確認した日 |
+| `PRICING_CONFIRMED_AT` | `2026-08-22` | 単価を一次情報で確認した日 |
 | `PRICING_MAX_AGE_DAYS` | `30` | 単価確認日の有効期間 |
 | `USAGE_RECONCILE_INTERVAL_SECONDS` | `60` | 定期照合間隔 |
 | `USAGE_RECONCILE_MAX_STALENESS_SECONDS` | `180` | 新規利用を拒否する照合経過時間 |
@@ -495,7 +497,7 @@ Discordの参照先:
 現行環境では次が成功している。
 
 - ESLintとTypeScript型検査
-- 公開境界・統合テスト187件
+- 公開境界・統合テスト
 - 本番用ビルド
 - SQLiteとOpusの実行検査
 - Compose設定検査とDockerビルド

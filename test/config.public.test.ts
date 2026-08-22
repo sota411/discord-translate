@@ -15,6 +15,7 @@ void test("有効な環境変数を型付き設定と固定リージョンURLへ
   assert.equal(config.soniox.ttsWebSocketUrl, "wss://tts-rt.soniox.com/tts-websocket");
   assert.equal(config.soniox.ttsSpeed, 1.15);
   assert.deepEqual([...config.discord.allowedGuildIds], ["223456789012345678"]);
+  assert.equal(config.limits.sessionMaxMinutes, 120);
   assert.equal(config.limits.maxSpeakersPerSession, 2);
   assert.equal(config.pricing.safetyPercent, 125);
 });

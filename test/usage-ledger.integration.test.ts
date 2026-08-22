@@ -14,9 +14,9 @@ import {
 } from "../src/usage/usage-ledger.js";
 
 const pricing = {
-  sttMicrousdPerHour: 120_000,
-  ttsMicrousdPerHour: 700_000,
-  textMicrousdPerMillionCharactersUpperBound: 100_000,
+  sttMicrousdPerHour: 60_000,
+  ttsMicrousdPerHour: 645_000,
+  textMicrousdPerMillionCharactersUpperBound: 1_200_000,
   safetyPercent: 125,
 };
 
@@ -51,7 +51,7 @@ void test("音声時間と文字数を整数microUSDへ安全側に見積もる"
       { sttStreamMs: 3_600_000, ttsAudioMs: 0, textCharacterCount: 100 },
       pricing,
     ),
-    150_013,
+    75_150,
   );
   assert.equal(usdDecimalToMicrousd("0.123456"), 123_456);
   assert.equal(usdDecimalToMicrousd("0.0000001"), 1);
@@ -112,9 +112,9 @@ void test("利用量は本文なしでUser・Guild・globalへ永続化される
         startedAt,
       );
       const global = reopened.getMonthlyUsage("global", "global", startedAt);
-      assert.equal(user.estimatedCostMicrousd, 150_013);
-      assert.equal(guild.estimatedCostMicrousd, 150_013);
-      assert.equal(global.estimatedCostMicrousd, 150_013);
+      assert.equal(user.estimatedCostMicrousd, 75_150);
+      assert.equal(guild.estimatedCostMicrousd, 75_150);
+      assert.equal(global.estimatedCostMicrousd, 75_150);
       assert.equal(user.sttStreamMs, 3_600_000);
       assert.equal(reopened.getSession("00000000-0000-4000-8000-000000000001")?.endReason, "USER_REQUEST");
       assert.deepEqual(reopened.listTableColumns("session_usage").includes("transcript"), false);
@@ -290,7 +290,7 @@ void test("照合が古い場合と月額上限到達時は新規開始をFail C
     assert.throws(
       () => ledger.recordProviderUsage({
         requestRef: "00000000-0000-4000-8000-000000000011",
-        audioMs: 24_000_000,
+        audioMs: 48_000_000,
         textCharacterCount: 0,
         at,
       }),

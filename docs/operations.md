@@ -55,7 +55,9 @@ printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u sota411 --password-stdin
 
 ```bash
 git fetch origin
+export CURRENT_DEPLOY_SHA="<現在配備中の40文字のcommit SHA>"
 export DEPLOY_SHA="<配備する40文字のcommit SHA>"
+git diff "$CURRENT_DEPLOY_SHA" "$DEPLOY_SHA" -- .env.example
 git switch --detach "$DEPLOY_SHA"
 export BOT_IMAGE="ghcr.io/sota411/discord-translate:sha-$DEPLOY_SHA"
 
@@ -65,6 +67,8 @@ docker compose --env-file .env.local up --no-build --pull always -d bot
 docker compose --env-file .env.local ps
 docker compose --env-file .env.local logs --tail=100 bot
 ```
+
+`.env.example`に差分がある場合は、既存の秘密値を保持したまま必要な設定だけを`.env.local`へ手動で反映する。`.env.local`を`.env.example`で上書きしない。反映後に次のCompose設定確認を行う。
 
 上のコマンドは同じshellで続けて実行する。新しいshellを開いた場合は、`DEPLOY_SHA`と`BOT_IMAGE`を再設定してからComposeを実行する。
 

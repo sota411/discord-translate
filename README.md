@@ -70,6 +70,16 @@ openssl rand -hex 32
 - `ALLOWED_GUILD_IDS`: Server IDをカンマ区切りで指定
 - `ALLOWED_USER_IDS`: 発話する全員のUser IDをカンマ区切りで指定
 
+旧版から既存の`.env.local`を引き継ぐ場合は、秘密値を保持したまま、今回変更した次の非secret設定も更新する。ファイル全体を`.env.example`で上書きしない。
+
+```dotenv
+SESSION_MAX_MINUTES=120
+STT_COST_MICROUSD_PER_HOUR=60000
+TTS_COST_MICROUSD_PER_HOUR=645000
+TEXT_COST_MICROUSD_PER_MILLION_CHARACTERS_UPPER_BOUND=1200000
+PRICING_CONFIRMED_AT=2026-08-22
+```
+
 Node.jsで直接動かす場合は、SQLiteの保存先を作り、絶対パスを`SQLITE_PATH`へ設定する。
 
 ```bash
@@ -86,7 +96,7 @@ Docker Composeは、SQLiteを名前付きボリュームの`/data/usage.sqlite`�
 3. API Keyを`SONIOX_API_KEY`へ設定する。
 4. Consoleで設定したProjectの月額上限をmicroUSDに換算し、`SONIOX_PROJECT_MONTHLY_BUDGET_MICROUSD`へ設定する。5 USDなら`5000000`。
 5. 利用上限が`USER <= GUILD <= GLOBAL < SONIOX_PROJECT`を満たすように設定する。
-6. [Sonioxの料金表](https://soniox.com/pricing)でSTT・TTS・テキストの単価を確認し、3つの単価と`PRICING_CONFIRMED_AT`を更新する。料金確認日が`PRICING_MAX_AGE_DAYS`を超えると起動できない。
+6. [Sonioxの料金表](https://soniox.com/pricing)でSTT入力音声・TTS出力音声・テキストのtoken単価と換算目安を確認し、3つの単価と`PRICING_CONFIRMED_AT`を更新する。配布値は音声とテキストを別々に見積もり、合計へ安全係数を掛ける。料金確認日が`PRICING_MAX_AGE_DAYS`を超えると起動できない。
 7. STT・TTSモデルと、TTSの3言語・3つの多言語voiceを確認する。
 
 ```bash
@@ -161,6 +171,8 @@ Node.jsで直接起動した場合は、`Ctrl+C`で停止する。
 | `/register delete pair:<言語ペア> source:<用語>` | `source`は入力候補から選べる | Guildに登録した翻訳用語をすぐに削除し、次に開始するセッションから使わない |
 
 `/export`は、人間が投稿したメッセージ、仮字幕、再生待ちの字幕、終了通知を出力しない。対象スレッドの全履歴を取得し、Botが現在のComponents V2形式で投稿した確定字幕だけを選ぶ。この処理ではMessage Content Intentを使わない。実行者とBotには対象スレッドの`View Channel`と`Read Message History`が必要で、Botには応答先の`Attach Files`も必要になる。MarkdownがDiscordの添付上限を超えた場合は、内容を切り詰めずに失敗する。
+
+終了後にアーカイブされた翻訳スレッド内で`/export`を実行した場合、Botはそのスレッドを一時的に再開し、ファイルを返信した後に再アーカイブする。
 
 `/register add`はGuildと言語ペアごとにSQLiteへ保存する。`source`と`target`はそれぞれ100文字以内で指定する。前後の空白は取り除き、大文字と小文字を含めて完全一致で判定する。同じ`source`をもう一度登録すると`target`を更新する。運用者が`TRANSLATION_TERMS_PATH`で定義した同じ`source`は上書きできない。静的用語と登録用語を合わせたSoniox contextが10,000文字を超える登録も拒否する。更新前の版で保存した用語も起動時に100文字上限を検査し、違反があれば起動せず運営者へ通知する。
 
