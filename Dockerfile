@@ -12,7 +12,8 @@ RUN pnpm install --frozen-lockfile
 
 COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
-RUN pnpm build && pnpm prune --prod
+COPY scripts/smoke-runtime.mjs ./scripts/
+RUN pnpm build && pnpm smoke:runtime && pnpm prune --prod
 
 FROM node:24.17.0-bookworm-slim AS runtime
 
@@ -22,6 +23,7 @@ WORKDIR /app
 COPY --from=build --chown=node:node /app/package.json ./package.json
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
+COPY --from=build --chown=node:node /app/scripts ./scripts
 
 RUN install -d -m 700 -o node -g node /data
 USER node

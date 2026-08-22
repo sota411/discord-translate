@@ -1,0 +1,10 @@
+services:
+  bot:
+    platform: linux/arm64
+    security_opt:
+      - seccomp=${BOT_SECCOMP_PROFILE:?BOT_SECCOMP_PROFILE must point to the Docker 28.5.2 ARM64 seccomp profile}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
