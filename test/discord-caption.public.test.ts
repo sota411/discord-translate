@@ -305,6 +305,7 @@ void test("確定結果がない発話の仮字幕を破棄する", async () => 
 
 void test("仮字幕の削除失敗は警告だけで翻訳を継続する", async () => {
   const warnings: string[] = [];
+  const observations: CaptionDeliveryObservation[] = [];
   const captions = new DiscordCaptionGateway({
     send() {
       return Promise.resolve({
@@ -315,6 +316,7 @@ void test("仮字幕の削除失敗は警告だけで翻訳を継続する", asy
   }, {
     failurePolicy: "stop_session",
     onWarning: (operation) => warnings.push(operation),
+    observeDelivery: (observation) => observations.push(observation),
   });
 
   await captions.preview({
@@ -326,6 +328,11 @@ void test("仮字幕の削除失敗は警告だけで翻訳を継続する", asy
   await captions.discardPreview("turn-delete-failure");
 
   assert.deepEqual(warnings, ["caption_update"]);
+  assert.equal(observations.length, 1);
+  const observation = observations[0];
+  assert.ok(observation);
+  assert.equal(observation.outcome, "discarded");
+  assert.equal(observation.succeeded, false);
 });
 
 void test("厳格設定でも既存仮字幕のfinal上限超過は警告だけで継続する", async () => {
@@ -374,21 +381,23 @@ void test("厳格設定でも既存仮字幕のfinal上限超過は警告だけ�
   assert.deepEqual(warnings, ["caption_update"]);
 });
 
-void test("仮字幕の確定編集に失敗しても別メッセージを追加しない", async () => {
+void test("仮字幕の確定編集に失敗したら古い表示を削除して確定字幕を投稿し直す", async () => {
   let sendCount = 0;
-  let editCount = 0;
+  let deleteCount = 0;
   const warnings: string[] = [];
+  const sent: CaptionMessagePayload[] = [];
   const captions = new DiscordCaptionGateway({
-    send() {
+    send(payload) {
       sendCount += 1;
+      sent.push(payload);
       return Promise.resolve({
         edit() {
-          editCount += 1;
-          return editCount === 1
-            ? Promise.reject(new Error("final edit failed"))
-            : Promise.resolve();
+          return Promise.reject(new Error("final edit failed"));
         },
-        delete: () => Promise.resolve(),
+        delete() {
+          deleteCount += 1;
+          return Promise.resolve();
+        },
       });
     },
   }, {
@@ -416,12 +425,13 @@ void test("仮字幕の確定編集に失敗しても別メッセージを追加
   });
 
   assert.equal(reference, 1);
-  assert.equal(sendCount, 1);
+  assert.equal(sendCount, 2);
+  assert.equal(deleteCount, 1);
   assert.deepEqual(warnings, ["caption_update"]);
-
-  await captions.update(reference, "played");
-  assert.equal(sendCount, 1);
-  assert.equal(editCount, 2);
+  const finalPayload = sent[1];
+  assert.ok(finalPayload);
+  assert.match(textContents(finalPayload).join("\n"), /明日の夜って空いてる/u);
+  assert.doesNotMatch(textContents(finalPayload).join("\n"), /明日の夜って空い…/u);
 });
 
 void test("字幕の送信・状態編集が失敗しても既定では警告だけで音声処理を継続できる", async () => {
@@ -537,14 +547,20 @@ void test("停止時は未完了の字幕送信を待たず、遅い完了後も
     captions.close().then(() => "closed" as const),
     new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 20)),
   ]);
+  const postResult = await Promise.race([
+    post.then((reference) => ({ settled: true as const, reference })),
+    new Promise<{ settled: false }>((resolve) => {
+      setTimeout(() => resolve({ settled: false }), 20);
+    }),
+  ]);
+  assert.deepEqual(postResult, { settled: true, reference: undefined });
   finishSend?.({
     edit: () => Promise.resolve(),
     delete: () => Promise.resolve(),
   });
-  const reference = await post;
+  await new Promise<void>((resolve) => setImmediate(resolve));
 
   assert.equal(closeResult, "closed");
-  assert.equal(reference, undefined);
 });
 
 void test("字幕の未再生と中断状態を短い言語非依存ラベルで表示する", async () => {

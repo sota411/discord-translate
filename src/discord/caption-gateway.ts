@@ -83,6 +83,7 @@ type TerminalWork =
 type CaptionWorker = {
   utteranceId: string;
   running: boolean;
+  activePreview?: PreviewWork;
   pendingPreview?: PreviewWork;
   terminal?: TerminalWork;
   previewRequested: number;
@@ -232,9 +233,11 @@ export class DiscordCaptionGateway implements CaptionGateway {
     this.#interimMessages.clear();
     this.#entries.clear();
     for (const worker of this.#workers.values()) {
+      worker.activePreview?.deferred.resolve(undefined);
+      delete worker.activePreview;
       worker.pendingPreview?.deferred.resolve(undefined);
       delete worker.pendingPreview;
-      if (worker.terminal && !worker.terminal.started) {
+      if (worker.terminal) {
         if (worker.terminal.kind === "post") {
           worker.terminal.deferred.resolve(undefined);
         } else {
@@ -263,6 +266,7 @@ export class DiscordCaptionGateway implements CaptionGateway {
 
   #startPreview(worker: CaptionWorker, work: PreviewWork): void {
     worker.running = true;
+    worker.activePreview = work;
     void (async () => {
       try {
         if (await this.#performPreview(work.input)) worker.previewSent += 1;
@@ -270,6 +274,7 @@ export class DiscordCaptionGateway implements CaptionGateway {
       } catch (error) {
         work.deferred.reject(error);
       } finally {
+        if (worker.activePreview === work) delete worker.activePreview;
         worker.running = false;
         this.#advance(worker);
         this.#notifyClosedOperationSettled();
@@ -314,8 +319,7 @@ export class DiscordCaptionGateway implements CaptionGateway {
           succeeded = reference !== undefined;
           terminal.deferred.resolve(reference);
         } else {
-          await this.#performDiscard(worker.utteranceId);
-          succeeded = true;
+          succeeded = await this.#performDiscard(worker.utteranceId);
           terminal.deferred.resolve(undefined);
         }
       } catch (error) {
@@ -402,6 +406,13 @@ export class DiscordCaptionGateway implements CaptionGateway {
         await message.edit(payload);
       } catch (error) {
         this.#onWarning("caption_update", error);
+        try {
+          await message.delete();
+        } catch (deleteError) {
+          this.#onWarning("caption_update", deleteError);
+          return undefined;
+        }
+        message = undefined;
       }
     }
     if (this.#isClosed()) return undefined;
@@ -417,15 +428,17 @@ export class DiscordCaptionGateway implements CaptionGateway {
     return reference;
   }
 
-  async #performDiscard(utteranceId: string): Promise<void> {
-    if (this.#closed) return;
+  async #performDiscard(utteranceId: string): Promise<boolean> {
+    if (this.#closed) return false;
     const message = this.#interimMessages.get(utteranceId);
     this.#interimMessages.delete(utteranceId);
-    if (!message) return;
+    if (!message) return true;
     try {
       await message.delete();
+      return true;
     } catch (error) {
       this.#onWarning("caption_update", error);
+      return false;
     }
   }
 
