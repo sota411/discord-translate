@@ -152,6 +152,12 @@ pnpm docker:down
 
 Node.jsで直接起動した場合は、`Ctrl+C`で停止する。
 
+### Raspberry Piで常時運用する場合
+
+Raspberry PiではPi上でimageをbuildせず、CIで検証してGHCRへ配布した`linux/arm64` imageをcommit SHAタグで固定して使う。通常の`compose.yaml`に`compose.pi.yaml`を重ね、秘密情報はPi上の`.env.local`から起動時に渡す。GitHub ActionsからPiへの自動deployはまだ行わない。
+
+初回配備、SQLiteデータの移行、ログ確認、更新、rollbackは[配備・巻き戻し手順](./docs/operations.md)に従う。既存のSQLiteを移す場合は、旧BotとPi上のBotを同時に起動しない。
+
 ## 使い方
 
 1. 許可された利用者が同じ音声チャンネルへ参加する。
