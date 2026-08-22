@@ -63,8 +63,8 @@ Pull RequestのCIは`.github/workflows/ci.yml`、main・version tag・手動実�
 
 | 起点 | 実行するjob | 結果 |
 |---|---|---|
-| Pull Request | `verify` → `image` | `pnpm verify`、audit、Compose設定検査の後、`linux/amd64`イメージをbuildする。push権限は持たない |
-| `main`へのpush | `verify` → `publish` | 同じcommitを検証してから、`sha-<40文字のcommit SHA>`をGHCRへpushする |
+| Pull Request | `verify` → `image` | `pnpm verify`、audit、Compose設定検査の後、`linux/amd64`と`linux/arm64`をbuildする。push権限は持たない |
+| `main`へのpush | `verify` → `publish` | 同じcommitの2 platformを検証してから、multi-platform imageを`sha-<40文字のcommit SHA>`でGHCRへpushする |
 | `v1.2.3`形式のtag | `verify` → `publish` | SHA tagに加え、完全なversion tagの`1.2.3`をGHCRへpushする |
 | 手動実行 | `verify` → `publish` | 選択したrefを検証し、少なくともSHA tagをpushする |
 
@@ -72,7 +72,7 @@ CIとCDの境界はGHCRへのpushである。PRでは、秘密情報と`packages
 
 公開workflowは、複数のmain・version tag実行が重なっても待機中のrunを置き換えないように、同じrepositoryの公開をキューへ入れて1件ずつ実行する。これにより、通常の連続mergeでも各commitのSHA tagを欠落させず、公開処理とbuild cacheの同時更新を避ける。実行順に依存する`main`、`1.2`、`latest`などの可変tagは作らない。
 
-実行ホストへの自動接続はこのworkflowの責務に含めない。ホスト、認証、稼働確認、失敗判定が決まるまでは、GHCRへ配布可能な成果物を置くところで止める。
+実行ホストへの自動接続はこのworkflowの責務に含めない。現在のRaspberry Pi配備は手動とし、deploy専用の最小権限、実サービスの機械的な稼働確認、失敗時の自動巻き戻しが実機で確立するまでは、GHCRへ配布可能な成果物を置くところで止める。
 
 ## mainはPRの2検査を必須にする
 
