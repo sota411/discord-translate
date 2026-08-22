@@ -10,6 +10,7 @@ import {
   type Client,
   type Interaction,
   type PermissionsBitField,
+  type PublicThreadChannel,
   type StringSelectMenuInteraction,
   type VoiceState,
 } from "discord.js";
@@ -117,37 +118,83 @@ export class DiscordBotController {
       return;
     }
 
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    if (!this.#acceptingCommands) {
-      await interaction.editReply("Botを停止中です。起動後に再実行してください。");
-      return;
+    const archivedExportThread =
+      interaction.commandName === "export" &&
+        interaction.channel?.type === ChannelType.PublicThread &&
+        interaction.channel.archived
+        ? interaction.channel
+        : undefined;
+    let archivedExportAuthorization: CommandResult | undefined;
+    let prevalidatedExportThread: PublicThreadChannel | undefined;
+    if (archivedExportThread) {
+      archivedExportAuthorization = await this.#commands.execute({
+        kind: "export",
+        guildId: interaction.guildId ?? undefined,
+        actorId: interaction.user.id,
+      });
+      if (!archivedExportAuthorization.ok) return;
+      try {
+        prevalidatedExportThread = this.#validateExportThread(interaction);
+      } catch (error) {
+        if (error instanceof ApplicationError) {
+          this.#logger.warn("archived_export_precondition_failed", {
+            guild_id: this.#guildLogId(interaction.guildId),
+            error_code: error.code,
+          });
+          return;
+        }
+        throw error;
+      }
+      await archivedExportThread.setArchived(false, "確定字幕のエクスポート");
     }
 
     try {
-      if (interaction.commandName === "translate") {
-        await this.#handleTranslateCommand(interaction);
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (!this.#acceptingCommands) {
+        await interaction.editReply("Botを停止中です。起動後に再実行してください。");
         return;
       }
-      if (interaction.commandName === "status") {
-        await this.#handleStatusCommand(interaction);
-        return;
+
+      try {
+        if (interaction.commandName === "translate") {
+          await this.#handleTranslateCommand(interaction);
+          return;
+        }
+        if (interaction.commandName === "status") {
+          await this.#handleStatusCommand(interaction);
+          return;
+        }
+        if (interaction.commandName === "register") {
+          await this.#handleRegisterCommand(interaction);
+          return;
+        }
+        await this.#handleExportCommand(
+          interaction,
+          archivedExportAuthorization,
+          prevalidatedExportThread,
+        );
+      } catch (error) {
+        if (error instanceof ApplicationError) {
+          await interaction.editReply(error.publicMessage);
+          return;
+        }
+        this.#logger.error("discord_interaction_failed", error, {
+          guild_id: this.#guildLogId(interaction.guildId),
+        });
+        await interaction.editReply(
+          "コマンドを処理できませんでした。時間を置いて再実行してください。",
+        );
       }
-      if (interaction.commandName === "register") {
-        await this.#handleRegisterCommand(interaction);
-        return;
+    } finally {
+      if (archivedExportThread) {
+        try {
+          await archivedExportThread.setArchived(true, "確定字幕のエクスポート完了");
+        } catch (error) {
+          this.#logger.error("export_thread_rearchive_failed", error, {
+            guild_id: this.#guildLogId(interaction.guildId),
+          });
+        }
       }
-      await this.#handleExportCommand(interaction);
-    } catch (error) {
-      if (error instanceof ApplicationError) {
-        await interaction.editReply(error.publicMessage);
-        return;
-      }
-      this.#logger.error("discord_interaction_failed", error, {
-        guild_id: this.#guildLogId(interaction.guildId),
-      });
-      await interaction.editReply(
-        "コマンドを処理できませんでした。時間を置いて再実行してください。",
-      );
     }
   }
 
@@ -255,8 +302,10 @@ export class DiscordBotController {
 
   async #handleExportCommand(
     interaction: ChatInputCommandInteraction,
+    preauthorized?: CommandResult,
+    prevalidatedThread?: PublicThreadChannel,
   ): Promise<void> {
-    const authorization = await this.#commands.execute({
+    const authorization = preauthorized ?? await this.#commands.execute({
       kind: "export",
       guildId: interaction.guildId ?? undefined,
       actorId: interaction.user.id,
@@ -266,6 +315,36 @@ export class DiscordBotController {
       return;
     }
 
+    const thread = prevalidatedThread ?? this.#validateExportThread(interaction);
+    const botUserId = this.#client.user?.id;
+    if (!botUserId) {
+      throw new Error("Discord Bot userを確認できません");
+    }
+    const exported = await exportThreadToMarkdown({
+      thread,
+      botUserId,
+      now: this.#now,
+    });
+    if (exported.byteLength > interaction.attachmentSizeLimit) {
+      throw new ApplicationError(
+        "EXPORT_TOO_LARGE",
+        "MarkdownがDiscordへ添付できるサイズ上限を超えています。",
+      );
+    }
+    const attachment = new AttachmentBuilder(
+      Buffer.from(exported.markdown, "utf8"),
+      { name: exported.filename },
+    );
+    await interaction.editReply({
+      content: `確定字幕${String(exported.captionCount)}件をMarkdownで出力しました。`,
+      files: [attachment],
+      allowedMentions: { parse: [] },
+    });
+  }
+
+  #validateExportThread(
+    interaction: ChatInputCommandInteraction,
+  ): PublicThreadChannel {
     const selected = interaction.options.getChannel(
       "thread",
       false,
@@ -326,30 +405,7 @@ export class DiscordBotController {
         "Botにファイル添付権限がありません。",
       );
     }
-    const botUserId = this.#client.user?.id;
-    if (!botUserId) {
-      throw new Error("Discord Bot userを確認できません");
-    }
-    const exported = await exportThreadToMarkdown({
-      thread,
-      botUserId,
-      now: this.#now,
-    });
-    if (exported.byteLength > interaction.attachmentSizeLimit) {
-      throw new ApplicationError(
-        "EXPORT_TOO_LARGE",
-        "MarkdownがDiscordへ添付できるサイズ上限を超えています。",
-      );
-    }
-    const attachment = new AttachmentBuilder(
-      Buffer.from(exported.markdown, "utf8"),
-      { name: exported.filename },
-    );
-    await interaction.editReply({
-      content: `確定字幕${String(exported.captionCount)}件をMarkdownで出力しました。`,
-      files: [attachment],
-      allowedMentions: { parse: [] },
-    });
+    return thread;
   }
 
   public async handleComponentInteraction(

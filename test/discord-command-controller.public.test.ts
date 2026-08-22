@@ -475,6 +475,7 @@ type ExportHarness = {
   inputs: TranslationCommandInput[];
   edits: unknown[];
   fetches: unknown[];
+  archiveChanges: boolean[];
 };
 
 function createExportHarness(input: {
@@ -484,10 +485,13 @@ function createExportHarness(input: {
   permissionsUnavailable?: boolean;
   attachmentSizeLimit?: number;
   useCurrentThread?: boolean;
+  archivedCurrentThread?: boolean;
+  authorizationOk?: boolean;
 } = {}): ExportHarness {
   const inputs: TranslationCommandInput[] = [];
   const edits: unknown[] = [];
   const fetches: unknown[] = [];
+  const archiveChanges: boolean[] = [];
   const actor = { id: "user-1" };
   const bot = { id: "bot-1" };
   const thread = {
@@ -495,6 +499,12 @@ function createExportHarness(input: {
     guildId: "guild-1",
     name: "翻訳・日本語 ⇄ 韓国語",
     type: ChannelType.PublicThread,
+    archived: input.archivedCurrentThread === true,
+    setArchived(archived: boolean) {
+      archiveChanges.push(archived);
+      this.archived = archived;
+      return Promise.resolve();
+    },
     permissionsFor: (member: { id: string }) => input.permissionsUnavailable
       ? null
       : ({
@@ -528,11 +538,18 @@ function createExportHarness(input: {
   };
   const controller = new DiscordBotController({
     client: { user: { id: "bot-1" } } as Client,
-    commands: commands(inputs, {
-      ok: true,
-      ephemeral: true,
-      interactionMessage: "翻訳スレッドをエクスポートします。",
-    }),
+    commands: commands(inputs, input.authorizationOk === false
+      ? {
+          ok: false,
+          ephemeral: true,
+          code: "USER_NOT_ALLOWED",
+          interactionMessage: "このBotを利用できないユーザーです。",
+        }
+      : {
+          ok: true,
+          ephemeral: true,
+          interactionMessage: "翻訳スレッドをエクスポートします。",
+        }),
     logger: logger(),
     now: () => new Date("2026-08-21T04:05:06Z"),
   });
@@ -551,13 +568,15 @@ function createExportHarness(input: {
     options: { getChannel: () => input.useCurrentThread ? null : thread },
     appPermissions: { has: () => input.appMayAttach !== false },
     attachmentSizeLimit: input.attachmentSizeLimit ?? 1024 * 1024,
-    deferReply: () => Promise.resolve(),
+    deferReply: () => input.useCurrentThread && thread.archived
+      ? Promise.reject(new Error("DiscordAPIError[50083]: Thread is archived"))
+      : Promise.resolve(),
     editReply: (value: unknown) => {
       edits.push(value);
       return Promise.resolve();
     },
   } as unknown as ChatInputCommandInteraction;
-  return { controller, interaction, inputs, edits, fetches };
+  return { controller, interaction, inputs, edits, fetches, archiveChanges };
 }
 
 void test("exportは認可後に対象Public Threadを読み、Markdown添付をephemeral返信する", async () => {
@@ -585,6 +604,55 @@ void test("thread引数を省略したexportはコマンドを実行したPublic
 
   assert.deepEqual(harness.fetches, [{ limit: 100, cache: false }]);
   assert.match(JSON.stringify(harness.edits[0]), /確定字幕1件/u);
+});
+
+void test("通常Channelから指定したアーカイブ済みThreadは状態を変えずexportする", async () => {
+  const harness = createExportHarness({ archivedCurrentThread: true });
+
+  await harness.controller.handleInteraction(harness.interaction);
+
+  assert.deepEqual(harness.archiveChanges, []);
+  assert.match(JSON.stringify(harness.edits[0]), /確定字幕1件/u);
+});
+
+void test("アーカイブ済み翻訳Thread内のexportは一時再開し、返信後に再アーカイブする", async () => {
+  const harness = createExportHarness({
+    useCurrentThread: true,
+    archivedCurrentThread: true,
+  });
+
+  await harness.controller.handleInteraction(harness.interaction);
+
+  assert.deepEqual(harness.archiveChanges, [false, true]);
+  assert.match(JSON.stringify(harness.edits[0]), /確定字幕1件/u);
+});
+
+void test("未認可Userのexportはアーカイブ済みThreadを再開しない", async () => {
+  const harness = createExportHarness({
+    useCurrentThread: true,
+    archivedCurrentThread: true,
+    authorizationOk: false,
+  });
+
+  await harness.controller.handleInteraction(harness.interaction);
+
+  assert.deepEqual(harness.archiveChanges, []);
+  assert.deepEqual(harness.fetches, []);
+  assert.deepEqual(harness.edits, []);
+});
+
+void test("履歴を読めないUserのアーカイブ済みThread内exportは再開しない", async () => {
+  const harness = createExportHarness({
+    useCurrentThread: true,
+    archivedCurrentThread: true,
+    actorMayRead: false,
+  });
+
+  await harness.controller.handleInteraction(harness.interaction);
+
+  assert.deepEqual(harness.archiveChanges, []);
+  assert.deepEqual(harness.fetches, []);
+  assert.deepEqual(harness.edits, []);
 });
 
 void test("対象Threadを読めない実行者は履歴取得前に拒否する", async () => {
