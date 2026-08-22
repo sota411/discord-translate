@@ -34,6 +34,15 @@ void test("PR検証とGHCR公開は同じamd64・arm64 imageをbuildする", asy
   }
 });
 
+void test("DependabotはNode runtimeのmajor更新を型定義だけへ先行適用しない", async () => {
+  const dependabot = await readRepositoryFile(".github/dependabot.yml");
+
+  assert.match(
+    dependabot,
+    /ignore:\s*\n\s*- dependency-name: ["']@types\/node["']\s*\n\s*update-types:\s*\n\s*- ["']version-update:semver-major["']/,
+  );
+});
+
 void test("Pi用ComposeはARM64と限定seccomp profileを明示しportを公開しない", async () => {
   const compose = await readRepositoryFile("compose.pi.yaml");
 
