@@ -96,8 +96,59 @@ void test("セッション開始時に固定した翻訳用語だけをSTT conte
   assert.deepEqual(received[0]?.context, {
     translation_terms: [{ source: "技術室", target: "technology room" }],
   });
-  assert.equal(first.initialTextCharacterCount, 45);
+  assert.equal(
+    first.initialTextCharacterCount,
+    Array.from(JSON.stringify(received[0]?.context)).length,
+  );
   assert.equal("context" in (received[1] ?? {}), false);
+});
+
+void test("構造化会話contextを言語ペアごとに送り、用語をASR termsへ転用しない", () => {
+  const received: Record<string, unknown>[] = [];
+  const factory = new SonioxSttFactory(
+    {
+      realtime: {
+        stt: (input: Record<string, unknown>) => {
+          received.push(input);
+          return {};
+        },
+      },
+    } as never,
+    "stt-rt-v5",
+    true,
+  );
+
+  const created = factory.create("ja-ko", "request-1", [
+    { source: "塾", target: "학원" },
+  ]);
+
+  assert.deepEqual(received[0]?.context, {
+    general: [
+      { key: "setting", value: "Private Discord voice conversation between friends" },
+      {
+        key: "purpose",
+        value: "Real-time two-way transcription and translation between Japanese and Korean",
+      },
+      {
+        key: "topics",
+        value: "Daily life, school and university, food, games, music, and internet culture",
+      },
+      {
+        key: "language_behavior",
+        value: "Participants may quote or practice either language and switch languages; transcribe the language actually spoken",
+      },
+      {
+        key: "translation_style",
+        value: "Natural casual conversation; preserve negation, subject, direction, beneficiary, proper nouns, and idiomatic meaning",
+      },
+    ],
+    translation_terms: [{ source: "塾", target: "학원" }],
+  });
+  assert.equal("terms" in (received[0]?.context as Record<string, unknown>), false);
+  assert.equal(
+    created.initialTextCharacterCount,
+    Array.from(JSON.stringify(received[0]?.context)).length,
+  );
 });
 
 function withTestDeadline<T>(operation: Promise<T>, timeoutMs = 50): Promise<T> {
@@ -356,6 +407,9 @@ void test("TTSモデルの対応言語、voice、無音短縮、速度範囲が�
       error.issues.includes("TTS modelが無音短縮に未対応です") &&
       error.issues.includes(
         "SONIOX_TTS_SPEED「1.15」はTTS modelの対応範囲1.2〜1.3外です",
+      ) &&
+      error.issues.includes(
+        "TTS modelの速度調整範囲1.2〜1.3が公開範囲0.7〜1.3を満たしていません",
       ) &&
       error.issues.includes("SONIOX_VOICE_JA「Mima」を利用できません"),
   );

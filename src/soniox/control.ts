@@ -8,7 +8,6 @@ import {
 
 import { ConfigError, type AppConfig } from "../config.js";
 import {
-  translationTermsCharacterCount,
   type TranslationTerm,
 } from "../config/translation-terms.js";
 import { ApplicationError } from "../domain/application-error.js";
@@ -19,6 +18,7 @@ import {
 } from "../domain/language-pair.js";
 import type { CapacityGate } from "../session/session-manager.js";
 import { usdDecimalToMicrousd } from "../usage/usage-ledger.js";
+import { buildSonioxTranscriptionContext } from "./transcription-context.js";
 
 type RequestDeadline = {
   signal: AbortSignal;
@@ -171,13 +171,20 @@ export async function verifySonioxConfiguration(
       }
       if (!ttsModel.supports_speed_adjustment) {
         issues.push("TTS modelが速度調整に未対応です");
-      } else if (
-        config.ttsSpeed < ttsModel.speed_min ||
-        config.ttsSpeed > ttsModel.speed_max
-      ) {
-        issues.push(
-          `SONIOX_TTS_SPEED「${String(config.ttsSpeed)}」はTTS modelの対応範囲${String(ttsModel.speed_min)}〜${String(ttsModel.speed_max)}外です`,
-        );
+      } else {
+        if (
+          config.ttsSpeed < ttsModel.speed_min ||
+          config.ttsSpeed > ttsModel.speed_max
+        ) {
+          issues.push(
+            `SONIOX_TTS_SPEED「${String(config.ttsSpeed)}」はTTS modelの対応範囲${String(ttsModel.speed_min)}〜${String(ttsModel.speed_max)}外です`,
+          );
+        }
+        if (ttsModel.speed_min > 0.7 || ttsModel.speed_max < 1.3) {
+          issues.push(
+            `TTS modelの速度調整範囲${String(ttsModel.speed_min)}〜${String(ttsModel.speed_max)}が公開範囲0.7〜1.3を満たしていません`,
+          );
+        }
       }
     }
     if (issues.length > 0) {
@@ -191,10 +198,16 @@ export async function verifySonioxConfiguration(
 export class SonioxSttFactory {
   readonly #client: SonioxNodeClient;
   readonly #model: string;
+  readonly #generalContextEnabled: boolean;
 
-  public constructor(client: SonioxNodeClient, model: string) {
+  public constructor(
+    client: SonioxNodeClient,
+    model: string,
+    generalContextEnabled = false,
+  ) {
     this.#client = client;
     this.#model = model;
+    this.#generalContextEnabled = generalContextEnabled;
   }
 
   public create(
@@ -206,6 +219,11 @@ export class SonioxSttFactory {
     initialTextCharacterCount: number;
   } {
     const [languageA, languageB] = languagesForPair(pair);
+    const builtContext = buildSonioxTranscriptionContext(
+      pair,
+      translationTerms,
+      this.#generalContextEnabled,
+    );
     const session = this.#client.realtime.stt({
       model: this.#model,
       audio_format: "pcm_s16le",
@@ -220,15 +238,11 @@ export class SonioxSttFactory {
         language_b: languageB,
       },
       client_reference_id: requestRef,
-      ...(translationTerms.length > 0
-        ? { context: { translation_terms: [...translationTerms] } }
-        : {}),
+      ...(builtContext.context ? { context: builtContext.context } : {}),
     });
     return {
       session,
-      initialTextCharacterCount: translationTerms.length > 0
-        ? translationTermsCharacterCount(translationTerms)
-        : 0,
+      initialTextCharacterCount: builtContext.characterCount,
     };
   }
 }

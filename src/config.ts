@@ -11,6 +11,9 @@ const requiredString = z.string().min(1, "値が必要です");
 const ttsSpeed = z.coerce.number()
   .min(0.7, "0.7以上を指定してください")
   .max(1.3, "1.3以下を指定してください");
+const booleanString = z.enum(["true", "false"])
+  .optional()
+  .transform((value) => value === "true");
 
 const rawConfigSchema = z.object({
   DISCORD_TOKEN: requiredString,
@@ -45,6 +48,7 @@ const rawConfigSchema = z.object({
   SONIOX_STT_MODEL: requiredString,
   SONIOX_TTS_MODEL: requiredString,
   SONIOX_TTS_SPEED: ttsSpeed.default(1.15),
+  SONIOX_GENERAL_CONTEXT_ENABLED: booleanString,
   SONIOX_VOICE_JA: requiredString,
   SONIOX_VOICE_KO: requiredString,
   SONIOX_VOICE_EN: requiredString,
@@ -72,6 +76,7 @@ export type AppConfig = {
     sttModel: string;
     ttsModel: string;
     ttsSpeed: number;
+    generalContextEnabled: boolean;
     voices: Readonly<Record<"ja" | "ko" | "en", string>>;
     terminationTimeoutMs: number;
     projectMonthlyBudgetMicrousd: number;
@@ -250,6 +255,7 @@ export function loadConfig(
       sttModel: raw.SONIOX_STT_MODEL,
       ttsModel: raw.SONIOX_TTS_MODEL,
       ttsSpeed: raw.SONIOX_TTS_SPEED,
+      generalContextEnabled: raw.SONIOX_GENERAL_CONTEXT_ENABLED,
       voices: {
         ja: raw.SONIOX_VOICE_JA,
         ko: raw.SONIOX_VOICE_KO,

@@ -39,6 +39,24 @@ void test("TTS速度を省略した場合は1.15倍を製品既定値にする",
   assert.equal(config.soniox.ttsSpeed, 1.15);
 });
 
+void test("構造化会話contextは明示的に有効化し、不正な真偽値を拒否する", () => {
+  assert.equal(loadConfig(
+    validEnv({ SONIOX_GENERAL_CONTEXT_ENABLED: undefined }),
+    new Date("2026-08-15T00:00:00Z"),
+  ).soniox.generalContextEnabled, false);
+  assert.equal(loadConfig(
+    validEnv({ SONIOX_GENERAL_CONTEXT_ENABLED: "true" }),
+    new Date("2026-08-15T00:00:00Z"),
+  ).soniox.generalContextEnabled, true);
+  assert.throws(
+    () => loadConfig(
+      validEnv({ SONIOX_GENERAL_CONTEXT_ENABLED: "1" }),
+      new Date("2026-08-15T00:00:00Z"),
+    ),
+    /SONIOX_GENERAL_CONTEXT_ENABLED/u,
+  );
+});
+
 void test("同時話者数を3人に設定できる", () => {
   const config = loadConfig(
     validEnv({ MAX_SPEAKERS_PER_SESSION: "3" }),

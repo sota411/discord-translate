@@ -6,6 +6,10 @@ import {
   languagePairs,
   type LanguagePair,
 } from "../domain/language-pair.js";
+import {
+  assertSonioxContextFits,
+  sonioxContextCharacterLimit,
+} from "../soniox/transcription-context.js";
 
 export type TranslationTerm = {
   source: string;
@@ -14,7 +18,7 @@ export type TranslationTerm = {
 
 export type TranslationTerms = Readonly<Record<LanguagePair, readonly TranslationTerm[]>>;
 
-export const translationTermsContextCharacterLimit = 10_000;
+export const translationTermsContextCharacterLimit = sonioxContextCharacterLimit;
 
 const termSchema = z.object({
   source: z.string().refine((value) => value.trim().length > 0, "sourceは空にできません"),
@@ -68,11 +72,7 @@ export function assertTranslationTermsFitContext(
     }
     sources.add(entry.source);
   }
-  if (translationTermsCharacterCount(entries) > translationTermsContextCharacterLimit) {
-    throw new Error(
-      `${pair}: Soniox contextの${translationTermsContextCharacterLimit.toLocaleString("en-US")}文字上限を超えています`,
-    );
-  }
+  assertSonioxContextFits(pair, entries);
 }
 
 export function loadTranslationTerms(filePath: string | undefined): TranslationTerms {
