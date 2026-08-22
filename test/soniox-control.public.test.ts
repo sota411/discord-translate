@@ -93,12 +93,14 @@ void test("セッション開始時に固定した翻訳用語だけをSTT conte
   ]);
   factory.create("ja-en", "request-2", []);
 
-  assert.deepEqual(received[0]?.context, {
+  const firstRequest = received[0];
+  assert.ok(firstRequest);
+  assert.deepEqual(firstRequest.context, {
     translation_terms: [{ source: "技術室", target: "technology room" }],
   });
   assert.equal(
     first.initialTextCharacterCount,
-    Array.from(JSON.stringify(received[0]?.context)).length,
+    Array.from(JSON.stringify(firstRequest.context)).length,
   );
   assert.equal("context" in (received[1] ?? {}), false);
 });
@@ -144,10 +146,12 @@ void test("構造化会話contextを言語ペアごとに送り、用語をASR t
     ],
     translation_terms: [{ source: "塾", target: "학원" }],
   });
-  assert.equal("terms" in (received[0]?.context as Record<string, unknown>), false);
+  const request = received[0];
+  assert.ok(request);
+  assert.equal("terms" in (request.context as Record<string, unknown>), false);
   assert.equal(
     created.initialTextCharacterCount,
-    Array.from(JSON.stringify(received[0]?.context)).length,
+    Array.from(JSON.stringify(request.context)).length,
   );
 });
 

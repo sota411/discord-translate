@@ -93,7 +93,9 @@ export function findRepeatedTranslation(
       ) {
         strongest = { maxRepeatCount: repeatCount, ngramLength };
       }
-      start += Math.max(1, ngramLength * repeatCount);
+      start += repeatCount >= minimumRepeatedNgramCount
+        ? ngramLength * repeatCount
+        : 1;
     }
   }
   return strongest;

@@ -14,6 +14,10 @@ import type { SessionDescriptor } from "../session/session-manager.js";
 import {
   isCaptionFailurePolicy,
   isPlaybackMode,
+  isTtsSpeed,
+  formatTtsSpeed,
+  ttsSpeedMax,
+  ttsSpeedMin,
   type CaptionFailurePolicy,
   type PlaybackMode,
 } from "../session/session-settings.js";
@@ -59,6 +63,15 @@ export type StartCommandInput = {
 export type StopCommandInput = {
   kind: "stop";
   sessionId?: string;
+  guildId: string | undefined;
+  actorId: string;
+  actorCanManageGuild: boolean;
+  actorVoiceChannelId: string | undefined;
+};
+
+export type SpeedCommandInput = {
+  kind: "speed";
+  rate: number;
   guildId: string | undefined;
   actorId: string;
   actorCanManageGuild: boolean;
@@ -119,6 +132,7 @@ export type RegisterCommandInput = RegisterCommandCommonInput & (
 export type TranslationCommandInput =
   | StartCommandInput
   | StopCommandInput
+  | SpeedCommandInput
   | SessionControlInput
   | StatusCommandInput
   | ExportCommandInput
@@ -141,6 +155,7 @@ type TranslationCommandServiceDependencies = {
   allowedGuildIds: ReadonlySet<string>;
   allowedUserIds: ReadonlySet<string>;
   maxSpeakersPerSession: number;
+  defaultTtsSpeed: number;
   sessions: SessionManager;
   terms: Pick<
     TranslationTermCatalog,
@@ -164,6 +179,7 @@ export class TranslationCommandService {
   readonly #allowedGuildIds: ReadonlySet<string>;
   readonly #allowedUserIds: ReadonlySet<string>;
   readonly #maxSpeakersPerSession: number;
+  readonly #defaultTtsSpeed: number;
   readonly #sessions: SessionManager;
   readonly #terms: Pick<
     TranslationTermCatalog,
@@ -175,6 +191,7 @@ export class TranslationCommandService {
     this.#allowedGuildIds = dependencies.allowedGuildIds;
     this.#allowedUserIds = dependencies.allowedUserIds;
     this.#maxSpeakersPerSession = dependencies.maxSpeakersPerSession;
+    this.#defaultTtsSpeed = dependencies.defaultTtsSpeed;
     this.#sessions = dependencies.sessions;
     this.#terms = dependencies.terms;
     this.#now = dependencies.now ?? (() => new Date());
@@ -184,6 +201,7 @@ export class TranslationCommandService {
     try {
       if (input.kind === "start") return await this.#start(input);
       if (input.kind === "stop") return await this.#stop(input);
+      if (input.kind === "speed") return await this.#speed(input);
       if (input.kind === "control") return await this.#control(input);
       if (input.kind === "status") return this.#status(input);
       if (input.kind === "register") return this.#register(input);
@@ -312,6 +330,7 @@ export class TranslationCommandService {
       pair: input.pair,
       participantIds: input.voiceChannel.humanParticipantIds,
       playbackMode,
+      ttsSpeed: this.#defaultTtsSpeed,
       audioEnabled: true,
       captionFailurePolicy: "continue_audio",
       requiredSttStreams: this.#maxSpeakersPerSession,
@@ -419,6 +438,32 @@ export class TranslationCommandService {
       ok: true,
       ephemeral: true,
       interactionMessage: "翻訳セッションを停止しました。",
+    };
+  }
+
+  async #speed(input: SpeedCommandInput): Promise<CommandResult> {
+    const guildId = this.#requireAllowedGuild(input.guildId);
+    const session = this.#sessions.get(guildId);
+    if (!session) {
+      throw new ApplicationError(
+        "SESSION_NOT_ACTIVE",
+        "翻訳セッションは実行されていません。先に /translate start を実行してください。",
+      );
+    }
+    this.#assertMayControl(session, input);
+    if (!isTtsSpeed(input.rate)) {
+      throw new ApplicationError(
+        "SESSION_NOT_ACTIVE",
+        `読み上げ速度は${String(ttsSpeedMin)}〜${String(ttsSpeedMax)}の範囲で指定してください。`,
+      );
+    }
+
+    await this.#sessions.setTtsSpeed(guildId, input.rate);
+    return {
+      ok: true,
+      ephemeral: true,
+      interactionMessage:
+        `読み上げ速度を${formatTtsSpeed(input.rate)}へ変更しました。次に生成する翻訳音声から反映します。`,
     };
   }
 

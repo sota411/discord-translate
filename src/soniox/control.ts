@@ -17,6 +17,7 @@ import {
   type LanguagePair,
 } from "../domain/language-pair.js";
 import type { CapacityGate } from "../session/session-manager.js";
+import { ttsSpeedMax, ttsSpeedMin } from "../session/session-settings.js";
 import { usdDecimalToMicrousd } from "../usage/usage-ledger.js";
 import { buildSonioxTranscriptionContext } from "./transcription-context.js";
 
@@ -180,9 +181,9 @@ export async function verifySonioxConfiguration(
             `SONIOX_TTS_SPEED「${String(config.ttsSpeed)}」はTTS modelの対応範囲${String(ttsModel.speed_min)}〜${String(ttsModel.speed_max)}外です`,
           );
         }
-        if (ttsModel.speed_min > 0.7 || ttsModel.speed_max < 1.3) {
+        if (ttsModel.speed_min > ttsSpeedMin || ttsModel.speed_max < ttsSpeedMax) {
           issues.push(
-            `TTS modelの速度調整範囲${String(ttsModel.speed_min)}〜${String(ttsModel.speed_max)}が公開範囲0.7〜1.3を満たしていません`,
+            `TTS modelの速度調整範囲${String(ttsModel.speed_min)}〜${String(ttsModel.speed_max)}が公開範囲${String(ttsSpeedMin)}〜${String(ttsSpeedMax)}を満たしていません`,
           );
         }
       }

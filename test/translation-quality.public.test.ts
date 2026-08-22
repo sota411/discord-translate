@@ -64,6 +64,10 @@ void test("完成した翻訳本文から1〜4語の8回以上の連続反復だ
     { maxRepeatCount: 9, ngramLength: 2 },
   );
   assert.deepEqual(
+    findRepeatedTranslation(`intro ${"very good ".repeat(8)}`, "en"),
+    { maxRepeatCount: 8, ngramLength: 2 },
+  );
+  assert.deepEqual(
     findRepeatedTranslation("ｍｉｓｔｅｒ　".repeat(8), "en"),
     { maxRepeatCount: 8, ngramLength: 1 },
   );

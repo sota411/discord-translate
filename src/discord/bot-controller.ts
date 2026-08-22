@@ -202,12 +202,16 @@ export class DiscordBotController {
     interaction: ChatInputCommandInteraction,
   ): Promise<void> {
     const subcommand = interaction.options.getSubcommand(true);
-    if (subcommand !== "start" && subcommand !== "stop") {
+    if (subcommand !== "start" && subcommand !== "stop" && subcommand !== "speed") {
       throw new Error("未対応のtranslateサブコマンドです");
     }
-    const result = subcommand === "start"
-      ? await this.#commands.execute(this.#startInput(interaction))
-      : await this.#commands.execute(this.#stopInput(interaction));
+    const result = await this.#commands.execute(
+      subcommand === "start"
+        ? this.#startInput(interaction)
+        : subcommand === "speed"
+          ? this.#speedInput(interaction)
+          : this.#stopInput(interaction),
+    );
     await this.#completeInteraction(interaction, result);
   }
 
@@ -459,6 +463,7 @@ export class DiscordBotController {
       const settings = createSessionSettingsMessagePayload({
         sessionId,
         playbackMode: session.playbackMode,
+        ttsSpeed: session.ttsSpeed,
         captionFailurePolicy: session.captionFailurePolicy,
       });
       await interaction.reply({
@@ -658,6 +663,19 @@ export class DiscordBotController {
     const actor = interaction.guild?.members.cache.get(interaction.user.id);
     return {
       kind: "stop" as const,
+      guildId: interaction.guildId ?? undefined,
+      actorId: interaction.user.id,
+      actorCanManageGuild:
+        interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ?? false,
+      actorVoiceChannelId: actor?.voice.channelId ?? undefined,
+    };
+  }
+
+  #speedInput(interaction: ChatInputCommandInteraction) {
+    const actor = interaction.guild?.members.cache.get(interaction.user.id);
+    return {
+      kind: "speed" as const,
+      rate: interaction.options.getNumber("rate", true),
       guildId: interaction.guildId ?? undefined,
       actorId: interaction.user.id,
       actorCanManageGuild:
