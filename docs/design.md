@@ -464,7 +464,7 @@ Dockerfileはビルド用と実行用を分ける。実行用ステージはNode
 
 Compose設定の検査には`docker compose --env-file .env.local config -q`を使う。`-q`を外すと展開後の秘密値が表示されるため、出力を保存または共有しない。ブリッジネットワークを作れないホストでは`compose.host.yaml`を使えるが、ホストネットワークは分離を弱めるため標準構成にしない。
 
-Pull Requestでは検証後に`linux/amd64`のDocker imageをbuildする。`main`へのmerge後は、同じcommitを再検証してから`sha-<40文字のcommit SHA>`をGHCRへ公開する。`v1.2.3`形式のGit tagでは、同じSHA tagに加えて完全なversion tagの`1.2.3`を公開する。GitHub Actionsは実行ホストへ接続せず、配備と巻き戻しは[運用手順](./operations.md)に従う。
+Pull Requestでは検証後に`linux/amd64`と`linux/arm64`のDocker imageを同じ定義からbuildする。`main`へのmerge後は、同じcommitの2 platformを再検証してからmulti-platform imageを`sha-<40文字のcommit SHA>`でGHCRへ公開する。`v1.2.3`形式のGit tagでは、同じSHA tagに加えて完全なversion tagの`1.2.3`を公開する。GitHub Actionsは実行ホストへ接続せず、配備と巻き戻しは[運用手順](./operations.md)に従う。
 
 SIGINTまたはSIGTERMを受けると、新規コマンドを拒否して全Guildのセッションを停止する。必須の利用量照合を待ち、Discordリスナーとクライアント、TTS WebSocket、SQLiteを閉じる。
 
