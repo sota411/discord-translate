@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import {
@@ -211,4 +212,14 @@ void test("観測結果は未知case・重複profile・本文以外の余分なf
     () => parseSttEvaluationObservations(JSON.stringify(invalid)),
     /raw_audio/u,
   );
+});
+
+void test("追跡する人工音声レポートは本文・正解文・API keyを含まない", () => {
+  const report = readFileSync("docs/evaluation/stt-artificial-2026-08-25.json", "utf8");
+
+  assert.doesNotMatch(
+    report,
+    /"(?:transcript|reference|translation_terms|api_key|raw_audio)"/u,
+  );
+  assert.match(report, /"manifest_sha256": "[a-f0-9]{64}"/u);
 });

@@ -209,11 +209,49 @@ Raspberry PiではPi上でimageをbuildせず、CIで検証してGHCRへ配布�
 
 この確認だけでは、双方向会話、複数人の発話分離、日英・韓英、長時間運転、Discordの添付上限に近い大容量エクスポートは検証できない。
 
+## STT精度の変更は同じ音声で比較する
+
+`pnpm stt:evaluate`は、許可済みのPCM音声とpacket traceを同じ順序でSonioxへ送り、現行条件と候補条件を比較する。実行にはSonioxの利用料金がかかる。個人音声はGitへ追加せず、`.data/stt-eval/`へ置く。
+
+```bash
+install -d -m 700 .data/stt-eval
+
+pnpm stt:evaluate run \
+  --manifest .data/stt-eval/manifest.json \
+  --observations-output .data/stt-eval/observations.json \
+  --output .data/stt-eval/report.json
+```
+
+manifestには、48 kHz・mono・PCM s16le音声、正解文、期待する言語と分割数、固有名詞、翻訳用語を記録する。packet traceには、packetごとの送信時刻・byte数と、発話全体の欠落数を記録する。詳しいfieldは[設計書のSTT評価](./docs/design.md#stt候補は同じ音声のadで採否を決める)を参照する。
+
+`observations.json`には認識本文が含まれるため、0600でローカル保存し、公開または共有しない。`report.json`には本文と音声を含めず、入力のSHA-256、CER、固有名詞再現率、言語再現率、分割数、平均・p50・p95遅延、CPU、packet欠落だけを出力する。別の端末で採点し直す場合は、次のコマンドを使う。音声かpacket traceが変わっていれば、SHA-256の不一致で失敗する。
+
+```bash
+pnpm stt:evaluate score \
+  --manifest .data/stt-eval/manifest.json \
+  --observations .data/stt-eval/observations.json \
+  --output .data/stt-eval/report.json
+```
+
+評価profileは次の4つである。
+
+| ID | 認識用context | 発話確定 |
+|---|---|---|
+| A | なし | 現行。Discordの発話終了から100 ms後に手動確定 |
+| B | `general`と登録語の`terms` | Aと同じ |
+| C | なし | Soniox上限500 ms、手動fallback 600 ms |
+| D | Bと同じ | Cと同じ |
+
+2026年8月25日に人工音声10件でA〜Dを実測した。CとDはCERが改善した一方、p95遅延がAより約521 ms、475 ms増え、Cでは不自然な分割も8件増えた。Bはp95追加遅延を約9 msに抑えたが、CERの相対改善は2.6%で、固有名詞再現率も改善しなかった。いずれも採用基準を満たさないため、通常運用の確定値と`SONIOX_GENERAL_CONTEXT_ENABLED=false`は変更していない。数値と入力SHA-256は[本文非含有レポート](./docs/evaluation/stt-artificial-2026-08-25.json)に残している。
+
+この結果は人工音声に限られる。実際のDiscord音声、複数人通話、Raspberry PiのCPUと音声詰まりは未検証であり、本番で改善した証拠にはならない。RNNoiseやDeepFilterNetも、ノイズ音声で10%以上改善し、クリーン音声を悪化させない実測がないため追加していない。標準経路は引き続き無加工PCMである。
+
 ## 詳細資料
 
 - [開発・引き継ぎガイド](./CONTRIBUTING.md)
 - [配備・巻き戻し手順](./docs/operations.md)
 - [現行設計・図解・設定一覧・受入条件](./docs/design.md)
+- [2026-08-25 STT人工音声評価（本文非含有）](./docs/evaluation/stt-artificial-2026-08-25.json)
 - [公開前セキュリティ監査](./security_best_practices_report.md)
 - [環境変数の配布例](./.env.example)
 - [翻訳用語の例](./config/translation-terms.example.json)

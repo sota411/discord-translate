@@ -11,6 +11,7 @@ Discordの音声チャンネルで、日本語・韓国語・英語の会話を�
 | STT | 音声を文字にし、同時に翻訳するSonioxの処理 |
 | TTS | 翻訳文から読み上げ音声を作るSonioxの処理 |
 | E2E | Discordの音声入力からSonioxを経て、字幕と翻訳音声がDiscordへ戻るまでの実サービス確認 |
+| CER | 正解文に対して挿入・削除・置換された文字の割合。日本語・韓国語のSTT精度を比べる主指標 |
 | 利用量台帳 | STT・TTS・テキストの利用量と費用を記録するSQLiteデータベース |
 
 ## 1. それを作ろうと思った背景
@@ -164,6 +165,7 @@ Discord Voice
 | Discord Driver | Voice受信、STT、字幕、再生、復旧を統合する | `src/discord/translation-driver.ts` |
 | Utterance Processor | 発話確定後の字幕、TTS、FIFO、割り込みを管理する | `src/translation/utterance-processor.ts` |
 | Soniox Control | モデル・容量の事前確認、STT作成、利用量照合を行う | `src/soniox/control.ts` |
+| STT Evaluation | 同じPCMとpacket traceをA〜Dで再生し、本文非含有の比較レポートを作る | `src/evaluate-stt.ts`、`src/evaluation/` |
 | TTS Gateway | 常時接続WebSocketとTTSストリームを管理する | `src/soniox/raw-tts-gateway.ts` |
 | Usage Ledger | 利用量、見積額、照合額、保持期限、Guild登録用語をSQLiteで管理する | `src/usage/usage-ledger.ts` |
 | Safe Logger | Discord IDを仮名化し、本文を含まないJSONログを出す | `src/observability/logger.ts` |
@@ -199,7 +201,7 @@ STTには次を指定する。
 - 双方向翻訳
 - セッション開始前に固定した、静的用語とGuild登録用語のスナップショット
 
-`SONIOX_GENERAL_CONTEXT_ENABLED=true`の場合は、個人間のDiscord会話であること、選択中の2言語、日常会話を想定する話題、話した言語をそのまま認識する方針、自然な口語訳を求める方針を`context.general`へ追加する。既定値は`false`である。用語は有効・無効にかかわらず`translation_terms`へ渡し、ASRの`terms`へ重複して渡さない。固定文脈と用語を含むcontext全体が10,000文字を超える設定は、起動前に拒否する。
+`translation_terms`と`terms`は役割が異なる。`translation_terms`は、認識済みの語を希望する表記へ翻訳する指定であり、すべてのセッションで送る。`SONIOX_GENERAL_CONTEXT_ENABLED=true`の場合だけ、会話の場面・話題・言語方針を`context.general`へ加え、登録済みの`source`と`target`を重複除去して認識候補の`terms`にも送る。既定値は`false`である。固定文脈と用語を含むcontext全体が10,000文字を超える設定は、起動前に拒否する。
 
 Sonioxから届く認識・翻訳結果について、各トークンが確定済みか、翻訳結果かを判定する。あわせて言語と翻訳元言語を検査し、発話を組み立てる。言語ペア外の言語を検出した場合は翻訳せず、スレッドへ英語の警告を出す。
 
@@ -210,9 +212,11 @@ Sonioxから届く認識・翻訳結果について、各トークンが確定�
 | semantic endpoint | Sonioxが意味の区切りを検出し、`endpoint`を返す |
 | manual finalize | Discordの発話終了から100 ms後に、200 ms分の無音PCMとfinalizeを送る |
 | inactivity | STTの認識結果が3秒間更新されない |
-| maximum duration | 認識開始から`UTTERANCE_MAX_SOURCE_SECONDS`に達する |
+| maximum duration | 最初の復号済み音声から`UTTERANCE_MAX_SOURCE_SECONDS`に達する |
 
 `endpoint`または`finalized`が1発話の境界になる。原文と翻訳文が揃った発話だけを字幕とTTSへ渡す。境界確定後は、確定字幕の投稿とTTS生成を並行して始める。字幕投稿の完了はTTS生成開始の条件にしない。
+
+Soniox中心の候補では`max_endpoint_delay_ms=500`、Discordの発話終了から600 ms後の手動fallbackを比較した。しかし、2026年8月25日の人工音声評価ではp95追加遅延が基準を超え、不自然な分割も増えた。このため本番経路へは採用せず、現行の100 ms手動確定を維持している。評価条件と再検証方法は第8節に示す。
 
 TTSへ次を送る。
 
@@ -345,6 +349,7 @@ Sonioxの401・403は認証失敗、402は予算到達、429は同時実行上�
 | `translation_flow` | 本文を含まない処理段階 |
 | `translation_latency` | 1発話の区間時間 |
 | `translation_quality` | 原文confidence、原文・翻訳文の文字数と比率。本文は含めない |
+| `stt_audio_quality` | 1発話のRMS・peak、音割れ率、20 ms単位の無音率、復号・欠落packet数、原文confidence、確定理由。本文は含めない |
 | `translation_quality_anomaly` | 完成した翻訳文で、1〜4語の同じ並びが8回以上連続したことを本文なしで示す |
 | `caption_delivery` | 仮字幕の要求・送信・集約件数と、確定字幕の待ち時間・配信時間 |
 | `runtime_health` | 30秒ごとのイベントループ遅延、CPU、RSS・heap、STT結果数・結果間隔 |
@@ -354,7 +359,9 @@ Sonioxの401・403は認証失敗、402は予算到達、429は同時実行上�
 | `usage_reconciliation_failed` | 定期照合の失敗 |
 | `application_shutdown_complete` | 正常終了処理の完了 |
 
-`translation_latency.trace_id`と品質・字幕ログの`trace_id`は1発話を表す。`playback_started.total_ms`は、最後の音声パケットを受けてから再生を始めるまでの時間である。字幕とTTSは並行するため、ログの出力順は一定にならない。品質・字幕・実行時ログにも発話本文、字幕本文、表示名、生のDiscord IDを含めない。品質異常ログは診断の手掛かりであり、翻訳を自動修正または停止する条件には使わない。
+`translation_latency.trace_id`と品質・字幕ログの`trace_id`は1発話を表す。`playback_started.total_ms`は、最後の音声パケットを受けてから再生を始めるまでの時間である。字幕とTTSは並行するため、ログの出力順は一定にならない。品質・字幕・実行時ログにも発話本文、字幕本文、表示名、生のDiscord IDを含めない。
+
+`stt_audio_quality.finalize_reason`は、Sonioxの`endpoint`、Discordの発話終了、認識結果の停滞、発話時間上限のいずれで区切られたかを示す。RMSとpeakは0 dBFSを最大値とする。完全なデジタル無音または復号済みsampleがない場合は`null`を記録する。無音率は20 ms frameのRMSが-60 dBFS以下だった割合である。これらの値と品質異常ログは診断の手掛かりであり、翻訳を自動修正または停止する条件には使わない。
 
 ### 音声処理の上限と復旧
 
@@ -457,7 +464,7 @@ Sonioxのモデルとvoiceは次の初期値を持つ。
 | 設定 | 配布初期値 | 意味 |
 |---|---:|---|
 | `SONIOX_STT_MODEL` | `stt-rt-v5` | STTモデル |
-| `SONIOX_GENERAL_CONTEXT_ENABLED` | `false` | 固定した会話目的・話題・言語方針・翻訳方針を`context.general`へ追加する |
+| `SONIOX_GENERAL_CONTEXT_ENABLED` | `false` | 固定した会話文脈を`general`へ、登録語の`source`と`target`を認識用`terms`へ追加する。翻訳用`translation_terms`は値にかかわらず送る |
 | `SONIOX_TTS_MODEL` | `tts-rt-v2` | TTSモデル |
 | `SONIOX_TTS_SPEED` | `1.15` | セッション開始時の速度。許容範囲0.7〜1.3 |
 | `SONIOX_VOICE_JA` | `Kenji` | 話者枠1の多言語voice |
@@ -488,6 +495,7 @@ Sonioxの参照先:
 
 - [双方向翻訳](https://soniox.com/docs/translation/sts-translation)
 - [STT WebSocket](https://soniox.com/docs/api-reference/stt/websocket-api)
+- [STT context](https://soniox.com/docs/stt/concepts/context)
 - [発話区切り](https://soniox.com/docs/stt/rt/endpoint-detection)と[手動確定](https://soniox.com/docs/stt/rt/manual-finalization)
 - [TTS WebSocket](https://soniox.com/docs/api-reference/tts/websocket-api)
 - [利用量ログ](https://soniox.com/docs/guides/usage-logs)と[同時実行枠](https://soniox.com/docs/guides/concurrency-limits)
@@ -514,6 +522,7 @@ Discordの参照先:
 - SQLiteとOpusの実行検査
 - Compose設定検査とDockerビルド
 - 本番向け依存関係の監査
+- 人工音声10件を使ったSoniox実サービスのSTT A〜D比較。DiscordとRaspberry Piは含まない
 
 以前のUIを使った版では、1人による日本語・韓国語の実サービス通話、字幕、読み上げを確認した。当時は、現在のセッションUIと話者別voiceを実装していなかった。2つの再生モードもなかった。この履歴は現行版の受入証跡として扱わない。
 
@@ -559,6 +568,50 @@ docker build --tag discord-translate:local .
 
 `pnpm verify`はlint、型検査、自動テスト、production build、native module smoke、図の同期checkをまとめて実行する。図版を変更した場合は、先に`pnpm diagrams:sync`でHTMLとSVGを同期する。実Discord・実Sonioxの受入は、この自動検証とは分ける。
 
+### STT候補は同じ音声のA〜Dで採否を決める
+
+STT設定の変更には`pnpm stt:evaluate`を使う。入力は、明示的に利用を許可された音声または人工音声に限る。個人音声、正解文、認識本文は`.data/stt-eval/`へ0600で保存し、Gitと通常ログへ追加しない。
+
+manifest version 1は、言語ペアと48 kHz・mono・PCM s16le形式を固定し、caseごとに次を持つ。
+
+- 相対pathで指定するPCMとpacket trace
+- 正解文、主言語、caseのtag
+- 固有名詞などの`key_terms`
+- 期待する言語と発話分割数
+- 翻訳用の`translation_terms`
+
+packet trace version 1は、復号できずPCMへ入らなかった`dropped_packet_count`と、復号済みpacketの送信時刻`at_ms`・`byte_length`を持つ。時刻は厳密な昇順とし、byte合計はPCMと一致させる。評価時と採点時のmanifest、PCM、packet traceが同一であることは、SHA-256とpacket数で検査する。
+
+比較条件は次のとおり。
+
+| ID | profile | 認識用context | 発話確定 |
+|---|---|---|---|
+| A | `baseline` | なし | 現行。Discordの発話終了から100 ms後に手動確定 |
+| B | `context` | `general`と登録語の`terms` | Aと同じ |
+| C | `endpoint` | なし | `max_endpoint_delay_ms=500`、手動fallback 600 ms。感度と積極度はSoniox既定値 |
+| D | `context_endpoint` | Bと同じ | Cと同じ |
+
+本文非含有レポートには、CER、固有名詞再現率、期待言語の再現率、分割数、確定遅延の平均・p50・p95、CPU、復号・欠落packet数を出す。比較の初期採用基準は次のとおりである。
+
+- 全体CERをAより10%以上相対改善する
+- 固有名詞再現率をAより改善する
+- クリーン音声のCERを1ポイント以上悪化させない
+- 日本語と韓国語の切り替えを悪化させない
+- p95追加遅延をA比+200 ms以内に収める
+- Raspberry Piまたは実運用ホストでCPU不足と音声詰まりを起こさない
+
+2026年8月25日には、静音、短い相づち、小音量、clip、キーボード・ファン相当のノイズ、600 msの間、日韓切り替え、ゲーム用語を含む人工音声10件をSoniox `stt-rt-v5`へ送った。入力manifestのSHA-256は`6d350a14157addc4415a4f8374ea66b0bca2d32e2d170deb5cf3e1e284c4dee2`である。
+
+| 候補 | CER相対改善 | 固有名詞再現率の差 | p95追加遅延 | 不自然な分割の増加 | 判定 |
+|---|---:|---:|---:|---:|---|
+| B | 2.6% | 0ポイント | +9 ms | 0件 | CERと固有名詞の基準を満たさず不採用 |
+| C | 41.4% | 0ポイント | +521 ms | 8件 | 遅延・固有名詞・分割で不採用 |
+| D | 19.1% | -25ポイント | +475 ms | 1件 | 遅延と固有名詞で不採用 |
+
+詳細なcase別指標と入力SHA-256は[本文非含有レポート](./evaluation/stt-artificial-2026-08-25.json)に残す。人工音声、とくに日本語TTSのCERが高いため、この結果を実会話の精度値へ外挿しない。実Discord音声、複数人、Raspberry Piは未検証である。したがって、認識contextとSoniox中心の確定を本番既定へ採用せず、現行値を維持する。
+
+前処理も同じ手順で無加工PCMと比較する。ノイズ音声のCERを10%以上相対改善し、クリーン音声を悪化させない場合だけ標準採用する。現時点ではRNNoiseとDeepFilterNetを実装・依存関係へ追加しておらず、無加工PCMが唯一の経路である。
+
 ### 実サービスでの受入
 
 現行版を受入済みにするには、少なくとも次をDiscordとSonioxの実サービスで確認する。
@@ -578,8 +631,9 @@ docker build --tag discord-translate:local .
 13. `/status`が現在の状態、参加者、経過時間、モード、読み上げ速度、音声、字幕スレッドを正しく表示する
 14. `/register add`の新規登録と更新が再起動後も残り、`list`の全件・言語ペア別表示、ページ操作、`delete`の入力補完と即時削除が正しい。登録と削除は次に開始するセッションだけへ反映される
 15. `/export`が対象Threadの確定字幕だけを時系列で出力し、権限不足と添付上限超過を拒否する
+16. 許可済みのDiscord音声を同じpacket traceでA〜Dへ送り、第8節のSTT採用基準を満たす。Raspberry Piまたは実運用ホストでもCPUと音声詰まりを確認する
 
-翻訳品質、遅延、メモリ増加量、ローカル台帳と実請求額の差には、まだ合格閾値がない。運営者が試験前に閾値を決める。結果を見た後に基準を変えず、閾値のない項目を受入済みにしない。
+STTのCER・固有名詞・言語切り替え・確定遅延には、第8節の初期採用基準を使う。翻訳後の意味品質、メモリ増加量、ローカル台帳と実請求額の差には、まだ合格閾値がない。運営者が試験前に閾値を決める。結果を見た後に基準を変えず、閾値のない項目を受入済みにしない。
 
 | 対象 | 残す証跡 |
 |---|---|
