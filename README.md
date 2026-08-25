@@ -230,9 +230,12 @@ manifestには、48 kHz・mono・PCM s16le音声、正解文、期待する言�
 `observations.json`には認識本文が含まれるため、0600でローカル保存し、公開または共有しない。`report.json`には本文と音声を含めず、次の情報を出力する。
 
 - 入力のSHA-256と試行番号
-- CER、固有名詞・言語の再現率、分割数
+- micro CER、macro CER、置換・削除・挿入の内訳、正解・認識文字数
+- 固有名詞・言語の成功数と分母、分割数
 - 確定遅延、境界の種別・理由、CPU、packet欠落
 - RMS、peak、音割れ率、無音率、原文confidence
+
+レポートversion 2では、NFKC正規化後に空白を除いてCERを計算する。`cer`は互換用のmicro CERであり、全観測の編集回数を全正解文字数で割った値である。`macro_cer`は観測ごとのCERの平均である。編集内訳は同じ最小編集距離に複数の対応がある場合があるため、置換、削除、挿入の順で決める診断値として扱う。
 
 baselineでは音質指標とCERの相関もcase単位で集計する。別の端末で採点し直す場合は、次のコマンドを使う。音声かpacket traceが変わっていれば、SHA-256の不一致で失敗する。
 
@@ -279,6 +282,8 @@ pnpm stt:evaluate probe-endpoint-only \
 
 level 1へ事前登録型の固有名詞カタログを加える上限評価には、`--experiment recognition_catalog_level1`を使う。Aは現行条件、Bはlevel 1、Cはlevel 1と全case共通の`key_terms`集合である。caseごとの正解語だけは渡さない。ただし、評価setから作った語彙なので、未知語への一般化性能は測れない。結果は楽観的な上限として扱う。
 
+カタログとlevel 1の影響を分ける次回の比較には、`--experiment recognition_catalog_factorial`を使う。Aは現行条件、Bは共通カタログだけ、Cはlevel 1だけ、Dは共通カタログとlevel 1の組み合わせである。この実験ではSoniox endpoint比率を診断値として残すが、採用gateにはしない。利用者が直接感じるCER、固有名詞・言語の再現率、不自然な分割、p95遅延を採否に使う。このprofileは評価runnerだけにあり、通常のDiscordセッションからは参照されない。
+
 2026年8月25日に人工音声10件を3試行し、A〜Dを比較した。同じAでも試行別CERは1.37〜1.74に振れたため、採否には3試行の集計値を使った。BはAより全体CERが2.0%悪化し、固有名詞再現率が8.3ポイント、日韓切り替え時の期待言語再現率が16.7ポイント下がった。Cは全体CERを46.8%改善したが、固有名詞再現率が8.3ポイント下がり、p95遅延が488 ms、不自然な分割が3試行合計25件増えた。Dの全体CER改善は5.5%に留まり、固有名詞再現率が33.3ポイント、日韓切り替え時の期待言語再現率が50ポイント下がった。いずれも採用基準を満たさないため、通常運用の確定値と`SONIOX_GENERAL_CONTEXT_ENABLED=false`は変更していない。数値と入力SHA-256は[本文非含有レポート](./docs/evaluation/stt-artificial-2026-08-25.json)に残している。
 
 認識contextの影響を分けるため、2026年8月26日に`general`を送らず、登録語の`source`と`target`だけを認識用`terms`へ加える条件も比較した。全体CERはA比23.6%改善したが、固有名詞再現率は66.7%から50.0%、言語切り替え時の期待言語再現率は50.0%から0%へ下がった。この評価manifestでは、`source`が話される側の用語だった。`source`だけへ絞った別の比較でも、全体CERは0.9%悪化した。固有名詞再現率は75.0%から58.3%、言語切り替え時の期待言語再現率は50.0%から16.7%へ下がった。どちらも本番既定へ採用せず、`SONIOX_GENERAL_CONTEXT_ENABLED=false`を維持する。詳細は[両言語termsレポート](./docs/evaluation/stt-recognition-terms-2026-08-26.json)と[source限定termsレポート](./docs/evaluation/stt-recognition-source-terms-2026-08-26.json)に残している。
@@ -287,7 +292,11 @@ level 1へ事前登録型の固有名詞カタログを加える上限評価に�
 
 同日、400 msのfallbackを変えずにSonioxのlevel 0と1も各3試行した。level 1は現行Aより全体CERを58.8%改善し、p95追加遅延は+177 ms、Soniox endpoint比率は56.4%だった。ただし、固有名詞再現率はAと同じ66.7%で改善せず、全体の言語再現率は63.6%から60.6%へ下がった。不自然な分割もAの0件、level 0の6件に対して9件だった。固有名詞のgateが失敗し、Pi実機も未評価なので、level 1は本番へ採用していない。詳細は[本文非含有レポート](./docs/evaluation/stt-endpoint-latency-level-2026-08-26.json)に残している。
 
-level 1で残った固有名詞gateを検証するため、同じ10件の`key_terms`から重複を除いた3語を、全caseへ同じ順序で渡す追加比較も3試行した。カタログありのCはA比で全体CERを29.7%改善し、p95追加遅延を+148 msに収めた。一方、固有名詞再現率は75.0%から41.7%、言語切り替え時の期待言語再現率は50.0%から16.7%へ下がった。Soniox endpoint比率も47.1%で過半数に届かなかった。固有名詞、言語切り替え、意味的な発話確定のgateが不合格なので、このカタログは本番へ採用していない。独立した認識語彙の登録機能も追加していない。詳細は[固有名詞カタログ比較レポート](./docs/evaluation/stt-recognition-catalog-level1-2026-08-26.json)に残している。
+level 1で残った固有名詞gateを検証するため、同じ10件の`key_terms`から重複を除いた3語を、全caseへ同じ順序で渡す追加比較も3試行した。カタログありのCはA比で全体CERを29.7%改善し、p95追加遅延を+148 msに収めた。一方、固有名詞再現率は9/12から5/12、言語切り替え時の期待言語再現率は3/6から1/6へ下がった。Soniox endpoint比率も47.1%だった。固有名詞と言語切り替えの採用gateが不合格なので、このカタログは人工音声による事前基準を通過していない。実Discord評価へ進めず、本番設定と独立した認識語彙の登録機能は変更していない。endpoint比率を採用gateにした当時の判定は[固有名詞カタログ比較レポート](./docs/evaluation/stt-recognition-catalog-level1-2026-08-26.json)へ履歴として残している。
+
+同じ保存済み観測をレポートversion 2で再採点した。独立した発話内容は10件であり、3 profileを各3試行したため観測数は90件である。現行Aのmicro CERは437編集/273正解文字=1.601、macro CERは1.433だった。編集内訳は置換51、削除101、挿入285であり、CERが1を超えた主因は挿入だった。level 1だけのBは238/273=0.872、カタログを組み合わせたCは307/273=1.125である。詳しい分母、内訳、case別値は[本文非含有のCER監査レポート](./docs/evaluation/stt-recognition-catalog-scoring-audit-2026-08-26.json)に残している。
+
+評価runnerは、確定した原文tokenだけを本文へ採用し、途中結果、翻訳token、制御tokenを除外する。同じ時刻、本文、言語の確定原文tokenが再送された場合は、黙って重複除去せずに失敗させる。ただし、保存済みobservationsには受信イベントとtoken時刻列がないため、今回の90観測に確定tokenの再送がなかったことまでは遡って証明できない。
 
 Soniox内の候補が採用基準を満たさなかったため、同じ10件をAmazon Transcribe Streamingの多言語自動識別でも3試行した。Amazonは全体CERを44.3%改善したが、本文を取得できた観測は30件中15件だけだった。本文取得率はSonioxの86.7%から50.0%へ下がり、固有名詞再現率は75.0%から0%、日韓切り替え時の期待言語再現率は50.0%から0%へ下がった。p95は483 msから3,378 msへ増えた。空の認識結果はCERが1になるため、CERだけでは改善と判定せず、本文取得率の非悪化もprovider比較のgateにしている。固有名詞、言語切り替え、遅延、本文取得率が不合格なので、Amazonは評価専用のままとし、本番STTへ採用していない。詳細は[provider比較レポート](./docs/evaluation/stt-provider-comparison-2026-08-26.json)に残している。Google Chirp、Azure Speech、Deepgram Novaの実測には、各サービスの認証情報と公式SDKの追加が必要である。今回は認証情報の新規発行と試用契約を範囲外とした。
 
@@ -306,6 +315,7 @@ Soniox内の候補が採用基準を満たさなかったため、同じ10件を
 - [2026-08-26 STT認識context・400 ms評価（本文非含有）](./docs/evaluation/stt-context-endpoint-400-2026-08-26.json)
 - [2026-08-26 STT endpoint latency level評価（本文非含有）](./docs/evaluation/stt-endpoint-latency-level-2026-08-26.json)
 - [2026-08-26 STT固有名詞カタログ評価（本文非含有）](./docs/evaluation/stt-recognition-catalog-level1-2026-08-26.json)
+- [2026-08-26 STT固有名詞カタログCER監査（本文非含有）](./docs/evaluation/stt-recognition-catalog-scoring-audit-2026-08-26.json)
 - [2026-08-26 STT音質相関評価（本文非含有）](./docs/evaluation/stt-audio-quality-correlation-2026-08-26.json)
 - [2026-08-26 STT両言語terms評価（本文非含有）](./docs/evaluation/stt-recognition-terms-2026-08-26.json)
 - [2026-08-26 STT source限定terms評価（本文非含有）](./docs/evaluation/stt-recognition-source-terms-2026-08-26.json)
