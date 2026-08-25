@@ -102,6 +102,15 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
         cpu_percent: 10,
         decoded_packet_count: 10,
         dropped_packet_count: 0,
+        audio_metrics: {
+          rms_dbfs: -20,
+          peak_dbfs: -2,
+          clipped_sample_ratio: 0,
+          near_silence_ratio: 0.1,
+          original_token_count: 2,
+          original_confidence_mean: 0.4,
+          original_confidence_min: 0.3,
+        },
         configuration: sttEvaluationProfileConfigurations.baseline,
       },
       {
@@ -116,6 +125,15 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
         cpu_percent: 12,
         decoded_packet_count: 8,
         dropped_packet_count: 2,
+        audio_metrics: {
+          rms_dbfs: -15,
+          peak_dbfs: -1,
+          clipped_sample_ratio: 0,
+          near_silence_ratio: 0,
+          original_token_count: 2,
+          original_confidence_mean: 0.9,
+          original_confidence_min: 0.8,
+        },
         configuration: sttEvaluationProfileConfigurations.baseline,
       },
       {
@@ -130,6 +148,15 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
         cpu_percent: 11,
         decoded_packet_count: 10,
         dropped_packet_count: 0,
+        audio_metrics: {
+          rms_dbfs: -25,
+          peak_dbfs: -5,
+          clipped_sample_ratio: 0.1,
+          near_silence_ratio: 0.2,
+          original_token_count: 2,
+          original_confidence_mean: 0.6,
+          original_confidence_min: 0.5,
+        },
         configuration: sttEvaluationProfileConfigurations.baseline,
       },
       {
@@ -265,7 +292,32 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
   const contextCodeSwitchCerChange = report.comparisons.context.code_switch_cer_point_change;
   assert.ok(contextCodeSwitchCerChange !== null && contextCodeSwitchCerChange > 0);
   assert.equal(report.comparisons.context.gates.language_switching, "fail");
+  assert.equal(report.quality_analysis.status, "evaluated");
+  assert.equal(report.quality_analysis.source_profile, "baseline");
+  assert.equal(report.quality_analysis.independent_case_count, 3);
+  assert.equal(report.quality_analysis.observation_count, 3);
+  assert.equal(report.quality_analysis.audio_metrics_observation_count, 3);
+  assert.equal(report.quality_analysis.confidence_observation_count, 3);
+  const noiseSlice = report.quality_analysis.tag_slices.noise;
+  assert.ok(noiseSlice);
+  assert.equal(noiseSlice.case_count, 1);
+  assert.equal(noiseSlice.cer, 0);
+  assert.equal(
+    report.quality_analysis.correlations.original_confidence_mean_vs_cer.status,
+    "evaluated",
+  );
+  assert.notEqual(
+    report.quality_analysis.correlations.original_confidence_mean_vs_cer.coefficient,
+    null,
+  );
   assert.equal(report.preprocessing.decision, "not_adopted");
+  assert.equal(report.preprocessing.evidence_status, "noise_not_primary_in_dataset");
+  assert.equal(report.preprocessing.noise_tagged_case_count, 1);
+  assert.equal(report.preprocessing.noise_tagged_cer, 0);
+  assert.ok(
+    report.preprocessing.non_noise_cer !== null &&
+    report.preprocessing.non_noise_cer > report.preprocessing.noise_tagged_cer,
+  );
 });
 
 void test("観測結果は未知case・重複profile・本文以外の余分なfieldをFail Fastで拒否する", () => {
@@ -291,6 +343,27 @@ void test("観測結果は未知case・重複profile・本文以外の余分なf
   assert.throws(
     () => parseSttEvaluationObservations(JSON.stringify(invalid)),
     /raw_audio/u,
+  );
+  const invalidConfidence = structuredClone(invalid) as unknown as {
+    version: number;
+    results: Record<string, unknown>[];
+  };
+  const invalidConfidenceResult = invalidConfidence.results[0];
+  assert.ok(invalidConfidenceResult);
+  delete invalidConfidenceResult.raw_audio;
+  invalidConfidenceResult.case_id = "ja-clean-term";
+  invalidConfidenceResult.audio_metrics = {
+    rms_dbfs: -20,
+    peak_dbfs: -1,
+    clipped_sample_ratio: 0,
+    near_silence_ratio: 0.1,
+    original_token_count: 1,
+    original_confidence_mean: null,
+    original_confidence_min: null,
+  };
+  assert.throws(
+    () => parseSttEvaluationObservations(JSON.stringify(invalidConfidence)),
+    /confidence.*original_token_count/u,
   );
 });
 
@@ -606,6 +679,70 @@ void test("追跡するendpoint latency level比較は単一変数の実測結�
   assert.equal(comparison.gates.semantic_endpoint, "pass");
   assert.equal(comparison.gates.key_terms, "fail");
   assert.equal(comparison.gates.pi_runtime, "not_evaluated");
+});
+
+void test("追跡する音質相関レポートは本文なしで前処理の不採用根拠を保持する", () => {
+  const reportText = readFileSync(
+    "docs/evaluation/stt-audio-quality-correlation-2026-08-26.json",
+    "utf8",
+  );
+  const forbidden = /"(?:transcript|reference|translation_terms|api_key|raw_audio|guild_id|user_id|trace_id|session_id)"/u;
+  assert.doesNotMatch(reportText, forbidden);
+
+  const report = JSON.parse(reportText) as {
+    profiles: { baseline: { trial_count: number; observation_count: number } };
+    quality_analysis: {
+      status: string;
+      independent_case_count: number;
+      audio_metrics_observation_count: number;
+      confidence_observation_count: number;
+      correlations: Record<string, { status: string; coefficient: number | null; case_count: number }>;
+      tag_slices: Record<string, {
+        case_count: number;
+        cer: number;
+        comparison_case_count: number;
+        comparison_cer: number | null;
+      }>;
+      limitations: string[];
+    };
+    preprocessing: {
+      decision: string;
+      evidence_status: string;
+      noise_tagged_case_count: number;
+      noise_tagged_cer: number | null;
+      non_noise_case_count: number;
+      non_noise_cer: number | null;
+    };
+  };
+  assert.equal(report.profiles.baseline.trial_count, 3);
+  assert.equal(report.profiles.baseline.observation_count, 30);
+  assert.equal(report.quality_analysis.status, "evaluated");
+  assert.equal(report.quality_analysis.independent_case_count, 10);
+  assert.equal(report.quality_analysis.audio_metrics_observation_count, 30);
+  assert.equal(report.quality_analysis.confidence_observation_count, 24);
+  assert.equal(
+    report.quality_analysis.correlations.dropped_packet_ratio_vs_cer?.status,
+    "insufficient_variation",
+  );
+  assert.equal(
+    report.quality_analysis.correlations.original_confidence_min_vs_cer?.case_count,
+    8,
+  );
+  assert.ok(report.quality_analysis.limitations.some((entry) => entry.includes("confidence")));
+  const noise = report.quality_analysis.tag_slices.noise;
+  assert.ok(noise);
+  assert.equal(noise.case_count, 2);
+  assert.equal(noise.comparison_case_count, 8);
+  assert.ok(noise.comparison_cer !== null && noise.cer < noise.comparison_cer);
+  assert.equal(report.preprocessing.decision, "not_adopted");
+  assert.equal(report.preprocessing.evidence_status, "noise_not_primary_in_dataset");
+  assert.equal(report.preprocessing.noise_tagged_case_count, 2);
+  assert.equal(report.preprocessing.non_noise_case_count, 8);
+  assert.ok(
+    report.preprocessing.noise_tagged_cer !== null &&
+    report.preprocessing.non_noise_cer !== null &&
+    report.preprocessing.noise_tagged_cer < report.preprocessing.non_noise_cer,
+  );
 });
 
 void test("追跡するPi runtime snapshotは識別子を含めず候補gateを未評価とする", () => {

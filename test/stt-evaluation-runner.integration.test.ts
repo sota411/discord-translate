@@ -206,6 +206,16 @@ void test("同じPCMを複数試行し、A〜Dの開始順を交替してcontext
       1, 1, 1, 1, 2, 2, 2, 2,
     ]);
     assert.ok(observations.results.every((result) => result.transcript === "ヴァロラント"));
+    for (const result of observations.results) {
+      assert.ok(result.audio_metrics);
+      assert.equal(result.audio_metrics.rms_dbfs, null);
+      assert.equal(result.audio_metrics.peak_dbfs, null);
+      assert.equal(result.audio_metrics.clipped_sample_ratio, 0);
+      assert.equal(result.audio_metrics.near_silence_ratio, 1);
+      assert.equal(result.audio_metrics.original_token_count, 1);
+      assert.equal(result.audio_metrics.original_confidence_mean, 0.95);
+      assert.equal(result.audio_metrics.original_confidence_min, 0.95);
+    }
     assert.deepEqual(
       observations.results.map((result) => result.configuration.manual_finalize_fallback_ms),
       [100, 100, 600, 600, 100, 600, 600, 100],

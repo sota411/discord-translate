@@ -227,7 +227,14 @@ manifestには、48 kHz・mono・PCM s16le音声、正解文、期待する言�
 
 追跡する評価レポートは指標と入力SHA-256の監査証拠であり、過去の人工音声corpusそのものではない。manifest、PCM、packet trace、本文入りobservationsは`.data/stt-eval/`のlocal dataであり、Gitには含めない。過去の数値を厳密に再実行するには、公開レポートのSHA-256と一致するlocal dataが必要である。clean checkoutだけでは再実行できない。別の入力で実行した場合は、過去レポートの再現ではなく新しい実験として扱う。
 
-`observations.json`には認識本文が含まれるため、0600でローカル保存し、公開または共有しない。`report.json`には本文と音声を含めず、入力のSHA-256、試行番号、CER、固有名詞再現率、言語再現率、分割数、平均・p50・p95遅延、受理した境界の種別・確定理由・本文有無、CPU、packet欠落を出力する。別の端末で採点し直す場合は、次のコマンドを使う。音声かpacket traceが変わっていれば、SHA-256の不一致で失敗する。
+`observations.json`には認識本文が含まれるため、0600でローカル保存し、公開または共有しない。`report.json`には本文と音声を含めず、次の情報を出力する。
+
+- 入力のSHA-256と試行番号
+- CER、固有名詞・言語の再現率、分割数
+- 確定遅延、境界の種別・理由、CPU、packet欠落
+- RMS、peak、音割れ率、無音率、原文confidence
+
+baselineでは音質指標とCERの相関もcase単位で集計する。別の端末で採点し直す場合は、次のコマンドを使う。音声かpacket traceが変わっていれば、SHA-256の不一致で失敗する。
 
 ```bash
 pnpm stt:evaluate score \
@@ -265,7 +272,9 @@ pnpm stt:evaluate probe-endpoint-only \
 
 同日、400 msのfallbackを変えずにSonioxのlevel 0と1も各3試行した。level 1は現行Aより全体CERを58.8%改善し、p95追加遅延は+177 ms、Soniox endpoint比率は56.4%だった。ただし、固有名詞再現率はAと同じ66.7%で改善せず、全体の言語再現率は63.6%から60.6%へ下がった。不自然な分割もAの0件、level 0の6件に対して9件だった。固有名詞のgateが失敗し、Pi実機も未評価なので、level 1は本番へ採用していない。詳細は[本文非含有レポート](./docs/evaluation/stt-endpoint-latency-level-2026-08-26.json)に残している。
 
-これらの結果は人工音声に限られる。実際のDiscord音声、複数人通話、候補版を動かしたRaspberry PiのCPUと音声詰まりは未検証であり、本番で改善した証拠にはならない。Pi現行版で実際に取得できた約68.9時間のCPU参考値は[本文非含有snapshot](./docs/evaluation/pi-runtime-baseline-2026-08-25.json)へ分離した。RNNoiseやDeepFilterNetも、ノイズ音声で10%以上改善し、クリーン音声を悪化させない実測がないため追加していない。標準経路は引き続き無加工PCMである。
+音質との関係も、同じ10件の現行baselineを3試行して確認した。PCM品質の4指標は30観測すべてで取得した。原文confidenceは、原文tokenが返った24観測で取得した。noiseタグ2件のCERは0.50で、非noise 8件の2.063を下回ったため、ノイズを主要因とは判断していない。音割れ率とCERの相関は`r=0.651`、最低confidenceとCERの相関は`r=-0.759`だった。前者は音割れ1件、後者はconfidenceを取得できた8件だけの結果である。どちらも因果関係または標準採用の根拠にはしない。詳細は[音質相関レポート](./docs/evaluation/stt-audio-quality-correlation-2026-08-26.json)に残している。
+
+これらの結果は人工音声に限られる。実際のDiscord音声、複数人通話、候補版を動かしたRaspberry PiのCPUと音声詰まりは未検証であり、本番で改善した証拠にはならない。Pi現行版で実際に取得できた約68.9時間のCPU参考値は[本文非含有snapshot](./docs/evaluation/pi-runtime-baseline-2026-08-25.json)へ分離した。RNNoiseやDeepFilterNetは、今回の入力でノイズが主要因ではなく、前処理による10%以上の改善も未確認なので追加していない。標準経路は引き続き無加工PCMである。
 
 ## 詳細資料
 
@@ -277,6 +286,7 @@ pnpm stt:evaluate probe-endpoint-only \
 - [2026-08-26 STT発話確定時間評価（本文非含有）](./docs/evaluation/stt-endpoint-timing-2026-08-26.json)
 - [2026-08-26 STT認識context・400 ms評価（本文非含有）](./docs/evaluation/stt-context-endpoint-400-2026-08-26.json)
 - [2026-08-26 STT endpoint latency level評価（本文非含有）](./docs/evaluation/stt-endpoint-latency-level-2026-08-26.json)
+- [2026-08-26 STT音質相関評価（本文非含有）](./docs/evaluation/stt-audio-quality-correlation-2026-08-26.json)
 - [2026-08-26 endpoint-only timeout（本文非含有）](./docs/evaluation/stt-endpoint-only-failure-2026-08-26.json)
 - [公開前セキュリティ監査](./security_best_practices_report.md)
 - [環境変数の配布例](./.env.example)

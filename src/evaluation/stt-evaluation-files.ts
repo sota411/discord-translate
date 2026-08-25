@@ -5,6 +5,10 @@ import path from "node:path";
 import { z } from "zod";
 
 import {
+  SttAudioMetricsAccumulator,
+  type SttAudioMetricsLogFields,
+} from "../observability/stt-audio-metrics.js";
+import {
   parseSttEvaluationManifest,
   type SttEvaluationManifest,
   type SttEvaluationObservations,
@@ -38,6 +42,11 @@ export type SttEvaluationPacket = {
   audio: Buffer;
 };
 
+export type SttEvaluationPcmMetrics = Pick<
+  SttAudioMetricsLogFields,
+  "rms_dbfs" | "peak_dbfs" | "clipped_sample_ratio" | "near_silence_ratio"
+>;
+
 export type LoadedSttEvaluationCase = {
   definition: SttEvaluationManifest["cases"][number];
   audioPath: string;
@@ -45,6 +54,7 @@ export type LoadedSttEvaluationCase = {
   audioSha256: string;
   packetTraceSha256: string;
   packets: SttEvaluationPacket[];
+  pcmMetrics: SttEvaluationPcmMetrics;
   droppedPacketCount: number;
   durationMs: number;
 };
@@ -71,6 +81,23 @@ export type SttEvaluationDatasetEvidence = {
 
 function hash(value: Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function measurePcmMetrics(
+  packets: readonly SttEvaluationPacket[],
+): SttEvaluationPcmMetrics {
+  const accumulator = new SttAudioMetricsAccumulator();
+  for (const packet of packets) accumulator.recordDecodedPacket(packet.audio);
+  const measured = accumulator.take({
+    traceId: "stt-evaluation",
+    finalizeReason: "speaking_end",
+  });
+  return {
+    rms_dbfs: measured.rms_dbfs,
+    peak_dbfs: measured.peak_dbfs,
+    clipped_sample_ratio: measured.clipped_sample_ratio,
+    near_silence_ratio: measured.near_silence_ratio,
+  };
 }
 
 async function readRequiredFile(filePath: string, label: string): Promise<Buffer> {
@@ -139,6 +166,7 @@ export async function loadSttEvaluationDataset(
       audioSha256: hash(audio),
       packetTraceSha256: hash(packetTraceBytes),
       packets,
+      pcmMetrics: measurePcmMetrics(packets),
       droppedPacketCount: packetTrace.dropped_packet_count,
       durationMs: lastPacket.at_ms + lastPacketDurationMs,
     });
@@ -176,6 +204,7 @@ export function assertSttEvaluationDatasetEvidenceMatches(
     throw new Error("STT評価観測結果のdataset証拠が指定されたmanifest・PCM・packet traceと一致しません");
   }
   const evidenceByCase = new Map(expected.cases.map((entry) => [entry.case_id, entry]));
+  const loadedCaseById = new Map(dataset.cases.map((entry) => [entry.definition.id, entry]));
   for (const result of observations.results) {
     const evidence = evidenceByCase.get(result.case_id);
     if (
@@ -183,6 +212,19 @@ export function assertSttEvaluationDatasetEvidenceMatches(
       result.dropped_packet_count !== evidence.dropped_packet_count
     ) {
       throw new Error(`case「${result.case_id}」のpacket観測数がdataset証拠と一致しません`);
+    }
+    if (result.audio_metrics) {
+      const loadedCase = loadedCaseById.get(result.case_id);
+      if (!loadedCase) throw new Error(`case「${result.case_id}」のPCM品質を検証できません`);
+      const observedPcmMetrics: SttEvaluationPcmMetrics = {
+        rms_dbfs: result.audio_metrics.rms_dbfs,
+        peak_dbfs: result.audio_metrics.peak_dbfs,
+        clipped_sample_ratio: result.audio_metrics.clipped_sample_ratio,
+        near_silence_ratio: result.audio_metrics.near_silence_ratio,
+      };
+      if (JSON.stringify(observedPcmMetrics) !== JSON.stringify(loadedCase.pcmMetrics)) {
+        throw new Error(`case「${result.case_id}」のPCM品質が元音声からの再計算と一致しません`);
+      }
     }
   }
 }

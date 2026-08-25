@@ -155,6 +155,31 @@ void test("観測時と採点時のPCMが違う場合はSHA-256証拠で拒否�
   assert.throws(() => readFileSync(paths.outputPath, "utf8"), /ENOENT/u);
 });
 
+void test("observationsのPCM品質値が元音声からの再計算と違う場合は拒否する", () => {
+  const paths = writeDataset();
+  const observations = JSON.parse(readFileSync(paths.observationsPath, "utf8")) as {
+    results: Record<string, unknown>[];
+  };
+  const result = observations.results[0];
+  assert.ok(result);
+  result.audio_metrics = {
+    rms_dbfs: -20,
+    peak_dbfs: -1,
+    clipped_sample_ratio: 0,
+    near_silence_ratio: 0,
+    original_token_count: 0,
+    original_confidence_mean: null,
+    original_confidence_min: null,
+  };
+  writeFileSync(paths.observationsPath, JSON.stringify(observations));
+
+  const scored = runScore(paths);
+
+  assert.notEqual(scored.status, 0);
+  assert.match(scored.stderr, /PCM品質.*一致しません/u);
+  assert.throws(() => readFileSync(paths.outputPath, "utf8"), /ENOENT/u);
+});
+
 void test("評価出力のsymlinkからmanifestを上書きしない", () => {
   const paths = writeDataset();
   const manifestBefore = readFileSync(paths.manifestPath, "utf8");

@@ -205,6 +205,43 @@ const evaluationManifestSchema = z.object({
   }
 });
 
+const nullableDbfsSchema = z.number().max(0).nullable();
+const nullableRatioSchema = z.number().min(0).max(1).nullable();
+const nullableConfidenceSchema = z.number().min(0).max(1).nullable();
+const evaluationAudioMetricsSchema = z.object({
+  rms_dbfs: nullableDbfsSchema,
+  peak_dbfs: nullableDbfsSchema,
+  clipped_sample_ratio: nullableRatioSchema,
+  near_silence_ratio: nullableRatioSchema,
+  original_token_count: z.number().int().nonnegative(),
+  original_confidence_mean: nullableConfidenceSchema,
+  original_confidence_min: nullableConfidenceSchema,
+}).strict().superRefine((value, context) => {
+  const hasMean = value.original_confidence_mean !== null;
+  const hasMinimum = value.original_confidence_min !== null;
+  if (
+    (value.original_token_count === 0 && (hasMean || hasMinimum)) ||
+    (value.original_token_count > 0 && (!hasMean || !hasMinimum))
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["original_token_count"],
+      message: "confidenceの有無とoriginal_token_countを一致させてください",
+    });
+  }
+  if (
+    value.original_confidence_mean !== null &&
+    value.original_confidence_min !== null &&
+    value.original_confidence_min > value.original_confidence_mean
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["original_confidence_min"],
+      message: "original_confidence_minはmean以下にしてください",
+    });
+  }
+});
+
 const evaluationResultSchema = z.object({
   trial: z.number().int().positive().default(1),
   case_id: z.string().min(1),
@@ -227,6 +264,7 @@ const evaluationResultSchema = z.object({
   cpu_percent: z.number().nonnegative(),
   decoded_packet_count: z.number().int().positive(),
   dropped_packet_count: z.number().int().nonnegative(),
+  audio_metrics: evaluationAudioMetricsSchema.optional(),
   configuration: sttEvaluationConfigurationSchema,
 }).strict().superRefine((value, context) => {
   if (new Set(value.recognized_languages).size !== value.recognized_languages.length) {
@@ -293,6 +331,7 @@ export type SttEvaluationExperiment = z.infer<typeof evaluationExperimentSchema>
 export type SttEvaluationProfile = z.infer<typeof evaluationProfileSchema>;
 type SttEvaluationCase = SttEvaluationManifest["cases"][number];
 type SttEvaluationResult = SttEvaluationObservations["results"][number];
+type SttEvaluationAudioMetrics = z.infer<typeof evaluationAudioMetricsSchema>;
 
 export const sttEvaluationExperimentProfileMappings = {
   context_endpoint: {
@@ -354,6 +393,7 @@ type CaseScore = {
   decoded_packet_count: number;
   dropped_packet_count: number;
   dropped_packet_ratio: number;
+  audio_metrics: SttEvaluationAudioMetrics | null;
   finalizations: {
     kind: "endpoint" | "finalized";
     reason:
@@ -417,6 +457,43 @@ type ProfileComparison = {
   };
 };
 
+type CorrelationStatus = "evaluated" | "insufficient_data" | "insufficient_variation";
+
+type QualityCorrelation = {
+  status: CorrelationStatus;
+  coefficient: number | null;
+  case_count: number;
+};
+
+type QualityTagSlice = {
+  case_count: number;
+  observation_count: number;
+  cer: number;
+  comparison_case_count: number;
+  comparison_observation_count: number;
+  comparison_cer: number | null;
+};
+
+type QualityAnalysis = {
+  status: "evaluated" | "partial" | "not_evaluated";
+  source_profile: "baseline";
+  independent_case_count: number;
+  observation_count: number;
+  audio_metrics_observation_count: number;
+  confidence_observation_count: number;
+  correlations: {
+    rms_dbfs_vs_cer: QualityCorrelation;
+    peak_dbfs_vs_cer: QualityCorrelation;
+    clipped_sample_ratio_vs_cer: QualityCorrelation;
+    near_silence_ratio_vs_cer: QualityCorrelation;
+    dropped_packet_ratio_vs_cer: QualityCorrelation;
+    original_confidence_mean_vs_cer: QualityCorrelation;
+    original_confidence_min_vs_cer: QualityCorrelation;
+  };
+  tag_slices: Readonly<Record<string, QualityTagSlice>>;
+  limitations: readonly string[];
+};
+
 export type SttEvaluationReport = {
   version: 1;
   generated_at: string;
@@ -424,8 +501,17 @@ export type SttEvaluationReport = {
   profile_mapping: Readonly<Record<string, SttEvaluationProfile>>;
   profiles: Partial<Record<SttEvaluationProfile, ProfileScore>>;
   comparisons: Partial<Record<SttEvaluationProfile, ProfileComparison>>;
+  quality_analysis: QualityAnalysis;
   preprocessing: {
     decision: "not_adopted";
+    evidence_status:
+      | "noise_not_primary_in_dataset"
+      | "preprocessing_ab_required"
+      | "not_evaluated";
+    noise_tagged_case_count: number;
+    noise_tagged_cer: number | null;
+    non_noise_case_count: number;
+    non_noise_cer: number | null;
     reason: string;
   };
 };
@@ -526,6 +612,7 @@ function scoreCase(evaluationCase: SttEvaluationCase, result: SttEvaluationResul
     dropped_packet_count: result.dropped_packet_count,
     dropped_packet_ratio: result.dropped_packet_count /
       (result.decoded_packet_count + result.dropped_packet_count),
+    audio_metrics: result.audio_metrics ?? null,
     finalizations: result.finalizations.map((finalization) => ({
       kind: finalization.kind,
       reason: finalization.reason,
@@ -539,6 +626,221 @@ function microCer(scores: readonly CaseScore[]): number {
   const referenceCharacters = scores.reduce((sum, score) => sum + score.reference_characters, 0);
   if (referenceCharacters === 0) throw new Error("CERの正解文字数が0です");
   return scores.reduce((sum, score) => sum + score.character_edits, 0) / referenceCharacters;
+}
+
+type QualityCase = {
+  case_id: string;
+  cer: number;
+  rms_dbfs: number | null;
+  peak_dbfs: number | null;
+  clipped_sample_ratio: number | null;
+  near_silence_ratio: number | null;
+  dropped_packet_ratio: number;
+  original_confidence_mean: number | null;
+  original_confidence_min: number | null;
+};
+
+function meanNullable(values: readonly (number | null)[]): number | null {
+  const measured = values.filter((value): value is number => value !== null);
+  return measured.length === 0 ? null : mean(measured);
+}
+
+function qualityCases(scores: readonly CaseScore[]): QualityCase[] {
+  const scoresByCase = new Map<string, CaseScore[]>();
+  for (const score of scores) {
+    const entries = scoresByCase.get(score.case_id) ?? [];
+    entries.push(score);
+    scoresByCase.set(score.case_id, entries);
+  }
+  return [...scoresByCase].map(([caseId, entries]) => {
+    const metrics = entries
+      .map((entry) => entry.audio_metrics)
+      .filter((entry): entry is SttEvaluationAudioMetrics => entry !== null);
+    const confidenceTokenCount = metrics.reduce(
+      (sum, metric) => sum + metric.original_token_count,
+      0,
+    );
+    const confidenceWeightedSum = metrics.reduce((sum, metric) => (
+      sum + (metric.original_confidence_mean ?? 0) * metric.original_token_count
+    ), 0);
+    const confidenceMinimums = metrics
+      .map((metric) => metric.original_confidence_min)
+      .filter((value): value is number => value !== null);
+    const decodedPackets = entries.reduce((sum, entry) => sum + entry.decoded_packet_count, 0);
+    const droppedPackets = entries.reduce((sum, entry) => sum + entry.dropped_packet_count, 0);
+    return {
+      case_id: caseId,
+      cer: microCer(entries),
+      rms_dbfs: meanNullable(metrics.map((metric) => metric.rms_dbfs)),
+      peak_dbfs: meanNullable(metrics.map((metric) => metric.peak_dbfs)),
+      clipped_sample_ratio: meanNullable(
+        metrics.map((metric) => metric.clipped_sample_ratio),
+      ),
+      near_silence_ratio: meanNullable(metrics.map((metric) => metric.near_silence_ratio)),
+      dropped_packet_ratio: droppedPackets / (decodedPackets + droppedPackets),
+      original_confidence_mean: confidenceTokenCount === 0
+        ? null
+        : confidenceWeightedSum / confidenceTokenCount,
+      original_confidence_min: confidenceMinimums.length === 0
+        ? null
+        : Math.min(...confidenceMinimums),
+    };
+  });
+}
+
+function correlation(
+  cases: readonly QualityCase[],
+  metric: (qualityCase: QualityCase) => number | null,
+): QualityCorrelation {
+  const pairs = cases.flatMap((qualityCase) => {
+    const value = metric(qualityCase);
+    return value === null ? [] : [{ value, cer: qualityCase.cer }];
+  });
+  if (pairs.length < 3) {
+    return { status: "insufficient_data", coefficient: null, case_count: pairs.length };
+  }
+  const metricMean = mean(pairs.map((pair) => pair.value));
+  const cerMean = mean(pairs.map((pair) => pair.cer));
+  const numerator = pairs.reduce(
+    (sum, pair) => sum + (pair.value - metricMean) * (pair.cer - cerMean),
+    0,
+  );
+  const metricSquareSum = pairs.reduce(
+    (sum, pair) => sum + (pair.value - metricMean) ** 2,
+    0,
+  );
+  const cerSquareSum = pairs.reduce(
+    (sum, pair) => sum + (pair.cer - cerMean) ** 2,
+    0,
+  );
+  if (metricSquareSum === 0 || cerSquareSum === 0) {
+    return {
+      status: "insufficient_variation",
+      coefficient: null,
+      case_count: pairs.length,
+    };
+  }
+  return {
+    status: "evaluated",
+    coefficient: Math.round(
+      (numerator / Math.sqrt(metricSquareSum * cerSquareSum)) * 1_000_000,
+    ) / 1_000_000,
+    case_count: pairs.length,
+  };
+}
+
+function createQualityAnalysis(
+  manifest: SttEvaluationManifest,
+  baseline: ProfileScore,
+): QualityAnalysis {
+  const caseIdsByTag = new Map<string, Set<string>>();
+  for (const evaluationCase of manifest.cases) {
+    for (const tag of evaluationCase.tags) {
+      const caseIds = caseIdsByTag.get(tag) ?? new Set<string>();
+      caseIds.add(evaluationCase.id);
+      caseIdsByTag.set(tag, caseIds);
+    }
+  }
+  const tagSlices: Record<string, QualityTagSlice> = {};
+  for (const [tag, caseIds] of [...caseIdsByTag].sort(([left], [right]) => (
+    left.localeCompare(right, "en")
+  ))) {
+    const tagged = baseline.cases.filter((score) => caseIds.has(score.case_id));
+    const comparison = baseline.cases.filter((score) => !caseIds.has(score.case_id));
+    tagSlices[tag] = {
+      case_count: caseIds.size,
+      observation_count: tagged.length,
+      cer: microCer(tagged),
+      comparison_case_count: manifest.cases.length - caseIds.size,
+      comparison_observation_count: comparison.length,
+      comparison_cer: comparison.length === 0 ? null : microCer(comparison),
+    };
+  }
+  const cases = qualityCases(baseline.cases);
+  const audioMetricsObservationCount = baseline.cases
+    .filter((score) => score.audio_metrics !== null).length;
+  const confidenceObservationCount = baseline.cases.filter((score) => (
+    score.audio_metrics?.original_confidence_mean !== null &&
+    score.audio_metrics?.original_confidence_mean !== undefined
+  )).length;
+  return {
+    status: audioMetricsObservationCount === 0
+      ? "not_evaluated"
+      : audioMetricsObservationCount === baseline.observation_count
+        ? "evaluated"
+        : "partial",
+    source_profile: "baseline",
+    independent_case_count: cases.length,
+    observation_count: baseline.observation_count,
+    audio_metrics_observation_count: audioMetricsObservationCount,
+    confidence_observation_count: confidenceObservationCount,
+    correlations: {
+      rms_dbfs_vs_cer: correlation(cases, (entry) => entry.rms_dbfs),
+      peak_dbfs_vs_cer: correlation(cases, (entry) => entry.peak_dbfs),
+      clipped_sample_ratio_vs_cer: correlation(
+        cases,
+        (entry) => entry.clipped_sample_ratio,
+      ),
+      near_silence_ratio_vs_cer: correlation(cases, (entry) => entry.near_silence_ratio),
+      dropped_packet_ratio_vs_cer: correlation(cases, (entry) => entry.dropped_packet_ratio),
+      original_confidence_mean_vs_cer: correlation(
+        cases,
+        (entry) => entry.original_confidence_mean,
+      ),
+      original_confidence_min_vs_cer: correlation(
+        cases,
+        (entry) => entry.original_confidence_min,
+      ),
+    },
+    tag_slices: tagSlices,
+    limitations: [
+      "同一人工音声の複数試行は独立標本とみなさず、相関係数はcase単位へ集約しています。",
+      "相関係数は因果関係を示しません。少数caseの結果は実Discord音声で再確認が必要です。",
+      "packet欠落がない、または指標が一定の場合は相関を評価できません。",
+      ...(confidenceObservationCount < baseline.observation_count
+        ? ["原文tokenが返らずconfidenceを取得できない観測は、confidenceとCERの相関から除外しています。"]
+        : []),
+    ],
+  };
+}
+
+function createPreprocessingDecision(
+  qualityAnalysis: QualityAnalysis,
+): SttEvaluationReport["preprocessing"] {
+  const noise = qualityAnalysis.tag_slices.noise;
+  const noiseCer = noise?.cer ?? null;
+  const nonNoiseCer = noise?.comparison_cer ?? null;
+  if (!noise || noiseCer === null || nonNoiseCer === null) {
+    return {
+      decision: "not_adopted",
+      evidence_status: "not_evaluated",
+      noise_tagged_case_count: noise?.case_count ?? 0,
+      noise_tagged_cer: noiseCer,
+      non_noise_case_count: noise?.comparison_case_count ?? 0,
+      non_noise_cer: nonNoiseCer,
+      reason: "noiseタグと非noise音声の両方が揃っていないため、前処理を標準採用しません。",
+    };
+  }
+  if (noiseCer <= nonNoiseCer) {
+    return {
+      decision: "not_adopted",
+      evidence_status: "noise_not_primary_in_dataset",
+      noise_tagged_case_count: noise.case_count,
+      noise_tagged_cer: noiseCer,
+      non_noise_case_count: noise.comparison_case_count,
+      non_noise_cer: nonNoiseCer,
+      reason: "同一人工音声ではnoiseタグのCERが非noise音声を上回らず、ノイズが主要因という根拠がないため、RNNoise等を標準採用しません。",
+    };
+  }
+  return {
+    decision: "not_adopted",
+    evidence_status: "preprocessing_ab_required",
+    noise_tagged_case_count: noise.case_count,
+    noise_tagged_cer: noiseCer,
+    non_noise_case_count: noise.comparison_case_count,
+    non_noise_cer: nonNoiseCer,
+    reason: "noiseタグのCERが高いため、前処理なしとのA/B評価で10%以上の改善とクリーン音声の非悪化を確認するまで標準採用しません。",
+  };
 }
 
 function aggregateRatio(
@@ -734,6 +1036,7 @@ export function createSttEvaluationReport(
     const candidate = profiles[profile];
     if (candidate) comparisons[profile] = compareProfile(baseline, candidate);
   }
+  const qualityAnalysis = createQualityAnalysis(manifest, baseline);
   return {
     version: 1,
     generated_at: generatedAt.toISOString(),
@@ -741,9 +1044,7 @@ export function createSttEvaluationReport(
     profile_mapping: profileMapping,
     profiles,
     comparisons,
-    preprocessing: {
-      decision: "not_adopted",
-      reason: "前処理なしを基準とし、ノイズ音声のCER改善とクリーン音声の非悪化を実測するまで標準採用しません。",
-    },
+    quality_analysis: qualityAnalysis,
+    preprocessing: createPreprocessingDecision(qualityAnalysis),
   };
 }

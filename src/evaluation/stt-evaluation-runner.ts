@@ -12,6 +12,7 @@ import {
   type SttBoundaryKind,
 } from "../audio/stt-turn-finalizer.js";
 import { SonioxSttFactory } from "../soniox/control.js";
+import type { OriginalConfidenceSummary } from "../translation/token-assembler.js";
 import { createSttEvaluationDatasetEvidence } from "./stt-evaluation-files.js";
 import type {
   LoadedSttEvaluationCase,
@@ -131,6 +132,21 @@ function cpuPercent(startedAt: number, initialUsage: NodeJS.CpuUsage): number {
   return (usage.user + usage.system) / elapsedMicroseconds * 100;
 }
 
+function summarizeOriginalConfidence(
+  values: readonly number[],
+): OriginalConfidenceSummary | undefined {
+  if (values.length === 0) return undefined;
+  return {
+    tokenCount: values.length,
+    mean: Math.round(mean(values) * 10_000) / 10_000,
+    min: Math.round(Math.min(...values) * 10_000) / 10_000,
+  };
+}
+
+function mean(values: readonly number[]): number {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
 async function runCase(
   client: SonioxNodeClient,
   dataset: LoadedSttEvaluationDataset,
@@ -171,6 +187,7 @@ async function runCase(
   const recognizedLanguages = new Set<"ja" | "ko">();
   const segments: string[] = [];
   const finalizations: SttEvaluationRunResult["finalizations"] = [];
+  const originalConfidences: number[] = [];
   let pendingText = "";
   let lastAudioAt: number | undefined;
   let lastPacketSent = false;
@@ -231,6 +248,7 @@ async function runCase(
       if (!token.is_final || token.translation_status !== "original") continue;
       pendingText += token.text;
       if (isEvaluationLanguage(token.language)) recognizedLanguages.add(token.language);
+      originalConfidences.push(token.confidence);
     }
   };
   const handleBoundary = (kind: SttBoundaryKind): void => {
@@ -310,6 +328,7 @@ async function runCase(
         `trial「${String(trial)}」case「${evaluationCase.definition.id}」profile「${profile}」の確定遅延を取得できませんでした`,
       );
     }
+    const originalConfidence = summarizeOriginalConfidence(originalConfidences);
     return {
       trial,
       case_id: evaluationCase.definition.id,
@@ -321,6 +340,12 @@ async function runCase(
       cpu_percent: measuredCpuPercent,
       decoded_packet_count: evaluationCase.packets.length,
       dropped_packet_count: evaluationCase.droppedPacketCount,
+      audio_metrics: {
+        ...evaluationCase.pcmMetrics,
+        original_token_count: originalConfidence?.tokenCount ?? 0,
+        original_confidence_mean: originalConfidence?.mean ?? null,
+        original_confidence_min: originalConfidence?.min ?? null,
+      },
       configuration,
     };
   } finally {
