@@ -183,6 +183,60 @@ void test("認識contextを有効にするとgeneralと重複除去したASR ter
   );
 });
 
+void test("明示した認識termsは翻訳用語から導出せず、そのまま別欄へ送る", () => {
+  let received: Record<string, unknown> | undefined;
+  const factory = new SonioxSttFactory(
+    {
+      realtime: {
+        stt: (input: Record<string, unknown>) => {
+          received = input;
+          return {};
+        },
+      },
+    } as never,
+    "stt-rt-v5",
+    false,
+    { recognitionTermsEnabled: true, endpointLatencyAdjustmentLevel: 1 },
+  );
+
+  factory.create(
+    "ja-ko",
+    "request-1",
+    [{ source: "テスト翻訳元", target: "테스트번역대상" }],
+    ["テスト固有語アルファ", "DemoVoice", "테스트고유어베타"],
+  );
+
+  assert.ok(received);
+  assert.deepEqual(received.context, {
+    terms: ["テスト固有語アルファ", "DemoVoice", "테스트고유어베타"],
+    translation_terms: [{ source: "テスト翻訳元", target: "테스트번역대상" }],
+  });
+  assert.equal(received.endpoint_latency_adjustment_level, 1);
+});
+
+void test("明示した認識termsがSoniox context上限を超えたら接続作成前に拒否する", () => {
+  let requestCount = 0;
+  const factory = new SonioxSttFactory(
+    {
+      realtime: {
+        stt: () => {
+          requestCount += 1;
+          return {};
+        },
+      },
+    } as never,
+    "stt-rt-v5",
+    false,
+    { recognitionTermsEnabled: true },
+  );
+
+  assert.throws(
+    () => factory.create("ja-ko", "request-1", [], ["語".repeat(10_001)]),
+    /10,000文字上限/u,
+  );
+  assert.equal(requestCount, 0);
+});
+
 function withTestDeadline<T>(operation: Promise<T>, timeoutMs = 50): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("test operation did not settle")), timeoutMs);

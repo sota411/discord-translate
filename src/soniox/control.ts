@@ -235,6 +235,7 @@ export class SonioxSttFactory {
     pair: LanguagePair,
     requestRef: string,
     translationTerms: readonly TranslationTerm[],
+    recognitionTerms?: readonly string[],
   ): {
     session: RealtimeSttSession;
     initialTextCharacterCount: number;
@@ -246,6 +247,7 @@ export class SonioxSttFactory {
       this.#generalContextEnabled,
       this.#recognitionTermsEnabled,
       this.#recognitionTermScope,
+      recognitionTerms,
     );
     const session = this.#client.realtime.stt({
       model: this.#model,

@@ -1,0 +1,4101 @@
+{
+  "version": 1,
+  "generated_at": "2026-08-25T20:07:38.106Z",
+  "experiment": "recognition_catalog_level1",
+  "profile_mapping": {
+    "A": "baseline",
+    "B": "endpoint_fallback_400_level1",
+    "C": "endpoint_fallback_400_level1_catalog_terms"
+  },
+  "profiles": {
+    "baseline": {
+      "case_count": 10,
+      "trial_count": 3,
+      "observation_count": 30,
+      "preprocessing": "none",
+      "configuration": {
+        "recognition_context_enabled": false,
+        "endpoint_mode": "manual_early",
+        "discord_speaking_end_delay_ms": 100,
+        "manual_finalize_fallback_ms": 100,
+        "soniox_max_endpoint_delay_ms": 2000,
+        "soniox_endpoint_latency_adjustment_level": null,
+        "soniox_endpoint_sensitivity": null,
+        "endpoint_silence_chunk_ms": null,
+        "preprocessing": "none"
+      },
+      "cer": 1.6007326007326008,
+      "clean_cer": 1.8958333333333333,
+      "key_term_recall": 0.75,
+      "language_recall": 0.6060606060606061,
+      "language_switch_recall": 0.5,
+      "code_switch_cer": 2.4444444444444446,
+      "unnatural_split_count": 0,
+      "latency_ms": {
+        "mean": 351.57516649999064,
+        "p50": 384.93965299997944,
+        "p95": 485.00688900001114
+      },
+      "finalization": {
+        "observed_boundary_count": 50,
+        "adoption_boundary_count": 30,
+        "observed_endpoint_count": 30,
+        "observed_finalized_count": 20,
+        "soniox_endpoint_count": 4,
+        "manual_fallback_count": 26,
+        "soniox_endpoint_ratio": 0.13333333333333333
+      },
+      "cpu_percent": {
+        "mean": 1.116116962673638,
+        "p95": 1.9175977824410513
+      },
+      "packets": {
+        "decoded_mean": 239.9,
+        "dropped_mean": 0,
+        "dropped_ratio": 0
+      },
+      "cases": [
+        {
+          "trial": 1,
+          "case_id": "ja-clean-game",
+          "cer": 3.7142857142857144,
+          "character_edits": 52,
+          "reference_characters": 14,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 366,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.298,
+            "peak_dbfs": -0.778,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.163934,
+            "original_token_count": 46,
+            "original_confidence_mean": 0.8927,
+            "original_confidence_min": 0.34
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 324.37780999999904,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ko-clean-game",
+          "cer": 0.1111111111111111,
+          "character_edits": 1,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 125,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -20.362,
+            "peak_dbfs": -3.188,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.208,
+            "original_token_count": 11,
+            "original_confidence_mean": 0.9395,
+            "original_confidence_min": 0.615
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 391.16491600000154,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-short",
+          "cer": 1,
+          "character_edits": 2,
+          "reference_characters": 2,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 36,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -26.001,
+            "peak_dbfs": -10.1,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.555556,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.7855,
+            "original_confidence_min": 0.632
+          },
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 441.1204810000054,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 507.18528499999957,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ko-short",
+          "cer": 1,
+          "character_edits": 1,
+          "reference_characters": 1,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 40,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -22.313,
+            "peak_dbfs": -5.471,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.5,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.9685,
+            "original_confidence_min": 0.946
+          },
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 367.86889599999995,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 444.5685319999975,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-low-volume",
+          "cer": 1,
+          "character_edits": 10,
+          "reference_characters": 10,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 373,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -37.949,
+            "peak_dbfs": -19.573,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.184987,
+            "original_token_count": 0,
+            "original_confidence_mean": null,
+            "original_confidence_min": null
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 15.755619000003207,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 395.5106680000026,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ko-fan-noise",
+          "cer": 0.09090909090909091,
+          "character_edits": 1,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 132,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -18.472,
+            "peak_dbfs": -0.821,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0,
+            "original_token_count": 12,
+            "original_confidence_mean": 0.9211,
+            "original_confidence_min": 0.636
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 487.6427169999952,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-keyboard-noise",
+          "cer": 0.9090909090909091,
+          "character_edits": 10,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 348,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.332,
+            "peak_dbfs": -0.301,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.149425,
+            "original_token_count": 3,
+            "original_confidence_mean": 0.7273,
+            "original_confidence_min": 0.454
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 16.223365999991074,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 362.8750129999971,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-clipped",
+          "cer": 4.090909090909091,
+          "character_edits": 45,
+          "reference_characters": 11,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 370,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -7.184,
+            "peak_dbfs": 0,
+            "clipped_sample_ratio": 0.106835,
+            "near_silence_ratio": 0.191892,
+            "original_token_count": 43,
+            "original_confidence_mean": 0.8023,
+            "original_confidence_min": 0.187
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 373.24090199999046,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-pause-600ms",
+          "cer": 1,
+          "character_edits": 13,
+          "reference_characters": 13,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 384,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.953,
+            "peak_dbfs": -2.224,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.216146,
+            "original_token_count": 0,
+            "original_confidence_mean": null,
+            "original_confidence_min": null
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 6.613855999981752,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 346.52973300000303,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 384.93965299997944,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-ko-code-switch",
+          "cer": 2.4444444444444446,
+          "character_edits": 22,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 0.5,
+          "languages_recalled": 1,
+          "languages_expected": 2,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 225,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -20.512,
+            "peak_dbfs": -2.224,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.263393,
+            "original_token_count": 27,
+            "original_confidence_mean": 0.8739,
+            "original_confidence_min": 0.408
+          },
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 448.13152799999807,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 504.1916659999988,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-clean-game",
+          "cer": 3.7142857142857144,
+          "character_edits": 52,
+          "reference_characters": 14,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 366,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.298,
+            "peak_dbfs": -0.778,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.163934,
+            "original_token_count": 46,
+            "original_confidence_mean": 0.8923,
+            "original_confidence_min": 0.343
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 346.0794579999929,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ko-clean-game",
+          "cer": 0.1111111111111111,
+          "character_edits": 1,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 125,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -20.362,
+            "peak_dbfs": -3.188,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.208,
+            "original_token_count": 11,
+            "original_confidence_mean": 0.9402,
+            "original_confidence_min": 0.615
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 410.58400800000527,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-short",
+          "cer": 1,
+          "character_edits": 2,
+          "reference_characters": 2,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 36,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -26.001,
+            "peak_dbfs": -10.1,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.555556,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.7885,
+            "original_confidence_min": 0.632
+          },
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 466.04837000000407,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 539.0667339999927,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ko-short",
+          "cer": 1,
+          "character_edits": 1,
+          "reference_characters": 1,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 40,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -22.313,
+            "peak_dbfs": -5.471,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.5,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.964,
+            "original_confidence_min": 0.937
+          },
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 379.8168139999907,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 448.0110829999903,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-low-volume",
+          "cer": 1,
+          "character_edits": 10,
+          "reference_characters": 10,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 373,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -37.949,
+            "peak_dbfs": -19.573,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.184987,
+            "original_token_count": 0,
+            "original_confidence_mean": null,
+            "original_confidence_min": null
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 16.225027000007685,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 368.3718069999886,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ko-fan-noise",
+          "cer": 0.09090909090909091,
+          "character_edits": 1,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 132,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -18.472,
+            "peak_dbfs": -0.821,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0,
+            "original_token_count": 12,
+            "original_confidence_mean": 0.9206,
+            "original_confidence_min": 0.631
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 483.8919219999807,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-keyboard-noise",
+          "cer": 0.9090909090909091,
+          "character_edits": 10,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 348,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.332,
+            "peak_dbfs": -0.301,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.149425,
+            "original_token_count": 3,
+            "original_confidence_mean": 0.727,
+            "original_confidence_min": 0.453
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 13.19358199997805,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 376.89147299999604,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-clipped",
+          "cer": 4.090909090909091,
+          "character_edits": 45,
+          "reference_characters": 11,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 370,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -7.184,
+            "peak_dbfs": 0,
+            "clipped_sample_ratio": 0.106835,
+            "near_silence_ratio": 0.191892,
+            "original_token_count": 43,
+            "original_confidence_mean": 0.8036,
+            "original_confidence_min": 0.187
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 357.06026499997824,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-pause-600ms",
+          "cer": 1,
+          "character_edits": 13,
+          "reference_characters": 13,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 384,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.953,
+            "peak_dbfs": -2.224,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.216146,
+            "original_token_count": 0,
+            "original_confidence_mean": null,
+            "original_confidence_min": null
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 6.104798000014853,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 312.6882650000043,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 392.30704899999546,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-ko-code-switch",
+          "cer": 2.4444444444444446,
+          "character_edits": 22,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 0.5,
+          "languages_recalled": 1,
+          "languages_expected": 2,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 225,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -20.512,
+            "peak_dbfs": -2.224,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.263393,
+            "original_token_count": 27,
+            "original_confidence_mean": 0.8862,
+            "original_confidence_min": 0.27
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 439.93078999995487,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-clean-game",
+          "cer": 3.7142857142857144,
+          "character_edits": 52,
+          "reference_characters": 14,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 366,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.298,
+            "peak_dbfs": -0.778,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.163934,
+            "original_token_count": 46,
+            "original_confidence_mean": 0.8917,
+            "original_confidence_min": 0.326
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 335.8293790000025,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ko-clean-game",
+          "cer": 0.1111111111111111,
+          "character_edits": 1,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 125,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -20.362,
+            "peak_dbfs": -3.188,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.208,
+            "original_token_count": 11,
+            "original_confidence_mean": 0.9397,
+            "original_confidence_min": 0.615
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 390.42040499998257,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-short",
+          "cer": 1,
+          "character_edits": 2,
+          "reference_characters": 2,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 36,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -26.001,
+            "peak_dbfs": -10.1,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.555556,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.8,
+            "original_confidence_min": 0.661
+          },
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 447.07732699997723,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 516.7310179999913,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ko-short",
+          "cer": 1,
+          "character_edits": 1,
+          "reference_characters": 1,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 40,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -22.313,
+            "peak_dbfs": -5.471,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.5,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.969,
+            "original_confidence_min": 0.946
+          },
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 389.2699099999736,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 475.2359259999939,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-low-volume",
+          "cer": 1,
+          "character_edits": 10,
+          "reference_characters": 10,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 373,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -37.949,
+            "peak_dbfs": -19.573,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.184987,
+            "original_token_count": 0,
+            "original_confidence_mean": null,
+            "original_confidence_min": null
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 2.7963650000165217,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 369.3752450000029,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ko-fan-noise",
+          "cer": 0.09090909090909091,
+          "character_edits": 1,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 132,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -18.472,
+            "peak_dbfs": -0.821,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0,
+            "original_token_count": 12,
+            "original_confidence_mean": 0.8936,
+            "original_confidence_min": 0.492
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 485.00688900001114,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-keyboard-noise",
+          "cer": 0.9090909090909091,
+          "character_edits": 10,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 348,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.332,
+            "peak_dbfs": -0.301,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.149425,
+            "original_token_count": 3,
+            "original_confidence_mean": 0.7377,
+            "original_confidence_min": 0.459
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 19.585201999987476,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 377.7623729999759,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-clipped",
+          "cer": 1,
+          "character_edits": 11,
+          "reference_characters": 11,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 370,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -7.184,
+            "peak_dbfs": 0,
+            "clipped_sample_ratio": 0.106835,
+            "near_silence_ratio": 0.191892,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.7795,
+            "original_confidence_min": 0.574
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 9.514836000045761,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 336.93602900003316,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-pause-600ms",
+          "cer": 1,
+          "character_edits": 13,
+          "reference_characters": 13,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 384,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.953,
+            "peak_dbfs": -2.224,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.216146,
+            "original_token_count": 0,
+            "original_confidence_mean": null,
+            "original_confidence_min": null
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 6.314243999950122,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 318.53396500000963,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 358.77503599994816,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-ko-code-switch",
+          "cer": 2.4444444444444446,
+          "character_edits": 22,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 0.5,
+          "languages_recalled": 1,
+          "languages_expected": 2,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 225,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -20.512,
+            "peak_dbfs": -2.224,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.263393,
+            "original_token_count": 27,
+            "original_confidence_mean": 0.885,
+            "original_confidence_min": 0.258
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 454.8957639999571,
+              "has_text": true
+            }
+          ]
+        }
+      ]
+    },
+    "endpoint_fallback_400_level1": {
+      "case_count": 10,
+      "trial_count": 3,
+      "observation_count": 30,
+      "preprocessing": "none",
+      "configuration": {
+        "recognition_context_enabled": false,
+        "endpoint_mode": "soniox_primary",
+        "discord_speaking_end_delay_ms": 100,
+        "manual_finalize_fallback_ms": 300,
+        "soniox_max_endpoint_delay_ms": 1000,
+        "soniox_endpoint_latency_adjustment_level": 1,
+        "soniox_endpoint_sensitivity": 0,
+        "endpoint_silence_chunk_ms": 20,
+        "preprocessing": "none"
+      },
+      "cer": 0.8717948717948718,
+      "clean_cer": 0.9166666666666666,
+      "key_term_recall": 0.75,
+      "language_recall": 0.5151515151515151,
+      "language_switch_recall": 0.5,
+      "code_switch_cer": 2.2222222222222223,
+      "unnatural_split_count": 6,
+      "latency_ms": {
+        "mean": 314.028590055559,
+        "p50": 243.02647699999943,
+        "p95": 641.0750300000072
+      },
+      "finalization": {
+        "observed_boundary_count": 57,
+        "adoption_boundary_count": 36,
+        "observed_endpoint_count": 39,
+        "observed_finalized_count": 18,
+        "soniox_endpoint_count": 18,
+        "manual_fallback_count": 18,
+        "soniox_endpoint_ratio": 0.5
+      },
+      "cpu_percent": {
+        "mean": 1.0748730361613779,
+        "p95": 1.2627787019540027
+      },
+      "packets": {
+        "decoded_mean": 239.9,
+        "dropped_mean": 0,
+        "dropped_ratio": 0
+      },
+      "cases": [
+        {
+          "trial": 1,
+          "case_id": "ja-clean-game",
+          "cer": 0.5,
+          "character_edits": 7,
+          "reference_characters": 14,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 2,
+          "expected_segments": 1,
+          "unnatural_split_count": 1,
+          "decoded_packet_count": 366,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.298,
+            "peak_dbfs": -0.778,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.163934,
+            "original_token_count": 14,
+            "original_confidence_mean": 0.819,
+            "original_confidence_min": 0.21
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 3.202205999999933,
+              "has_text": false
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 14.408323999999993,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 209.63853899999958,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ko-clean-game",
+          "cer": 0.1111111111111111,
+          "character_edits": 1,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 125,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -20.362,
+            "peak_dbfs": -3.188,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.208,
+            "original_token_count": 11,
+            "original_confidence_mean": 0.9306,
+            "original_confidence_min": 0.554
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 243.02647699999943,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-short",
+          "cer": 1,
+          "character_edits": 2,
+          "reference_characters": 2,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 36,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -26.001,
+            "peak_dbfs": -10.1,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.555556,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.7375,
+            "original_confidence_min": 0.528
+          },
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 604.9484850000008,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 674.975606,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ko-short",
+          "cer": 1,
+          "character_edits": 1,
+          "reference_characters": 1,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 40,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -22.313,
+            "peak_dbfs": -5.471,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.5,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.9695,
+            "original_confidence_min": 0.941
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 613.1630299999961,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-low-volume",
+          "cer": 1,
+          "character_edits": 10,
+          "reference_characters": 10,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 373,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -37.949,
+            "peak_dbfs": -19.573,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.184987,
+            "original_token_count": 0,
+            "original_confidence_mean": null,
+            "original_confidence_min": null
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 3.9657050000023446,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 549.2103270000007,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ko-fan-noise",
+          "cer": 0.09090909090909091,
+          "character_edits": 1,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 132,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -18.472,
+            "peak_dbfs": -0.821,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0,
+            "original_token_count": 12,
+            "original_confidence_mean": 0.9194,
+            "original_confidence_min": 0.643
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 535.597741000005,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-keyboard-noise",
+          "cer": 0.9090909090909091,
+          "character_edits": 10,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 348,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.332,
+            "peak_dbfs": -0.301,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.149425,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.5615,
+            "original_confidence_min": 0.243
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 16.072193999993033,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 548.4316120000003,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-clipped",
+          "cer": 1,
+          "character_edits": 11,
+          "reference_characters": 11,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 370,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -7.184,
+            "peak_dbfs": 0,
+            "clipped_sample_ratio": 0.106835,
+            "near_silence_ratio": 0.191892,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.693,
+            "original_confidence_min": 0.401
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 17.270628000012948,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 604.7213610000035,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-pause-600ms",
+          "cer": 1,
+          "character_edits": 13,
+          "reference_characters": 13,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 384,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.953,
+            "peak_dbfs": -2.224,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.216146,
+            "original_token_count": 0,
+            "original_confidence_mean": null,
+            "original_confidence_min": null
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 1.0899369999824557,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 551.1701889999968,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 539.457150000002,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-ko-code-switch",
+          "cer": 2.2222222222222223,
+          "character_edits": 20,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 0.5,
+          "languages_recalled": 1,
+          "languages_expected": 2,
+          "segment_count": 2,
+          "expected_segments": 1,
+          "unnatural_split_count": 1,
+          "decoded_packet_count": 225,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -20.512,
+            "peak_dbfs": -2.224,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.263393,
+            "original_token_count": 26,
+            "original_confidence_mean": 0.86,
+            "original_confidence_min": 0.27
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 12.282940999983111,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 408.20033599997987,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-clean-game",
+          "cer": 0.5,
+          "character_edits": 7,
+          "reference_characters": 14,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 2,
+          "expected_segments": 1,
+          "unnatural_split_count": 1,
+          "decoded_packet_count": 366,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.298,
+            "peak_dbfs": -0.778,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.163934,
+            "original_token_count": 14,
+            "original_confidence_mean": 0.8186,
+            "original_confidence_min": 0.2
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 6.05216299998574,
+              "has_text": false
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 9.328025000024354,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 241.64162400001078,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ko-clean-game",
+          "cer": 0.1111111111111111,
+          "character_edits": 1,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 125,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -20.362,
+            "peak_dbfs": -3.188,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.208,
+            "original_token_count": 11,
+            "original_confidence_mean": 0.9325,
+            "original_confidence_min": 0.554
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 226.09153600002173,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-short",
+          "cer": 1,
+          "character_edits": 2,
+          "reference_characters": 2,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 36,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -26.001,
+            "peak_dbfs": -10.1,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.555556,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.737,
+            "original_confidence_min": 0.527
+          },
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 641.0750300000072,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 714.3988189999945,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ko-short",
+          "cer": 1,
+          "character_edits": 1,
+          "reference_characters": 1,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 40,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -22.313,
+            "peak_dbfs": -5.471,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.5,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.97,
+            "original_confidence_min": 0.942
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 634.5739549999998,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-low-volume",
+          "cer": 1,
+          "character_edits": 10,
+          "reference_characters": 10,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 373,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -37.949,
+            "peak_dbfs": -19.573,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.184987,
+            "original_token_count": 0,
+            "original_confidence_mean": null,
+            "original_confidence_min": null
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 16.958685999998124,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 565.2506590000121,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ko-fan-noise",
+          "cer": 0.09090909090909091,
+          "character_edits": 1,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 132,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -18.472,
+            "peak_dbfs": -0.821,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0,
+            "original_token_count": 12,
+            "original_confidence_mean": 0.9188,
+            "original_confidence_min": 0.628
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 536.3983569999982,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-keyboard-noise",
+          "cer": 0.9090909090909091,
+          "character_edits": 10,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 348,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.332,
+            "peak_dbfs": -0.301,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.149425,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.5705,
+            "original_confidence_min": 0.255
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 17.294289999990724,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 549.6680190000043,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-clipped",
+          "cer": 1,
+          "character_edits": 11,
+          "reference_characters": 11,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 370,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -7.184,
+            "peak_dbfs": 0,
+            "clipped_sample_ratio": 0.106835,
+            "near_silence_ratio": 0.191892,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.678,
+            "original_confidence_min": 0.37
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 7.421761000005063,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 610.2777890000143,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-pause-600ms",
+          "cer": 1,
+          "character_edits": 13,
+          "reference_characters": 13,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 384,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.953,
+            "peak_dbfs": -2.224,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.216146,
+            "original_token_count": 0,
+            "original_confidence_mean": null,
+            "original_confidence_min": null
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 12.30677199998172,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 589.5082110000076,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 533.5563959999708,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-ko-code-switch",
+          "cer": 2.2222222222222223,
+          "character_edits": 20,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 0.5,
+          "languages_recalled": 1,
+          "languages_expected": 2,
+          "segment_count": 2,
+          "expected_segments": 1,
+          "unnatural_split_count": 1,
+          "decoded_packet_count": 225,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -20.512,
+            "peak_dbfs": -2.224,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.263393,
+            "original_token_count": 26,
+            "original_confidence_mean": 0.8588,
+            "original_confidence_min": 0.252
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 3.447727999999188,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 427.2739990000264,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-clean-game",
+          "cer": 0.5,
+          "character_edits": 7,
+          "reference_characters": 14,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 2,
+          "expected_segments": 1,
+          "unnatural_split_count": 1,
+          "decoded_packet_count": 366,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.298,
+            "peak_dbfs": -0.778,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.163934,
+            "original_token_count": 14,
+            "original_confidence_mean": 0.8204,
+            "original_confidence_min": 0.2
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 15.645696000021417,
+              "has_text": false
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 8.744079000025522,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 232.1107020000345,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ko-clean-game",
+          "cer": 0.1111111111111111,
+          "character_edits": 1,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 125,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -20.362,
+            "peak_dbfs": -3.188,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.208,
+            "original_token_count": 11,
+            "original_confidence_mean": 0.9324,
+            "original_confidence_min": 0.554
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 232.477096000046,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-short",
+          "cer": 1,
+          "character_edits": 2,
+          "reference_characters": 2,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 36,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -26.001,
+            "peak_dbfs": -10.1,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.555556,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.7365,
+            "original_confidence_min": 0.526
+          },
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 649.2566060000099,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 712.7038080000202,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ko-short",
+          "cer": 1,
+          "character_edits": 1,
+          "reference_characters": 1,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 40,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -22.313,
+            "peak_dbfs": -5.471,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.5,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.9695,
+            "original_confidence_min": 0.941
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 612.8740700000199,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-low-volume",
+          "cer": 1,
+          "character_edits": 10,
+          "reference_characters": 10,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 373,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -37.949,
+            "peak_dbfs": -19.573,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.184987,
+            "original_token_count": 0,
+            "original_confidence_mean": null,
+            "original_confidence_min": null
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 14.725193999998737,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 584.2266049999744,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ko-fan-noise",
+          "cer": 1,
+          "character_edits": 11,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 132,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -18.472,
+            "peak_dbfs": -0.821,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0,
+            "original_token_count": 9,
+            "original_confidence_mean": 0.6252,
+            "original_confidence_min": 0.121
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 409.2207359999884,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-keyboard-noise",
+          "cer": 0.9090909090909091,
+          "character_edits": 10,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 348,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.332,
+            "peak_dbfs": -0.301,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.149425,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.5625,
+            "original_confidence_min": 0.24
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 19.04280799999833,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 533.2702719999943,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-clipped",
+          "cer": 1,
+          "character_edits": 11,
+          "reference_characters": 11,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 370,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -7.184,
+            "peak_dbfs": 0,
+            "clipped_sample_ratio": 0.106835,
+            "near_silence_ratio": 0.191892,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.6875,
+            "original_confidence_min": 0.39
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 5.725342999969143,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 611.5229960000142,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-pause-600ms",
+          "cer": 1,
+          "character_edits": 13,
+          "reference_characters": 13,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 384,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.953,
+            "peak_dbfs": -2.224,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.216146,
+            "original_token_count": 0,
+            "original_confidence_mean": null,
+            "original_confidence_min": null
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 3.031935999984853,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 555.5645280000172,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 517.3495390000171,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-ko-code-switch",
+          "cer": 2.2222222222222223,
+          "character_edits": 20,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 0.5,
+          "languages_recalled": 1,
+          "languages_expected": 2,
+          "segment_count": 2,
+          "expected_segments": 1,
+          "unnatural_split_count": 1,
+          "decoded_packet_count": 225,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -20.512,
+            "peak_dbfs": -2.224,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.263393,
+            "original_token_count": 26,
+            "original_confidence_mean": 0.8606,
+            "original_confidence_min": 0.249
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 12.447907999972813,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 414.9242180000292,
+              "has_text": true
+            }
+          ]
+        }
+      ]
+    },
+    "endpoint_fallback_400_level1_catalog_terms": {
+      "case_count": 10,
+      "trial_count": 3,
+      "observation_count": 30,
+      "preprocessing": "none",
+      "configuration": {
+        "recognition_context_enabled": true,
+        "recognition_context_mode": "catalog_terms",
+        "endpoint_mode": "soniox_primary",
+        "discord_speaking_end_delay_ms": 100,
+        "manual_finalize_fallback_ms": 300,
+        "soniox_max_endpoint_delay_ms": 1000,
+        "soniox_endpoint_latency_adjustment_level": 1,
+        "soniox_endpoint_sensitivity": 0,
+        "endpoint_silence_chunk_ms": 20,
+        "preprocessing": "none"
+      },
+      "cer": 1.1245421245421245,
+      "clean_cer": 1.4652777777777777,
+      "key_term_recall": 0.4166666666666667,
+      "language_recall": 0.45454545454545453,
+      "language_switch_recall": 0.16666666666666666,
+      "code_switch_cer": 1.8148148148148149,
+      "unnatural_split_count": 4,
+      "latency_ms": {
+        "mean": 354.2496223823501,
+        "p50": 522.3312429999933,
+        "p95": 632.9105170000112
+      },
+      "finalization": {
+        "observed_boundary_count": 53,
+        "adoption_boundary_count": 34,
+        "observed_endpoint_count": 35,
+        "observed_finalized_count": 18,
+        "soniox_endpoint_count": 16,
+        "manual_fallback_count": 18,
+        "soniox_endpoint_ratio": 0.47058823529411764
+      },
+      "cpu_percent": {
+        "mean": 1.0276130606638907,
+        "p95": 1.3009412857600937
+      },
+      "packets": {
+        "decoded_mean": 239.9,
+        "dropped_mean": 0,
+        "dropped_ratio": 0
+      },
+      "cases": [
+        {
+          "trial": 1,
+          "case_id": "ja-clean-game",
+          "cer": 3.7142857142857144,
+          "character_edits": 52,
+          "reference_characters": 14,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 366,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.298,
+            "peak_dbfs": -0.778,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.163934,
+            "original_token_count": 46,
+            "original_confidence_mean": 0.8883,
+            "original_confidence_min": 0.389
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 297.3095460000004,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ko-clean-game",
+          "cer": 0.1111111111111111,
+          "character_edits": 1,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 125,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -20.362,
+            "peak_dbfs": -3.188,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.208,
+            "original_token_count": 11,
+            "original_confidence_mean": 0.9403,
+            "original_confidence_min": 0.611
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 266.66617300000144,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-short",
+          "cer": 1,
+          "character_edits": 2,
+          "reference_characters": 2,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 36,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -26.001,
+            "peak_dbfs": -10.1,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.555556,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.803,
+            "original_confidence_min": 0.64
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 616.6994309999936,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ko-short",
+          "cer": 1,
+          "character_edits": 1,
+          "reference_characters": 1,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 40,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -22.313,
+            "peak_dbfs": -5.471,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.5,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.9725,
+            "original_confidence_min": 0.947
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 629.983017999999,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-low-volume",
+          "cer": 1,
+          "character_edits": 10,
+          "reference_characters": 10,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 373,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -37.949,
+            "peak_dbfs": -19.573,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.184987,
+            "original_token_count": 0,
+            "original_confidence_mean": null,
+            "original_confidence_min": null
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 4.772017000002961,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 568.2677699999986,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ko-fan-noise",
+          "cer": 0.09090909090909091,
+          "character_edits": 1,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 132,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -18.472,
+            "peak_dbfs": -0.821,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0,
+            "original_token_count": 12,
+            "original_confidence_mean": 0.9215,
+            "original_confidence_min": 0.622
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 542.9494859999977,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-keyboard-noise",
+          "cer": 0.9090909090909091,
+          "character_edits": 10,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 2,
+          "expected_segments": 1,
+          "unnatural_split_count": 1,
+          "decoded_packet_count": 348,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.332,
+            "peak_dbfs": -0.301,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.149425,
+            "original_token_count": 4,
+            "original_confidence_mean": 0.6863,
+            "original_confidence_min": 0.366
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 14.641038000001572,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 6.596445999995922,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 527.6472930000018,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-clipped",
+          "cer": 1,
+          "character_edits": 11,
+          "reference_characters": 11,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 370,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -7.184,
+            "peak_dbfs": 0,
+            "clipped_sample_ratio": 0.106835,
+            "near_silence_ratio": 0.191892,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.788,
+            "original_confidence_min": 0.591
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 16.34987399999227,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 598.5511850000039,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-pause-600ms",
+          "cer": 1,
+          "character_edits": 13,
+          "reference_characters": 13,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 384,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.953,
+            "peak_dbfs": -2.224,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.216146,
+            "original_token_count": 0,
+            "original_confidence_mean": null,
+            "original_confidence_min": null
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 4.103115999998408,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 566.245670999997,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 553.3488990000042,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-ko-code-switch",
+          "cer": 3.4444444444444446,
+          "character_edits": 31,
+          "reference_characters": 9,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 0.5,
+          "languages_recalled": 1,
+          "languages_expected": 2,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 225,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -20.512,
+            "peak_dbfs": -2.224,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.263393,
+            "original_token_count": 25,
+            "original_confidence_mean": 0.8265,
+            "original_confidence_min": 0.378
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 632.8609590000124,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-clean-game",
+          "cer": 3.7142857142857144,
+          "character_edits": 52,
+          "reference_characters": 14,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 366,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.298,
+            "peak_dbfs": -0.778,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.163934,
+            "original_token_count": 57,
+            "original_confidence_mean": 0.8764,
+            "original_confidence_min": 0.274
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 214.9232090000005,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ko-clean-game",
+          "cer": 0.1111111111111111,
+          "character_edits": 1,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 125,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -20.362,
+            "peak_dbfs": -3.188,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.208,
+            "original_token_count": 11,
+            "original_confidence_mean": 0.9352,
+            "original_confidence_min": 0.613
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 275.08568299998296,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-short",
+          "cer": 1,
+          "character_edits": 2,
+          "reference_characters": 2,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 36,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -26.001,
+            "peak_dbfs": -10.1,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.555556,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.803,
+            "original_confidence_min": 0.64
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 647.7175069999939,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ko-short",
+          "cer": 1,
+          "character_edits": 1,
+          "reference_characters": 1,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 40,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -22.313,
+            "peak_dbfs": -5.471,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.5,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.9715,
+            "original_confidence_min": 0.945
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 612.5799829999742,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-low-volume",
+          "cer": 1,
+          "character_edits": 10,
+          "reference_characters": 10,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 373,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -37.949,
+            "peak_dbfs": -19.573,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.184987,
+            "original_token_count": 0,
+            "original_confidence_mean": null,
+            "original_confidence_min": null
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 16.82398000001558,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 550.567566999991,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ko-fan-noise",
+          "cer": 0.09090909090909091,
+          "character_edits": 1,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 132,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -18.472,
+            "peak_dbfs": -0.821,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0,
+            "original_token_count": 12,
+            "original_confidence_mean": 0.9213,
+            "original_confidence_min": 0.62
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 559.3436609999917,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-keyboard-noise",
+          "cer": 0.9090909090909091,
+          "character_edits": 10,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 2,
+          "expected_segments": 1,
+          "unnatural_split_count": 1,
+          "decoded_packet_count": 348,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.332,
+            "peak_dbfs": -0.301,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.149425,
+            "original_token_count": 4,
+            "original_confidence_mean": 0.683,
+            "original_confidence_min": 0.354
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 9.403093000000808,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 3.5805660000187345,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 555.3321069999947,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-clipped",
+          "cer": 1,
+          "character_edits": 11,
+          "reference_characters": 11,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 370,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -7.184,
+            "peak_dbfs": 0,
+            "clipped_sample_ratio": 0.106835,
+            "near_silence_ratio": 0.191892,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.7885,
+            "original_confidence_min": 0.593
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 2.1688410000060685,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 624.2646469999454,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-pause-600ms",
+          "cer": 1,
+          "character_edits": 13,
+          "reference_characters": 13,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 384,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.953,
+            "peak_dbfs": -2.224,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.216146,
+            "original_token_count": 0,
+            "original_confidence_mean": null,
+            "original_confidence_min": null
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 10.789765000052284,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 560.5558459999738,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 548.2169080000021,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-ko-code-switch",
+          "cer": 1,
+          "character_edits": 9,
+          "reference_characters": 9,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 2,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 225,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -20.512,
+            "peak_dbfs": -2.224,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.263393,
+            "original_token_count": 0,
+            "original_confidence_mean": null,
+            "original_confidence_min": null
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 19.34424000000581,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 522.3312429999933,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-clean-game",
+          "cer": 0.5,
+          "character_edits": 7,
+          "reference_characters": 14,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 2,
+          "expected_segments": 1,
+          "unnatural_split_count": 1,
+          "decoded_packet_count": 366,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.298,
+            "peak_dbfs": -0.778,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.163934,
+            "original_token_count": 14,
+            "original_confidence_mean": 0.8274,
+            "original_confidence_min": 0.201
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 9.68403699999908,
+              "has_text": false
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 6.7352589999791235,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 241.52270899998257,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ko-clean-game",
+          "cer": 0.1111111111111111,
+          "character_edits": 1,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 125,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -20.362,
+            "peak_dbfs": -3.188,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.208,
+            "original_token_count": 11,
+            "original_confidence_mean": 0.9363,
+            "original_confidence_min": 0.612
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 254.39811000000918,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-short",
+          "cer": 1,
+          "character_edits": 2,
+          "reference_characters": 2,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 36,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -26.001,
+            "peak_dbfs": -10.1,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.555556,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.7905,
+            "original_confidence_min": 0.611
+          },
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 612.1113359999727,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 678.726576999994,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ko-short",
+          "cer": 1,
+          "character_edits": 1,
+          "reference_characters": 1,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 40,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -22.313,
+            "peak_dbfs": -5.471,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.5,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.9715,
+            "original_confidence_min": 0.945
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 632.9105170000112,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-low-volume",
+          "cer": 1,
+          "character_edits": 10,
+          "reference_characters": 10,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 373,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -37.949,
+            "peak_dbfs": -19.573,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.184987,
+            "original_token_count": 0,
+            "original_confidence_mean": null,
+            "original_confidence_min": null
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 9.794866000011098,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 562.7890279999701,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ko-fan-noise",
+          "cer": 0.09090909090909091,
+          "character_edits": 1,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 132,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -18.472,
+            "peak_dbfs": -0.821,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0,
+            "original_token_count": 12,
+            "original_confidence_mean": 0.9235,
+            "original_confidence_min": 0.635
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 546.7920220000087,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-keyboard-noise",
+          "cer": 0.9090909090909091,
+          "character_edits": 10,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 2,
+          "expected_segments": 1,
+          "unnatural_split_count": 1,
+          "decoded_packet_count": 348,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.332,
+            "peak_dbfs": -0.301,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.149425,
+            "original_token_count": 4,
+            "original_confidence_mean": 0.6863,
+            "original_confidence_min": 0.363
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 19.64150000002701,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 7.557886000024155,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 528.6550179999904,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-clipped",
+          "cer": 1,
+          "character_edits": 11,
+          "reference_characters": 11,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 370,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -7.184,
+            "peak_dbfs": 0,
+            "clipped_sample_ratio": 0.106835,
+            "near_silence_ratio": 0.191892,
+            "original_token_count": 2,
+            "original_confidence_mean": 0.7905,
+            "original_confidence_min": 0.597
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 3.810462999972515,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 623.3381350000273,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-pause-600ms",
+          "cer": 1,
+          "character_edits": 13,
+          "reference_characters": 13,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 384,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -19.953,
+            "peak_dbfs": -2.224,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.216146,
+            "original_token_count": 0,
+            "original_confidence_mean": null,
+            "original_confidence_min": null
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 16.03120600001421,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 557.3716240000213,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 540.4934380000341,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-ko-code-switch",
+          "cer": 1,
+          "character_edits": 9,
+          "reference_characters": 9,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 2,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 225,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "audio_metrics": {
+            "rms_dbfs": -20.512,
+            "peak_dbfs": -2.224,
+            "clipped_sample_ratio": 0,
+            "near_silence_ratio": 0.263393,
+            "original_token_count": 0,
+            "original_confidence_mean": null,
+            "original_confidence_min": null
+          },
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 10.397618999995757,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 524.1339919999591,
+              "has_text": false
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "comparisons": {
+    "endpoint_fallback_400_level1": {
+      "cer_relative_improvement_percent": 45.537757437070944,
+      "key_term_recall_change": 0,
+      "clean_cer_point_change": -97.91666666666666,
+      "language_switch_recall_change": 0,
+      "code_switch_cer_point_change": -22.222222222222232,
+      "p95_added_latency_ms": 156.0681409999961,
+      "gates": {
+        "overall_cer": "pass",
+        "key_terms": "fail",
+        "clean_cer": "pass",
+        "language_switching": "pass",
+        "latency": "pass",
+        "semantic_endpoint": "fail",
+        "pi_runtime": "not_evaluated"
+      }
+    },
+    "endpoint_fallback_400_level1_catalog_terms": {
+      "cer_relative_improvement_percent": 29.748283752860416,
+      "key_term_recall_change": -0.3333333333333333,
+      "clean_cer_point_change": -43.05555555555556,
+      "language_switch_recall_change": -0.33333333333333337,
+      "code_switch_cer_point_change": -62.962962962962976,
+      "p95_added_latency_ms": 147.90362800000003,
+      "gates": {
+        "overall_cer": "pass",
+        "key_terms": "fail",
+        "clean_cer": "pass",
+        "language_switching": "fail",
+        "latency": "pass",
+        "semantic_endpoint": "fail",
+        "pi_runtime": "not_evaluated"
+      }
+    }
+  },
+  "quality_analysis": {
+    "status": "evaluated",
+    "source_profile": "baseline",
+    "independent_case_count": 10,
+    "observation_count": 30,
+    "audio_metrics_observation_count": 30,
+    "confidence_observation_count": 24,
+    "correlations": {
+      "rms_dbfs_vs_cer": {
+        "status": "evaluated",
+        "coefficient": 0.375686,
+        "case_count": 10
+      },
+      "peak_dbfs_vs_cer": {
+        "status": "evaluated",
+        "coefficient": 0.261959,
+        "case_count": 10
+      },
+      "clipped_sample_ratio_vs_cer": {
+        "status": "evaluated",
+        "coefficient": 0.467804,
+        "case_count": 10
+      },
+      "near_silence_ratio_vs_cer": {
+        "status": "evaluated",
+        "coefficient": -0.017248,
+        "case_count": 10
+      },
+      "dropped_packet_ratio_vs_cer": {
+        "status": "insufficient_variation",
+        "coefficient": null,
+        "case_count": 10
+      },
+      "original_confidence_mean_vs_cer": {
+        "status": "evaluated",
+        "coefficient": -0.162124,
+        "case_count": 8
+      },
+      "original_confidence_min_vs_cer": {
+        "status": "evaluated",
+        "coefficient": -0.6521,
+        "case_count": 8
+      }
+    },
+    "tag_slices": {
+      "artificial": {
+        "case_count": 10,
+        "observation_count": 30,
+        "cer": 1.6007326007326008,
+        "comparison_case_count": 0,
+        "comparison_observation_count": 0,
+        "comparison_cer": null
+      },
+      "clean": {
+        "case_count": 6,
+        "observation_count": 18,
+        "cer": 1.8958333333333333,
+        "comparison_case_count": 4,
+        "comparison_observation_count": 12,
+        "comparison_cer": 1.2713178294573644
+      },
+      "clipped": {
+        "case_count": 1,
+        "observation_count": 3,
+        "cer": 3.0606060606060606,
+        "comparison_case_count": 9,
+        "comparison_observation_count": 27,
+        "comparison_cer": 1.4
+      },
+      "code-switch": {
+        "case_count": 1,
+        "observation_count": 3,
+        "cer": 2.4444444444444446,
+        "comparison_case_count": 9,
+        "comparison_observation_count": 27,
+        "comparison_cer": 1.508130081300813
+      },
+      "fan": {
+        "case_count": 1,
+        "observation_count": 3,
+        "cer": 0.09090909090909091,
+        "comparison_case_count": 9,
+        "comparison_observation_count": 27,
+        "comparison_cer": 1.8083333333333333
+      },
+      "game-term": {
+        "case_count": 4,
+        "observation_count": 12,
+        "cer": 2.5271317829457365,
+        "comparison_case_count": 6,
+        "comparison_observation_count": 18,
+        "comparison_cer": 0.7708333333333334
+      },
+      "keyboard": {
+        "case_count": 1,
+        "observation_count": 3,
+        "cer": 0.9090909090909091,
+        "comparison_case_count": 9,
+        "comparison_observation_count": 27,
+        "comparison_cer": 1.6958333333333333
+      },
+      "low-volume": {
+        "case_count": 1,
+        "observation_count": 3,
+        "cer": 1,
+        "comparison_case_count": 9,
+        "comparison_observation_count": 27,
+        "comparison_cer": 1.6748971193415638
+      },
+      "noise": {
+        "case_count": 2,
+        "observation_count": 6,
+        "cer": 0.5,
+        "comparison_case_count": 8,
+        "comparison_observation_count": 24,
+        "comparison_cer": 1.9516908212560387
+      },
+      "pause-600ms": {
+        "case_count": 1,
+        "observation_count": 3,
+        "cer": 1,
+        "comparison_case_count": 9,
+        "comparison_observation_count": 27,
+        "comparison_cer": 1.7008547008547008
+      },
+      "short": {
+        "case_count": 2,
+        "observation_count": 6,
+        "cer": 1,
+        "comparison_case_count": 8,
+        "comparison_observation_count": 24,
+        "comparison_cer": 1.621212121212121
+      }
+    },
+    "limitations": [
+      "同一人工音声の複数試行は独立標本とみなさず、相関係数はcase単位へ集約しています。",
+      "相関係数は因果関係を示しません。少数caseの結果は実Discord音声で再確認が必要です。",
+      "packet欠落がない、または指標が一定の場合は相関を評価できません。",
+      "原文tokenが返らずconfidenceを取得できない観測は、confidenceとCERの相関から除外しています。"
+    ]
+  },
+  "preprocessing": {
+    "decision": "not_adopted",
+    "evidence_status": "noise_not_primary_in_dataset",
+    "noise_tagged_case_count": 2,
+    "noise_tagged_cer": 0.5,
+    "non_noise_case_count": 8,
+    "non_noise_cer": 1.9516908212560387,
+    "reason": "同一人工音声ではnoiseタグのCERが非noise音声を上回らず、ノイズが主要因という根拠がないため、RNNoise等を標準採用しません。"
+  },
+  "dataset": {
+    "manifest_sha256": "6d350a14157addc4415a4f8374ea66b0bca2d32e2d170deb5cf3e1e284c4dee2",
+    "cases": [
+      {
+        "case_id": "ja-clean-game",
+        "audio_sha256": "312cac0eacc7c406e4ee9d3f4a2fd4d76c9125af4397ce4146aae80f63b42f6b",
+        "packet_trace_sha256": "f900506314f6167e7dd7a8d71daae9c31775fc2734929693c06374b8bdb43898",
+        "audio_bytes": 700988,
+        "packet_count": 366,
+        "dropped_packet_count": 0,
+        "duration_ms": 7301.958333333333
+      },
+      {
+        "case_id": "ko-clean-game",
+        "audio_sha256": "174d8fdb43e98f42f6535067c25f878f9a6d3ada8e49687e2ac906e6f5400629",
+        "packet_trace_sha256": "2fd3779013e2f132235c596142b447cba9a0851e34a63238c435fa2b4b87bc37",
+        "audio_bytes": 238176,
+        "packet_count": 125,
+        "dropped_packet_count": 0,
+        "duration_ms": 2481
+      },
+      {
+        "case_id": "ja-short",
+        "audio_sha256": "81c9ef93313eabcc564b607e957cde90086e128b105b7ce980916a8216455eab",
+        "packet_trace_sha256": "df4088c6669074a60971cfaa07bea11a6b355d602d278763c1a5035d1affd05e",
+        "audio_bytes": 68176,
+        "packet_count": 36,
+        "dropped_packet_count": 0,
+        "duration_ms": 710.1666666666666
+      },
+      {
+        "case_id": "ko-short",
+        "audio_sha256": "fc171a80c07de471bec54220f624794c5a70161765d3d4bd0b2346ae172bc5b6",
+        "packet_trace_sha256": "8f833535ef38e2ca41d9163845a46f8de15a45d93554914bb4fa984249c5c5ef",
+        "audio_bytes": 76600,
+        "packet_count": 40,
+        "dropped_packet_count": 0,
+        "duration_ms": 797.9166666666666
+      },
+      {
+        "case_id": "ja-low-volume",
+        "audio_sha256": "c87b876eee10cf1c8c5e5763f320589ca7940d49149a55ff66db3e83c02db69e",
+        "packet_trace_sha256": "63325065599b5af36f3433f50ecc97f21828d4e46447b6f67b6de27327f914cc",
+        "audio_bytes": 715716,
+        "packet_count": 373,
+        "dropped_packet_count": 0,
+        "duration_ms": 7455.375
+      },
+      {
+        "case_id": "ko-fan-noise",
+        "audio_sha256": "cc83cde53616783e8823135d8fd949dfc3cb7311c2d7e30e5d343f4921d75a84",
+        "packet_trace_sha256": "fce32144f4a521b2debb79bdee78997e81b48b778cdd7a4c7afa7496b9acdc4c",
+        "audio_bytes": 251878,
+        "packet_count": 132,
+        "dropped_packet_count": 0,
+        "duration_ms": 2623.7291666666665
+      },
+      {
+        "case_id": "ja-keyboard-noise",
+        "audio_sha256": "23ccbf75a8be2da42b333d4756a21f3b5413465b69bee717a6d7c9ea32d2093f",
+        "packet_trace_sha256": "c9b31a91caca30ddac2038f2c4dda0acf99a6dc95e6876a8f2d30db5e617bb5b",
+        "audio_bytes": 668078,
+        "packet_count": 348,
+        "dropped_packet_count": 0,
+        "duration_ms": 6959.145833333333
+      },
+      {
+        "case_id": "ja-clipped",
+        "audio_sha256": "b507460ba635198f4ce56bb345bf68a189a2345024041889990653f1fec80696",
+        "packet_trace_sha256": "d4f10ccdda50c44acf425dc19dc289b7a53ccf4e1d4396b6da1f6dd0cd79044a",
+        "audio_bytes": 709692,
+        "packet_count": 370,
+        "dropped_packet_count": 0,
+        "duration_ms": 7392.625
+      },
+      {
+        "case_id": "ja-pause-600ms",
+        "audio_sha256": "2ff4d6ace532d28e96d112dcca42f280751b22425d8319df14b5b34f52beadf3",
+        "packet_trace_sha256": "505188d96759fb6db3b6951019629eb8c622456c2c4256a44691558100462fa7",
+        "audio_bytes": 736102,
+        "packet_count": 384,
+        "dropped_packet_count": 0,
+        "duration_ms": 8268.666666666666
+      },
+      {
+        "case_id": "ja-ko-code-switch",
+        "audio_sha256": "3ee279b842f7fc19beab19dd6ea7183e63a3d99e983358baab0daf020c37ef7b",
+        "packet_trace_sha256": "15fe3202324a72c5e3af63fb28c536b0e17e7830e98ce2dc48af28b62b6d2768",
+        "audio_bytes": 429386,
+        "packet_count": 225,
+        "dropped_packet_count": 0,
+        "duration_ms": 4593.1875
+      }
+    ]
+  }
+}

@@ -172,6 +172,7 @@ async function runCase(
   client: SonioxNodeClient,
   dataset: LoadedSttEvaluationDataset,
   evaluationCase: LoadedSttEvaluationCase,
+  recognitionCatalog: readonly string[],
   trial: number,
   profile: SonioxSttEvaluationProfile,
   model: string,
@@ -212,6 +213,7 @@ async function runCase(
     dataset.manifest.pair,
     `stt-eval-${randomUUID()}`,
     evaluationCase.definition.translation_terms,
+    recognitionContextMode === "catalog_terms" ? recognitionCatalog : undefined,
   );
   const boundary = Promise.withResolvers<undefined>();
   const recognizedLanguages = new Set<"ja" | "ko">();
@@ -422,6 +424,14 @@ export async function runSttEvaluationDataset(
     api_key: options.apiKey,
     realtime: { ws_base_url: options.sttWebSocketUrl },
   });
+  const recognitionCatalog = experiment === "recognition_catalog_level1"
+    ? [...new Set(dataset.cases.flatMap(
+      (evaluationCase) => evaluationCase.definition.key_terms,
+    ))]
+    : [];
+  if (experiment === "recognition_catalog_level1" && recognitionCatalog.length === 0) {
+    throw new Error("固有名詞カタログ評価にはkey_termsが1件以上必要です");
+  }
   const results: SttEvaluationRunResult[] = [];
   for (let trial = 1; trial <= trials; trial += 1) {
     for (const [caseIndex, evaluationCase] of dataset.cases.entries()) {
@@ -433,6 +443,7 @@ export async function runSttEvaluationDataset(
           client,
           dataset,
           evaluationCase,
+          recognitionCatalog,
           trial,
           profile,
           options.model,
@@ -503,6 +514,7 @@ export async function runSttProviderComparisonDataset(
               sonioxClient,
               dataset,
               evaluationCase,
+              [],
               trial,
               profile,
               options.model,
@@ -580,6 +592,7 @@ export async function runSttEndpointOnlyProbe(
         client,
         dataset,
         evaluationCase,
+        [],
         trial,
         "endpoint_only_1000",
         options.model,

@@ -681,6 +681,101 @@ void test("追跡するendpoint latency level比較は単一変数の実測結�
   assert.equal(comparison.gates.pi_runtime, "not_evaluated");
 });
 
+void test("追跡する固有名詞カタログ比較は共通語彙の不採用根拠だけを公開する", () => {
+  const reportText = readFileSync(
+    "docs/evaluation/stt-recognition-catalog-level1-2026-08-26.json",
+    "utf8",
+  );
+  const forbidden = /"(?:transcript|reference|translation_terms|terms|api_key|raw_audio|guild_id|user_id|trace_id|session_id)"/u;
+  assert.doesNotMatch(reportText, forbidden);
+  assert.doesNotMatch(reportText, /\/home\/sota411|\.data\/stt-eval/u);
+
+  const report = JSON.parse(reportText) as {
+    experiment: string;
+    dataset: { manifest_sha256: string; cases: unknown[] };
+    profile_mapping: Record<string, string>;
+    profiles: Record<string, {
+      trial_count: number;
+      observation_count: number;
+      cer: number;
+      key_term_recall: number | null;
+      language_switch_recall: number | null;
+      latency_ms: { p95: number };
+      finalization: { soniox_endpoint_ratio: number };
+      configuration: {
+        recognition_context_enabled: boolean;
+        recognition_context_mode?: string;
+        soniox_endpoint_latency_adjustment_level: number | null;
+      };
+    }>;
+    comparisons: Record<string, {
+      cer_relative_improvement_percent: number | null;
+      key_term_recall_change: number | null;
+      language_switch_recall_change: number | null;
+      p95_added_latency_ms: number;
+      gates: Record<string, string>;
+    }>;
+  };
+  assert.equal(report.experiment, "recognition_catalog_level1");
+  assert.equal(report.dataset.cases.length, 10);
+  const endpointLevelReport = JSON.parse(readFileSync(
+    "docs/evaluation/stt-endpoint-latency-level-2026-08-26.json",
+    "utf8",
+  )) as { dataset: { manifest_sha256: string } };
+  assert.equal(report.dataset.manifest_sha256, endpointLevelReport.dataset.manifest_sha256);
+  assert.deepEqual(report.profile_mapping, {
+    A: "baseline",
+    B: "endpoint_fallback_400_level1",
+    C: "endpoint_fallback_400_level1_catalog_terms",
+  });
+  assert.deepEqual(Object.keys(report.profiles), [
+    "baseline",
+    "endpoint_fallback_400_level1",
+    "endpoint_fallback_400_level1_catalog_terms",
+  ]);
+  assert.ok(Object.values(report.profiles).every((profile) => (
+    profile.trial_count === 3 && profile.observation_count === 30
+  )));
+
+  const baseline = report.profiles.baseline;
+  const level1 = report.profiles.endpoint_fallback_400_level1;
+  const catalog = report.profiles.endpoint_fallback_400_level1_catalog_terms;
+  assert.ok(baseline);
+  assert.ok(level1);
+  assert.ok(catalog);
+  assert.equal(level1.configuration.recognition_context_enabled, false);
+  assert.equal(catalog.configuration.recognition_context_enabled, true);
+  assert.equal(catalog.configuration.recognition_context_mode, "catalog_terms");
+  assert.equal(catalog.configuration.soniox_endpoint_latency_adjustment_level, 1);
+  assert.ok(catalog.cer < baseline.cer);
+  assert.ok(catalog.key_term_recall !== null && baseline.key_term_recall !== null);
+  assert.ok(catalog.key_term_recall < baseline.key_term_recall);
+  assert.ok(catalog.language_switch_recall !== null && baseline.language_switch_recall !== null);
+  assert.ok(catalog.language_switch_recall < baseline.language_switch_recall);
+  assert.ok(catalog.latency_ms.p95 - baseline.latency_ms.p95 <= 200);
+  assert.ok(catalog.finalization.soniox_endpoint_ratio < 0.5);
+
+  const comparison = report.comparisons.endpoint_fallback_400_level1_catalog_terms;
+  assert.ok(comparison);
+  assert.ok(
+    comparison.cer_relative_improvement_percent !== null &&
+    comparison.cer_relative_improvement_percent > 0,
+  );
+  assert.ok(comparison.key_term_recall_change !== null && comparison.key_term_recall_change < 0);
+  assert.ok(
+    comparison.language_switch_recall_change !== null &&
+    comparison.language_switch_recall_change < 0,
+  );
+  assert.ok(comparison.p95_added_latency_ms <= 200);
+  assert.equal(comparison.gates.overall_cer, "pass");
+  assert.equal(comparison.gates.clean_cer, "pass");
+  assert.equal(comparison.gates.latency, "pass");
+  assert.equal(comparison.gates.key_terms, "fail");
+  assert.equal(comparison.gates.language_switching, "fail");
+  assert.equal(comparison.gates.semantic_endpoint, "fail");
+  assert.equal(comparison.gates.pi_runtime, "not_evaluated");
+});
+
 void test("追跡する音質相関レポートは本文なしで前処理の不採用根拠を保持する", () => {
   const reportText = readFileSync(
     "docs/evaluation/stt-audio-quality-correlation-2026-08-26.json",

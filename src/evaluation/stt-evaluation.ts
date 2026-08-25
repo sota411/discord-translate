@@ -8,6 +8,7 @@ const evaluationExperimentSchema = z.enum([
   "endpoint_timing",
   "context_endpoint_400",
   "endpoint_latency_level",
+  "recognition_catalog_level1",
   "recognition_terms",
   "recognition_source_terms",
   "provider_comparison",
@@ -23,13 +24,18 @@ const evaluationProfileSchema = z.enum([
   "endpoint_only_1000",
   "context_endpoint_fallback_400",
   "endpoint_fallback_400_level1",
+  "endpoint_fallback_400_level1_catalog_terms",
   "recognition_terms",
   "recognition_source_terms",
   "amazon_transcribe",
 ]);
 const sonioxSttEvaluationConfigurationSchema = z.object({
   recognition_context_enabled: z.boolean(),
-  recognition_context_mode: z.enum(["terms_only", "source_terms_only"]).optional(),
+  recognition_context_mode: z.enum([
+    "terms_only",
+    "source_terms_only",
+    "catalog_terms",
+  ]).optional(),
   endpoint_mode: z.enum(["manual_early", "soniox_primary", "soniox_only"]),
   discord_speaking_end_delay_ms: z.number().int().nonnegative(),
   manual_finalize_fallback_ms: z.number().int().nonnegative().nullable(),
@@ -157,6 +163,18 @@ export const sttEvaluationProfileConfigurations = {
   },
   endpoint_fallback_400_level1: {
     recognition_context_enabled: false,
+    endpoint_mode: "soniox_primary",
+    discord_speaking_end_delay_ms: 100,
+    manual_finalize_fallback_ms: 300,
+    soniox_max_endpoint_delay_ms: 1_000,
+    soniox_endpoint_latency_adjustment_level: 1,
+    soniox_endpoint_sensitivity: 0,
+    endpoint_silence_chunk_ms: 20,
+    preprocessing: "none",
+  },
+  endpoint_fallback_400_level1_catalog_terms: {
+    recognition_context_enabled: true,
+    recognition_context_mode: "catalog_terms",
     endpoint_mode: "soniox_primary",
     discord_speaking_end_delay_ms: 100,
     manual_finalize_fallback_ms: 300,
@@ -459,6 +477,11 @@ export const sttEvaluationExperimentProfileMappings = {
     A: "baseline",
     B: "endpoint_fallback_400",
     C: "endpoint_fallback_400_level1",
+  },
+  recognition_catalog_level1: {
+    A: "baseline",
+    B: "endpoint_fallback_400_level1",
+    C: "endpoint_fallback_400_level1_catalog_terms",
   },
   recognition_terms: {
     A: "baseline",

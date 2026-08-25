@@ -22,6 +22,17 @@ export type BuiltSonioxTranscriptionContext = {
 
 export type SonioxRecognitionTermScope = "source" | "source_target";
 
+function assertSonioxContextCharacterCountFits(
+  pair: LanguagePair,
+  characterCount: number,
+): void {
+  if (characterCount > sonioxContextCharacterLimit) {
+    throw new Error(
+      `${pair}: Soniox contextの${sonioxContextCharacterLimit.toLocaleString("en-US")}文字上限を超えています`,
+    );
+  }
+}
+
 function generalContext(pair: LanguagePair): NonNullable<TranscriptionContext["general"]> {
   const [languageA, languageB] = languagesForPair(pair);
   return [
@@ -66,20 +77,26 @@ export function buildSonioxTranscriptionContext(
   includeGeneral: boolean,
   includeRecognitionTerms = includeGeneral,
   recognitionTermScope: SonioxRecognitionTermScope = "source_target",
+  explicitRecognitionTerms?: readonly string[],
 ): BuiltSonioxTranscriptionContext {
+  const terms = includeRecognitionTerms
+    ? explicitRecognitionTerms === undefined
+      ? recognitionTerms(translationTerms, recognitionTermScope)
+      : [...new Set(explicitRecognitionTerms)]
+    : [];
   const context: TranscriptionContext = {
     ...(includeGeneral ? { general: generalContext(pair) } : {}),
-    ...(includeRecognitionTerms && translationTerms.length > 0
-      ? { terms: recognitionTerms(translationTerms, recognitionTermScope) }
-      : {}),
+    ...(terms.length > 0 ? { terms } : {}),
     ...(translationTerms.length > 0
       ? { translation_terms: translationTerms.map((entry) => ({ ...entry })) }
       : {}),
   };
   if (Object.keys(context).length === 0) return { characterCount: 0 };
+  const characterCount = Array.from(JSON.stringify(context)).length;
+  assertSonioxContextCharacterCountFits(pair, characterCount);
   return {
     context,
-    characterCount: Array.from(JSON.stringify(context)).length,
+    characterCount,
   };
 }
 
@@ -88,14 +105,9 @@ export function assertSonioxContextFits(
   translationTerms: readonly TranslationTerm[],
   includeGeneralContext: boolean,
 ): void {
-  const { characterCount } = buildSonioxTranscriptionContext(
+  buildSonioxTranscriptionContext(
     pair,
     translationTerms,
     includeGeneralContext,
   );
-  if (characterCount > sonioxContextCharacterLimit) {
-    throw new Error(
-      `${pair}: Soniox contextの${sonioxContextCharacterLimit.toLocaleString("en-US")}文字上限を超えています`,
-    );
-  }
 }

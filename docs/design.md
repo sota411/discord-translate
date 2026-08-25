@@ -698,6 +698,24 @@ Issue #9で候補としていた`endpoint_latency_adjustment_level`の0と1を�
 
 Aの全体CERは2.055、固有名詞再現率は66.7%、全体の言語再現率は63.6%だった。不自然な分割は0件である。CはCERと遅延のgateを通り、コードスイッチとSoniox endpoint比率も基準内だった。しかし、固有名詞再現率はAより改善していない。全体の言語再現率もAより3.0ポイント低く、不自然な分割は9件へ増えた。候補版をPiへ配備していないため、PiのCPUと音声詰まりは`not_evaluated`である。以上からlevel 1は本番へ採用せず、現行の発話確定値を維持する。case・trial別指標と入力SHA-256は[endpoint latency levelレポート](./evaluation/stt-endpoint-latency-level-2026-08-26.json)に残す。
 
+#### 共通の固有名詞カタログを加えても二つの精度gateが悪化した
+
+[SonioxのContext仕様](https://soniox.com/docs/stt/concepts/context)は、音声に現れると予想する重要な名前や珍しい語を`context.terms`へ追加する使い方を案内している。そこで、level 1で改善しなかった固有名詞gateに対象を絞り、翻訳用語とは別の事前登録型カタログが成立し得るかを上限評価した。
+
+カタログには、この人工音声10件の`key_terms`から重複を除いた3語を使った。全caseへ同じ語彙を同じ順序で送り、caseごとの正解語だけを個別には渡していない。`translation_terms`は従来どおりcase単位で維持し、`general`は送らなかった。Aは現行条件、Bは400 ms fallbackとlevel 1、CはBへ共通カタログだけを加えた条件である。各条件を3試行し、30観測/profileを同じbatchで集計した。
+
+| 指標 | A（現行） | B（level 1） | C（level 1＋カタログ） | Cの判定 |
+|---|---:|---:|---:|---|
+| CER | 1.601 | 0.872 | 1.125 | A比29.7%改善。pass |
+| 固有名詞再現率 | 75.0% | 75.0% | 41.7% | -33.3ポイント。fail |
+| 切替時の期待言語再現率 | 50.0% | 50.0% | 16.7% | -33.3ポイント。fail |
+| p95確定遅延 | 485 ms | 641 ms | 633 ms | A比+148 ms。pass |
+| Soniox endpoint比率 | 13.3% | 50.0% | 47.1% | 過半数未満。fail |
+
+Cは全体CERと遅延を改善したが、目的だった固有名詞再現率を大きく落とし、言語切り替えも悪化させた。Bも今回の同時比較ではSoniox endpoint比率がちょうど50.0%で、「過半数」の基準を満たさなかった。以前のlevel 1実験で得た56.4%との差は、異なるbatch間の振れである。採否には今回同時に測ったA/B/Cだけを使う。
+
+このカタログは評価setの正解ラベルから作ったため、未知語への一般化を示す独立データではない。同じ語彙を全caseへ渡したことでcase単位の正解注入は避けたが、結果は事前登録辞書に有利な上限値である。その上限でも固有名詞と言語切り替えのgateが失敗したため、認識語彙の登録UI、永続化、通常セッションへの接続は追加しない。本番設定と`SONIOX_GENERAL_CONTEXT_ENABLED=false`を維持する。case・trial別指標と入力SHA-256は[固有名詞カタログ比較レポート](./evaluation/stt-recognition-catalog-level1-2026-08-26.json)に残す。
+
 同じAでも、発話確定時間の実験ではCER 1.733、認識contextとの組み合わせ実験では1.777だった。Soniox応答には試行間の振れがあるため、異なる実行の絶対値同士は採否に使わず、それぞれ同時に測ったAとの差だけを使う。候補はいずれもPiへ配備していないため、PiのCPUと音声詰まりのgateは引き続き`not_evaluated`である。本番設定、`SONIOX_GENERAL_CONTEXT_ENABLED=false`、無加工PCMの経路は変更しない。
 
 #### AmazonはCERを下げたが、半数の観測で本文を取得できなかった

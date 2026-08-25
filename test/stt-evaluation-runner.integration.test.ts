@@ -82,6 +82,51 @@ function writeDataset(
   return manifestPath;
 }
 
+function writeRecognitionCatalogDataset(
+  directory = path.join(temporaryDirectory, "recognition-catalog-dataset"),
+): string {
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  chmodSync(directory, 0o700);
+  writeFileSync(path.join(directory, "sample.pcm"), Buffer.alloc(1_920), { mode: 0o600 });
+  writeFileSync(path.join(directory, "sample.packets.json"), JSON.stringify({
+    version: 1,
+    packets: [{ at_ms: 0, byte_length: 1_920 }],
+  }), { mode: 0o600 });
+  const manifestPath = path.join(directory, "manifest.json");
+  writeFileSync(manifestPath, JSON.stringify({
+    version: 1,
+    pair: "ja-ko",
+    audio: { format: "pcm_s16le", sample_rate: 48_000, channels: 1 },
+    cases: [
+      {
+        id: "ja-term",
+        audio: "sample.pcm",
+        packet_trace: "sample.packets.json",
+        reference: "テスト固有語アルファ DemoVoice",
+        language: "ja",
+        tags: ["clean", "game-term"],
+        key_terms: ["テスト固有語アルファ", "DemoVoice"],
+        expected_languages: ["ja"],
+        expected_segments: 1,
+        translation_terms: [{ source: "テスト翻訳元", target: "테스트번역대상" }],
+      },
+      {
+        id: "ko-term",
+        audio: "sample.pcm",
+        packet_trace: "sample.packets.json",
+        reference: "테스트고유어베타 DemoVoice",
+        language: "ko",
+        tags: ["clean", "game-term"],
+        key_terms: ["테스트고유어베타", "DemoVoice"],
+        expected_languages: ["ko"],
+        expected_segments: 1,
+        translation_terms: [{ source: "테스트번역원문", target: "Test Translation Target" }],
+      },
+    ],
+  }), { mode: 0o600 });
+  return manifestPath;
+}
+
 function handleSuccessfulSttConnection(socket: WebSocket): void {
   socket.on("message", (data, isBinary) => {
     if (isBinary) {
@@ -610,6 +655,142 @@ void test("run CLIは400ms fallbackを固定してendpoint latency level 0と1�
   for (const configuration of configurations.slice(1)) {
     assert.equal(configuration.max_endpoint_delay_ms, 1_000);
     assert.equal(configuration.endpoint_sensitivity, 0);
+  }
+});
+
+void test("固有名詞カタログ実験はlevel 1へ全case共通termsだけを加える", async () => {
+  const outputDirectory = path.join(temporaryDirectory, "recognition-catalog-cli-output");
+  const observationsPath = path.join(outputDirectory, "observations.json");
+  const reportPath = path.join(outputDirectory, "report.json");
+  const manifestPath = writeRecognitionCatalogDataset();
+  const configurations: Record<string, unknown>[] = [];
+  await withServer((socket) => {
+    socket.on("message", (data, isBinary) => {
+      if (isBinary) {
+        socket.send(JSON.stringify({
+          tokens: [
+            {
+              text: "テスト固有語アルファ DemoVoice",
+              is_final: true,
+              confidence: 0.95,
+              language: "ja",
+              translation_status: "original",
+              start_ms: 0,
+              end_ms: 20,
+            },
+            { text: "<end>", is_final: true },
+          ],
+          final_audio_proc_ms: 20,
+          total_audio_proc_ms: 20,
+        }));
+        return;
+      }
+      const text = rawDataToUtf8(data);
+      if (text.length === 0) {
+        socket.send(JSON.stringify({
+          tokens: [],
+          final_audio_proc_ms: 20,
+          total_audio_proc_ms: 20,
+          finished: true,
+        }));
+        return;
+      }
+      const message = JSON.parse(text) as Record<string, unknown>;
+      if (message.api_key !== undefined) configurations.push(message);
+    });
+  }, async (url) => {
+    const result = await runEvaluationCli([
+      "run",
+      "--manifest",
+      manifestPath,
+      "--observations-output",
+      observationsPath,
+      "--output",
+      reportPath,
+      "--experiment",
+      "recognition_catalog_level1",
+      "--stt-websocket-url",
+      url,
+    ], {
+      ...process.env,
+      SONIOX_API_KEY: "do-not-leak-api-key",
+      SONIOX_STT_MODEL: "stt-rt-v5",
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    const standardOutput = JSON.parse(result.stdout) as {
+      experiment: string;
+      profiles: string[];
+    };
+    assert.equal(standardOutput.experiment, "recognition_catalog_level1");
+    assert.deepEqual(standardOutput.profiles, [
+      "baseline",
+      "endpoint_fallback_400_level1",
+      "endpoint_fallback_400_level1_catalog_terms",
+    ]);
+    assert.doesNotMatch(
+      `${result.stdout}${result.stderr}`,
+      /do-not-leak-api-key|テスト固有語アルファ|테스트고유어베타|DemoVoice/u,
+    );
+  });
+
+  const observations = JSON.parse(readFileSync(observationsPath, "utf8")) as {
+    experiment: string;
+    results: { profile: string }[];
+  };
+  const report = JSON.parse(readFileSync(reportPath, "utf8")) as {
+    experiment: string;
+    profile_mapping: Record<string, string>;
+  };
+  assert.equal(observations.experiment, "recognition_catalog_level1");
+  assert.deepEqual(observations.results.map((result) => result.profile), [
+    "baseline",
+    "endpoint_fallback_400_level1",
+    "endpoint_fallback_400_level1_catalog_terms",
+    "endpoint_fallback_400_level1",
+    "endpoint_fallback_400_level1_catalog_terms",
+    "baseline",
+  ]);
+  assert.equal(report.experiment, "recognition_catalog_level1");
+  assert.deepEqual(report.profile_mapping, {
+    A: "baseline",
+    B: "endpoint_fallback_400_level1",
+    C: "endpoint_fallback_400_level1_catalog_terms",
+  });
+  assert.equal(statSync(observationsPath).mode & 0o777, 0o600);
+  assert.equal(statSync(reportPath).mode & 0o777, 0o600);
+
+  assert.equal(configurations.length, 6);
+  const catalogConfigurations = configurations.filter((configuration) => {
+    const context = configuration.context as { terms?: unknown } | undefined;
+    return context?.terms !== undefined;
+  });
+  assert.equal(catalogConfigurations.length, 2);
+  for (const configuration of catalogConfigurations) {
+    const context = configuration.context as Record<string, unknown>;
+    assert.deepEqual(context.terms, [
+      "テスト固有語アルファ",
+      "DemoVoice",
+      "테스트고유어베타",
+    ]);
+    assert.equal("general" in context, false);
+    assert.equal(configuration.endpoint_latency_adjustment_level, 1);
+    assert.equal(configuration.max_endpoint_delay_ms, 1_000);
+  }
+  assert.deepEqual(
+    catalogConfigurations.map((configuration) =>
+      (configuration.context as Record<string, unknown>).translation_terms
+    ),
+    [
+      [{ source: "テスト翻訳元", target: "테스트번역대상" }],
+      [{ source: "테스트번역원문", target: "Test Translation Target" }],
+    ],
+  );
+  for (const configuration of configurations.filter(
+    (configuration) => !catalogConfigurations.includes(configuration),
+  )) {
+    const context = configuration.context as Record<string, unknown> | undefined;
+    assert.equal(context === undefined || !("terms" in context), true);
   }
 });
 
