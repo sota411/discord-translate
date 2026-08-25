@@ -225,6 +225,8 @@ pnpm stt:evaluate run \
 
 manifestには、48 kHz・mono・PCM s16le音声、正解文、期待する言語と分割数、固有名詞、翻訳用語を記録する。packet traceには、packetごとの送信時刻・byte数と、発話全体の欠落数を記録する。詳しいfieldは[設計書のSTT評価](./docs/design.md#stt候補は同じ音声のadで採否を決める)を参照する。
 
+追跡する評価レポートは指標と入力SHA-256の監査証拠であり、過去の人工音声corpusそのものではない。manifest、PCM、packet trace、本文入りobservationsは`.data/stt-eval/`のlocal dataであり、Gitには含めない。過去の数値を厳密に再実行するには、公開レポートのSHA-256と一致するlocal dataが必要である。clean checkoutだけでは再実行できない。別の入力で実行した場合は、過去レポートの再現ではなく新しい実験として扱う。
+
 `observations.json`には認識本文が含まれるため、0600でローカル保存し、公開または共有しない。`report.json`には本文と音声を含めず、入力のSHA-256、試行番号、CER、固有名詞再現率、言語再現率、分割数、平均・p50・p95遅延、受理した境界の種別・確定理由・本文有無、CPU、packet欠落を出力する。別の端末で採点し直す場合は、次のコマンドを使う。音声かpacket traceが変わっていれば、SHA-256の不一致で失敗する。
 
 ```bash
@@ -234,7 +236,7 @@ pnpm stt:evaluate score \
   --output .data/stt-eval/report.json
 ```
 
-評価profileは次の4つである。
+既定の`context_endpoint`実験で使う評価profileは次の4つである。
 
 | ID | 認識用context | 発話確定 |
 |---|---|---|
@@ -243,9 +245,23 @@ pnpm stt:evaluate score \
 | C | なし | Soniox上限500 ms、手動fallback 600 ms |
 | D | Bと同じ | Cと同じ |
 
+発話確定時間だけを比較する場合は、`--experiment endpoint_timing`を指定する。Aは最終音声packetから約200 msで確定する現行条件で、B〜Dは合計400、600、800 msの手動fallback、Eは`max_endpoint_delay_ms=1000`のSoniox endpointだけを使う。完了済みのA〜Dを再測定する場合は、`--profiles baseline,endpoint_fallback_400,endpoint_fallback_600,endpoint_fallback_800`も指定する。候補を絞った再測定でも、比較基準の`baseline`は省略できない。Eは通常の採点から分け、次のコマンドで必須caseだけを3回確認する。
+
+```bash
+pnpm stt:evaluate probe-endpoint-only \
+  --manifest .data/stt-eval/artificial/manifest.json \
+  --required-case ja-keyboard-noise \
+  --output .data/stt-eval/endpoint-only-summary.json \
+  --trials 3
+```
+
+3回とも外側の10秒timeoutまで確定できなければ、残りのcaseは送信せず不採用とする。summaryには認識本文を書き込まず、各試行のtimeout、CPU、入力のSHA-256、packet数だけを0600で保存する。
+
 2026年8月25日に人工音声10件を3試行し、A〜Dを比較した。同じAでも試行別CERは1.37〜1.74に振れたため、採否には3試行の集計値を使った。BはAより全体CERが2.0%悪化し、固有名詞再現率が8.3ポイント、日韓切り替え時の期待言語再現率が16.7ポイント下がった。Cは全体CERを46.8%改善したが、固有名詞再現率が8.3ポイント下がり、p95遅延が488 ms、不自然な分割が3試行合計25件増えた。Dの全体CER改善は5.5%に留まり、固有名詞再現率が33.3ポイント、日韓切り替え時の期待言語再現率が50ポイント下がった。いずれも採用基準を満たさないため、通常運用の確定値と`SONIOX_GENERAL_CONTEXT_ENABLED=false`は変更していない。数値と入力SHA-256は[本文非含有レポート](./docs/evaluation/stt-artificial-2026-08-25.json)に残している。
 
-この結果は人工音声に限られる。実際のDiscord音声、複数人通話、候補版を動かしたRaspberry PiのCPUと音声詰まりは未検証であり、本番で改善した証拠にはならない。Pi現行版で実際に取得できた約68.9時間のCPU参考値は[本文非含有snapshot](./docs/evaluation/pi-runtime-baseline-2026-08-25.json)へ分離した。RNNoiseやDeepFilterNetも、ノイズ音声で10%以上改善し、クリーン音声を悪化させない実測がないため追加していない。標準経路は引き続き無加工PCMである。
+2026年8月26日には、同じ10件を使って400、600、800 msの手動fallbackを各3試行した。400 msは全体CERを40.6%改善し、p95追加遅延も+185 msに収めたが、固有名詞再現率が16.7ポイント下がった。600 msと800 msも固有名詞再現率が下がり、p95追加遅延はそれぞれ+403 ms、+540 msだった。endpoint-onlyは、評価専用に無音PCMを実時間で送り続けても、同じキーボード雑音caseを3回とも10秒以内に確定できなかった。この終端失敗により、残り9件のCER集計は行っていない。400 msへ認識用contextを組み合わせた追加3試行も、固有名詞再現率が16.7ポイント下がり、Soniox endpointの採用率は30%に留まった。したがって、いずれも本番へ採用していない。
+
+これらの結果は人工音声に限られる。実際のDiscord音声、複数人通話、候補版を動かしたRaspberry PiのCPUと音声詰まりは未検証であり、本番で改善した証拠にはならない。Pi現行版で実際に取得できた約68.9時間のCPU参考値は[本文非含有snapshot](./docs/evaluation/pi-runtime-baseline-2026-08-25.json)へ分離した。RNNoiseやDeepFilterNetも、ノイズ音声で10%以上改善し、クリーン音声を悪化させない実測がないため追加していない。標準経路は引き続き無加工PCMである。
 
 ## 詳細資料
 
@@ -254,6 +270,9 @@ pnpm stt:evaluate score \
 - [現行設計・図解・設定一覧・受入条件](./docs/design.md)
 - [2026-08-25 STT人工音声評価（本文非含有）](./docs/evaluation/stt-artificial-2026-08-25.json)
 - [2026-08-25 Pi現行版runtime参考値（本文非含有）](./docs/evaluation/pi-runtime-baseline-2026-08-25.json)
+- [2026-08-26 STT発話確定時間評価（本文非含有）](./docs/evaluation/stt-endpoint-timing-2026-08-26.json)
+- [2026-08-26 STT認識context・400 ms評価（本文非含有）](./docs/evaluation/stt-context-endpoint-400-2026-08-26.json)
+- [2026-08-26 endpoint-only timeout（本文非含有）](./docs/evaluation/stt-endpoint-only-failure-2026-08-26.json)
 - [公開前セキュリティ監査](./security_best_practices_report.md)
 - [環境変数の配布例](./.env.example)
 - [翻訳用語の例](./config/translation-terms.example.json)

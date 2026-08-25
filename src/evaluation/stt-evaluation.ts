@@ -3,18 +3,32 @@ import { z } from "zod";
 import { languagePairs } from "../domain/language-pair.js";
 
 const evaluationLanguageSchema = z.enum(["ja", "ko"]);
+const evaluationExperimentSchema = z.enum([
+  "context_endpoint",
+  "endpoint_timing",
+  "context_endpoint_400",
+]);
 const evaluationProfileSchema = z.enum([
   "baseline",
   "context",
   "endpoint",
   "context_endpoint",
+  "endpoint_fallback_400",
+  "endpoint_fallback_600",
+  "endpoint_fallback_800",
+  "endpoint_only_1000",
+  "context_endpoint_fallback_400",
 ]);
 const sttEvaluationConfigurationSchema = z.object({
   recognition_context_enabled: z.boolean(),
-  endpoint_mode: z.enum(["manual_early", "soniox_primary"]),
+  endpoint_mode: z.enum(["manual_early", "soniox_primary", "soniox_only"]),
   discord_speaking_end_delay_ms: z.number().int().nonnegative(),
-  manual_finalize_fallback_ms: z.number().int().nonnegative(),
+  manual_finalize_fallback_ms: z.number().int().nonnegative().nullable(),
   soniox_max_endpoint_delay_ms: z.number().int().positive(),
+  soniox_endpoint_latency_adjustment_level: z.number().int().min(0).max(3).nullable()
+    .default(null),
+  soniox_endpoint_sensitivity: z.number().min(-1).max(1).nullable().default(null),
+  endpoint_silence_chunk_ms: z.number().int().positive().nullable().default(null),
   preprocessing: z.literal("none"),
 }).strict();
 export type SttEvaluationConfiguration = z.infer<typeof sttEvaluationConfigurationSchema>;
@@ -26,6 +40,9 @@ export const sttEvaluationProfileConfigurations = {
     discord_speaking_end_delay_ms: 100,
     manual_finalize_fallback_ms: 100,
     soniox_max_endpoint_delay_ms: 2_000,
+    soniox_endpoint_latency_adjustment_level: null,
+    soniox_endpoint_sensitivity: null,
+    endpoint_silence_chunk_ms: null,
     preprocessing: "none",
   },
   context: {
@@ -34,6 +51,9 @@ export const sttEvaluationProfileConfigurations = {
     discord_speaking_end_delay_ms: 100,
     manual_finalize_fallback_ms: 100,
     soniox_max_endpoint_delay_ms: 2_000,
+    soniox_endpoint_latency_adjustment_level: null,
+    soniox_endpoint_sensitivity: null,
+    endpoint_silence_chunk_ms: null,
     preprocessing: "none",
   },
   endpoint: {
@@ -42,6 +62,9 @@ export const sttEvaluationProfileConfigurations = {
     discord_speaking_end_delay_ms: 100,
     manual_finalize_fallback_ms: 600,
     soniox_max_endpoint_delay_ms: 500,
+    soniox_endpoint_latency_adjustment_level: null,
+    soniox_endpoint_sensitivity: null,
+    endpoint_silence_chunk_ms: null,
     preprocessing: "none",
   },
   context_endpoint: {
@@ -50,6 +73,64 @@ export const sttEvaluationProfileConfigurations = {
     discord_speaking_end_delay_ms: 100,
     manual_finalize_fallback_ms: 600,
     soniox_max_endpoint_delay_ms: 500,
+    soniox_endpoint_latency_adjustment_level: null,
+    soniox_endpoint_sensitivity: null,
+    endpoint_silence_chunk_ms: null,
+    preprocessing: "none",
+  },
+  endpoint_fallback_400: {
+    recognition_context_enabled: false,
+    endpoint_mode: "soniox_primary",
+    discord_speaking_end_delay_ms: 100,
+    manual_finalize_fallback_ms: 300,
+    soniox_max_endpoint_delay_ms: 1_000,
+    soniox_endpoint_latency_adjustment_level: 0,
+    soniox_endpoint_sensitivity: 0,
+    endpoint_silence_chunk_ms: 20,
+    preprocessing: "none",
+  },
+  endpoint_fallback_600: {
+    recognition_context_enabled: false,
+    endpoint_mode: "soniox_primary",
+    discord_speaking_end_delay_ms: 100,
+    manual_finalize_fallback_ms: 500,
+    soniox_max_endpoint_delay_ms: 1_000,
+    soniox_endpoint_latency_adjustment_level: 0,
+    soniox_endpoint_sensitivity: 0,
+    endpoint_silence_chunk_ms: 20,
+    preprocessing: "none",
+  },
+  endpoint_fallback_800: {
+    recognition_context_enabled: false,
+    endpoint_mode: "soniox_primary",
+    discord_speaking_end_delay_ms: 100,
+    manual_finalize_fallback_ms: 700,
+    soniox_max_endpoint_delay_ms: 1_000,
+    soniox_endpoint_latency_adjustment_level: 0,
+    soniox_endpoint_sensitivity: 0,
+    endpoint_silence_chunk_ms: 20,
+    preprocessing: "none",
+  },
+  endpoint_only_1000: {
+    recognition_context_enabled: false,
+    endpoint_mode: "soniox_only",
+    discord_speaking_end_delay_ms: 100,
+    manual_finalize_fallback_ms: null,
+    soniox_max_endpoint_delay_ms: 1_000,
+    soniox_endpoint_latency_adjustment_level: 0,
+    soniox_endpoint_sensitivity: 0,
+    endpoint_silence_chunk_ms: 20,
+    preprocessing: "none",
+  },
+  context_endpoint_fallback_400: {
+    recognition_context_enabled: true,
+    endpoint_mode: "soniox_primary",
+    discord_speaking_end_delay_ms: 100,
+    manual_finalize_fallback_ms: 300,
+    soniox_max_endpoint_delay_ms: 1_000,
+    soniox_endpoint_latency_adjustment_level: 0,
+    soniox_endpoint_sensitivity: 0,
+    endpoint_silence_chunk_ms: 20,
     preprocessing: "none",
   },
 } as const satisfies Readonly<Record<
@@ -165,11 +246,22 @@ const evaluationDatasetEvidenceSchema = z.object({
 }).strict();
 const evaluationObservationsSchema = z.object({
   version: z.literal(1),
+  experiment: evaluationExperimentSchema.default("context_endpoint"),
   dataset: evaluationDatasetEvidenceSchema.optional(),
   results: z.array(evaluationResultSchema).min(1),
 }).strict().superRefine((value, context) => {
   const keys = new Set<string>();
+  const allowedProfiles = new Set(
+    Object.values(sttEvaluationExperimentProfileMappings[value.experiment]),
+  );
   for (const [index, result] of value.results.entries()) {
+    if (!allowedProfiles.has(result.profile)) {
+      context.addIssue({
+        code: "custom",
+        path: ["results", index, "profile"],
+        message: `experiment「${value.experiment}」にprofile「${result.profile}」は含まれません`,
+      });
+    }
     const key = `${String(result.trial)}\u0000${result.profile}\u0000${result.case_id}`;
     if (keys.has(key)) {
       context.addIssue({
@@ -184,16 +276,45 @@ const evaluationObservationsSchema = z.object({
 
 export type SttEvaluationManifest = z.infer<typeof evaluationManifestSchema>;
 export type SttEvaluationObservations = z.infer<typeof evaluationObservationsSchema>;
+export type SttEvaluationExperiment = z.infer<typeof evaluationExperimentSchema>;
 export type SttEvaluationProfile = z.infer<typeof evaluationProfileSchema>;
 type SttEvaluationCase = SttEvaluationManifest["cases"][number];
 type SttEvaluationResult = SttEvaluationObservations["results"][number];
 
-export const sttEvaluationProfileMapping = {
-  A: "baseline",
-  B: "context",
-  C: "endpoint",
-  D: "context_endpoint",
-} as const satisfies Readonly<Record<string, SttEvaluationProfile>>;
+export const sttEvaluationExperimentProfileMappings = {
+  context_endpoint: {
+    A: "baseline",
+    B: "context",
+    C: "endpoint",
+    D: "context_endpoint",
+  },
+  endpoint_timing: {
+    A: "baseline",
+    B: "endpoint_fallback_400",
+    C: "endpoint_fallback_600",
+    D: "endpoint_fallback_800",
+    E: "endpoint_only_1000",
+  },
+  context_endpoint_400: {
+    A: "baseline",
+    B: "endpoint_fallback_400",
+    C: "context_endpoint_fallback_400",
+  },
+} as const satisfies Readonly<Record<
+  SttEvaluationExperiment,
+  Readonly<Record<string, SttEvaluationProfile>>
+>>;
+
+export const sttEvaluationProfileMapping =
+  sttEvaluationExperimentProfileMappings.context_endpoint;
+
+export function parseSttEvaluationExperiment(value: string): SttEvaluationExperiment {
+  const parsed = evaluationExperimentSchema.safeParse(value);
+  if (parsed.success) return parsed.data;
+  throw new Error(
+    `STT評価experimentは${evaluationExperimentSchema.options.join("、")}のいずれかにしてください`,
+  );
+}
 
 type GateResult = "pass" | "fail" | "not_evaluated";
 
@@ -281,9 +402,10 @@ type ProfileComparison = {
 export type SttEvaluationReport = {
   version: 1;
   generated_at: string;
-  profile_mapping: typeof sttEvaluationProfileMapping;
+  experiment: SttEvaluationExperiment;
+  profile_mapping: Readonly<Record<string, SttEvaluationProfile>>;
   profiles: Partial<Record<SttEvaluationProfile, ProfileScore>>;
-  comparisons: Partial<Record<Exclude<SttEvaluationProfile, "baseline">, ProfileComparison>>;
+  comparisons: Partial<Record<SttEvaluationProfile, ProfileComparison>>;
   preprocessing: {
     decision: "not_adopted";
     reason: string;
@@ -553,7 +675,7 @@ function compareProfile(baseline: ProfileScore, candidate: ProfileScore): Profil
           ? "not_evaluated"
           : gate(codeSwitchCerChange <= 0 && languageSwitchChange >= 0),
       latency: gate(addedLatency <= 200),
-      semantic_endpoint: candidate.configuration.endpoint_mode === "soniox_primary"
+      semantic_endpoint: candidate.configuration.endpoint_mode !== "manual_early"
         ? gate(candidate.finalization.soniox_endpoint_ratio > 0.5)
         : "not_evaluated",
       pi_runtime: "not_evaluated",
@@ -573,21 +695,32 @@ export function createSttEvaluationReport(
     }
   }
   const profiles: Partial<Record<SttEvaluationProfile, ProfileScore>> = {};
-  for (const profile of evaluationProfileSchema.options) {
+  const profileMapping = sttEvaluationExperimentProfileMappings[observations.experiment];
+  const experimentProfiles = Object.values(profileMapping);
+  const allowedProfiles = new Set<SttEvaluationProfile>(experimentProfiles);
+  for (const result of observations.results) {
+    if (!allowedProfiles.has(result.profile)) {
+      throw new Error(
+        `experiment「${observations.experiment}」にprofile「${result.profile}」は含まれません`,
+      );
+    }
+  }
+  for (const profile of experimentProfiles) {
     const results = observations.results.filter((result) => result.profile === profile);
     if (results.length > 0) profiles[profile] = scoreProfile(manifest, results);
   }
   const baseline = profiles.baseline;
   if (!baseline) throw new Error("STT評価観測結果にはbaseline profileが必要です");
   const comparisons: SttEvaluationReport["comparisons"] = {};
-  for (const profile of ["context", "endpoint", "context_endpoint"] as const) {
+  for (const profile of experimentProfiles.filter((profile) => profile !== "baseline")) {
     const candidate = profiles[profile];
     if (candidate) comparisons[profile] = compareProfile(baseline, candidate);
   }
   return {
     version: 1,
     generated_at: generatedAt.toISOString(),
-    profile_mapping: sttEvaluationProfileMapping,
+    experiment: observations.experiment,
+    profile_mapping: profileMapping,
     profiles,
     comparisons,
     preprocessing: {

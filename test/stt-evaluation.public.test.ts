@@ -455,6 +455,97 @@ void test("追跡する人工音声レポートは本文・正解文・API key�
   )));
 });
 
+void test("追跡するendpoint比較は本文を含めず、不採用gateとtimeoutを保持する", () => {
+  const timingReport = readFileSync(
+    "docs/evaluation/stt-endpoint-timing-2026-08-26.json",
+    "utf8",
+  );
+  const contextReport = readFileSync(
+    "docs/evaluation/stt-context-endpoint-400-2026-08-26.json",
+    "utf8",
+  );
+  const endpointOnlyFailure = readFileSync(
+    "docs/evaluation/stt-endpoint-only-failure-2026-08-26.json",
+    "utf8",
+  );
+  const forbidden = /"(?:transcript|reference|translation_terms|api_key|raw_audio|guild_id|user_id|trace_id|session_id)"/u;
+  assert.doesNotMatch(timingReport, forbidden);
+  assert.doesNotMatch(contextReport, forbidden);
+  assert.doesNotMatch(endpointOnlyFailure, forbidden);
+
+  const timing = JSON.parse(timingReport) as {
+    dataset: { manifest_sha256: string };
+    profiles: Record<string, { trial_count: number; observation_count: number }>;
+    comparisons: Record<string, { gates: Record<string, string> }>;
+  };
+  assert.deepEqual(Object.keys(timing.profiles), [
+    "baseline",
+    "endpoint_fallback_400",
+    "endpoint_fallback_600",
+    "endpoint_fallback_800",
+  ]);
+  assert.ok(Object.values(timing.profiles).every((profile) => (
+    profile.trial_count === 3 && profile.observation_count === 30
+  )));
+  const endpoint400 = timing.comparisons.endpoint_fallback_400;
+  const endpoint600 = timing.comparisons.endpoint_fallback_600;
+  const endpoint800 = timing.comparisons.endpoint_fallback_800;
+  assert.ok(endpoint400);
+  assert.ok(endpoint600);
+  assert.ok(endpoint800);
+  assert.equal(endpoint400.gates.key_terms, "fail");
+  assert.equal(endpoint600.gates.latency, "fail");
+  assert.equal(endpoint800.gates.latency, "fail");
+
+  const context = JSON.parse(contextReport) as {
+    comparisons: Record<string, { gates: Record<string, string> }>;
+  };
+  const contextEndpoint400 = context.comparisons.context_endpoint_fallback_400;
+  assert.ok(contextEndpoint400);
+  assert.equal(contextEndpoint400.gates.key_terms, "fail");
+  assert.equal(contextEndpoint400.gates.semantic_endpoint, "fail");
+
+  const failure = JSON.parse(endpointOnlyFailure) as {
+    profile: string;
+    configuration: unknown;
+    dataset: {
+      manifest_sha256: string;
+      case: {
+        packet_count: number;
+        dropped_packet_count: number;
+        duration_ms: number;
+      };
+    };
+    trials: {
+      trial: number;
+      boundary_timeout_ms: number;
+      outcome: string;
+      cpu_percent: number;
+    }[];
+    outcome: string;
+    full_dataset_scoring_completed: boolean;
+    observations_written: boolean;
+  };
+  assert.equal(failure.profile, "endpoint_only_1000");
+  assert.deepEqual(
+    failure.configuration,
+    sttEvaluationProfileConfigurations.endpoint_only_1000,
+  );
+  assert.equal(failure.dataset.manifest_sha256, timing.dataset.manifest_sha256);
+  assert.equal(failure.dataset.case.packet_count, 348);
+  assert.equal(failure.dataset.case.dropped_packet_count, 0);
+  assert.ok(failure.dataset.case.duration_ms > 0);
+  assert.deepEqual(failure.trials.map((trial) => trial.trial), [1, 2, 3]);
+  assert.ok(failure.trials.every((trial) => (
+    trial.boundary_timeout_ms === 10_000 &&
+    trial.outcome === "boundary_timeout" &&
+    trial.cpu_percent >= 0
+  )));
+  assert.equal(failure.outcome, "repeated_boundary_timeout");
+  assert.equal(failure.full_dataset_scoring_completed, false);
+  assert.equal(failure.observations_written, false);
+});
+
 void test("追跡するPi runtime snapshotは識別子を含めず候補gateを未評価とする", () => {
   const snapshot = readFileSync(
     "docs/evaluation/pi-runtime-baseline-2026-08-25.json",

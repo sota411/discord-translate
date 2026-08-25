@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "generated_at": "2026-08-25T16:27:08.867Z",
+  "experiment": "endpoint_timing",
+  "profile": "endpoint_only_1000",
+  "configuration": {
+    "recognition_context_enabled": false,
+    "endpoint_mode": "soniox_only",
+    "discord_speaking_end_delay_ms": 100,
+    "manual_finalize_fallback_ms": null,
+    "soniox_max_endpoint_delay_ms": 1000,
+    "soniox_endpoint_latency_adjustment_level": 0,
+    "soniox_endpoint_sensitivity": 0,
+    "endpoint_silence_chunk_ms": 20,
+    "preprocessing": "none"
+  },
+  "dataset": {
+    "manifest_sha256": "6d350a14157addc4415a4f8374ea66b0bca2d32e2d170deb5cf3e1e284c4dee2",
+    "case": {
+      "case_id": "ja-keyboard-noise",
+      "audio_sha256": "23ccbf75a8be2da42b333d4756a21f3b5413465b69bee717a6d7c9ea32d2093f",
+      "packet_trace_sha256": "c9b31a91caca30ddac2038f2c4dda0acf99a6dc95e6876a8f2d30db5e617bb5b",
+      "audio_bytes": 668078,
+      "packet_count": 348,
+      "dropped_packet_count": 0,
+      "duration_ms": 6959.145833333333
+    }
+  },
+  "trials": [
+    {
+      "trial": 1,
+      "outcome": "boundary_timeout",
+      "boundary_timeout_ms": 10000,
+      "elapsed_ms": 17322.368291000003,
+      "cpu_percent": 2.879374905887277
+    },
+    {
+      "trial": 2,
+      "outcome": "boundary_timeout",
+      "boundary_timeout_ms": 10000,
+      "elapsed_ms": 17329.043734000003,
+      "cpu_percent": 2.343504200443194
+    },
+    {
+      "trial": 3,
+      "outcome": "boundary_timeout",
+      "boundary_timeout_ms": 10000,
+      "elapsed_ms": 17276.253586,
+      "cpu_percent": 2.2146229565776694
+    }
+  ],
+  "outcome": "repeated_boundary_timeout",
+  "full_dataset_scoring_completed": false,
+  "observations_written": false,
+  "decision": "not_adopted",
+  "scope": "The same required case was replayed three times with endpoint-only finalization. Full-dataset scoring stopped because every trial reached the outer boundary timeout. No transcript observations were written and no production runtime was changed."
+}

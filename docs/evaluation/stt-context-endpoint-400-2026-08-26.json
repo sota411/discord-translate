@@ -1,0 +1,2046 @@
+{
+  "version": 1,
+  "generated_at": "2026-08-25T15:47:53.876Z",
+  "experiment": "context_endpoint_400",
+  "profile_mapping": {
+    "A": "baseline",
+    "B": "endpoint_fallback_400",
+    "C": "context_endpoint_fallback_400"
+  },
+  "profiles": {
+    "baseline": {
+      "case_count": 10,
+      "trial_count": 3,
+      "observation_count": 30,
+      "preprocessing": "none",
+      "configuration": {
+        "recognition_context_enabled": false,
+        "endpoint_mode": "manual_early",
+        "discord_speaking_end_delay_ms": 100,
+        "manual_finalize_fallback_ms": 100,
+        "soniox_max_endpoint_delay_ms": 2000,
+        "soniox_endpoint_latency_adjustment_level": null,
+        "soniox_endpoint_sensitivity": null,
+        "endpoint_silence_chunk_ms": null,
+        "preprocessing": "none"
+      },
+      "cer": 1.7765567765567765,
+      "clean_cer": 1.875,
+      "key_term_recall": 0.75,
+      "language_recall": 0.6060606060606061,
+      "language_switch_recall": 0.5,
+      "code_switch_cer": 2.259259259259259,
+      "unnatural_split_count": 0,
+      "latency_ms": {
+        "mean": 356.57113026666616,
+        "p50": 398.53099999999904,
+        "p95": 475.1964849999931
+      },
+      "finalization": {
+        "observed_boundary_count": 48,
+        "adoption_boundary_count": 30,
+        "observed_endpoint_count": 30,
+        "observed_finalized_count": 18,
+        "soniox_endpoint_count": 4,
+        "manual_fallback_count": 26,
+        "soniox_endpoint_ratio": 0.13333333333333333
+      },
+      "cpu_percent": {
+        "mean": 2.070599292858402,
+        "p95": 3.184262649700273
+      },
+      "packets": {
+        "decoded_mean": 239.9,
+        "dropped_mean": 0,
+        "dropped_ratio": 0
+      },
+      "cases": [
+        {
+          "trial": 1,
+          "case_id": "ja-clean-game",
+          "cer": 3.7142857142857144,
+          "character_edits": 52,
+          "reference_characters": 14,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 366,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 351.2995120000005,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ko-clean-game",
+          "cer": 0.1111111111111111,
+          "character_edits": 1,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 125,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 398.53099999999904,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-short",
+          "cer": 1,
+          "character_edits": 2,
+          "reference_characters": 2,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 36,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 470.03977600000144,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 556.301531000001,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ko-short",
+          "cer": 1,
+          "character_edits": 1,
+          "reference_characters": 1,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 40,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 406.04501000000164,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 487.7845019999986,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-low-volume",
+          "cer": 1,
+          "character_edits": 10,
+          "reference_characters": 10,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 373,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 12.181407000000036,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 380.73791000000347,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ko-fan-noise",
+          "cer": 0.09090909090909091,
+          "character_edits": 1,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 132,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 474.1979019999999,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-keyboard-noise",
+          "cer": 0.9090909090909091,
+          "character_edits": 10,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 348,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 20.100916999996116,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 397.33433499999956,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-clipped",
+          "cer": 4.090909090909091,
+          "character_edits": 45,
+          "reference_characters": 11,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 370,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 381.33973100000003,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-pause-600ms",
+          "cer": 1,
+          "character_edits": 13,
+          "reference_characters": 13,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 384,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 10.670928999999887,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 344.6038610000105,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 393.26322699998855,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-ko-code-switch",
+          "cer": 2.4444444444444446,
+          "character_edits": 22,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 0.5,
+          "languages_recalled": 1,
+          "languages_expected": 2,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 225,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 435.9381160000048,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-clean-game",
+          "cer": 3.7142857142857144,
+          "character_edits": 52,
+          "reference_characters": 14,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 366,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 317.69086100001005,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ko-clean-game",
+          "cer": 0.1111111111111111,
+          "character_edits": 1,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 125,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 402.8462500000023,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-short",
+          "cer": 1,
+          "character_edits": 2,
+          "reference_characters": 2,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 36,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 454.56388100000913,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 518.242694000015,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ko-short",
+          "cer": 3,
+          "character_edits": 3,
+          "reference_characters": 1,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 40,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 411.2094490000163,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 487.55503099999623,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-low-volume",
+          "cer": 1,
+          "character_edits": 10,
+          "reference_characters": 10,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 373,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 4.188714000018081,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 362.1547359999968,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ko-fan-noise",
+          "cer": 0.09090909090909091,
+          "character_edits": 1,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 132,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 484.97813600001973,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-keyboard-noise",
+          "cer": 0.9090909090909091,
+          "character_edits": 10,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 348,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 5.393746000016108,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 402.3369240000029,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-clipped",
+          "cer": 1,
+          "character_edits": 11,
+          "reference_characters": 11,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 370,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 5.323200999991968,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 359.45630899997195,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-pause-600ms",
+          "cer": 1,
+          "character_edits": 13,
+          "reference_characters": 13,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 384,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 17.56880700000329,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 379.77249100001063,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 404.4303459999792,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-ko-code-switch",
+          "cer": 2.4444444444444446,
+          "character_edits": 22,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 0.5,
+          "languages_recalled": 1,
+          "languages_expected": 2,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 225,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 418.91402299999027,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-clean-game",
+          "cer": 3.7142857142857144,
+          "character_edits": 52,
+          "reference_characters": 14,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 366,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 326.73297000001185,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ko-clean-game",
+          "cer": 0.1111111111111111,
+          "character_edits": 1,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 125,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 412.4948999999906,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-short",
+          "cer": 1,
+          "character_edits": 2,
+          "reference_characters": 2,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 36,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 475.1964849999931,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 537.2581399999908,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ko-short",
+          "cer": 1,
+          "character_edits": 1,
+          "reference_characters": 1,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 40,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 396.8092030000116,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 496.01772699999856,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-low-volume",
+          "cer": 6.1,
+          "character_edits": 61,
+          "reference_characters": 10,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 373,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 438.6112779999967,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ko-fan-noise",
+          "cer": 0.09090909090909091,
+          "character_edits": 1,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 132,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 469.15881100000115,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-keyboard-noise",
+          "cer": 0.9090909090909091,
+          "character_edits": 10,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 348,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 5.104651000001468,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 380.54498700000113,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-clipped",
+          "cer": 4.090909090909091,
+          "character_edits": 45,
+          "reference_characters": 11,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 370,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 369.7010199999786,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-pause-600ms",
+          "cer": 1,
+          "character_edits": 13,
+          "reference_characters": 13,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 384,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 5.836775000032503,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 345.634739000001,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 393.64597399998456,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-ko-code-switch",
+          "cer": 1.8888888888888888,
+          "character_edits": 17,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 0.5,
+          "languages_recalled": 1,
+          "languages_expected": 2,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 225,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 430.68088599998737,
+              "has_text": true
+            }
+          ]
+        }
+      ]
+    },
+    "context_endpoint_fallback_400": {
+      "case_count": 10,
+      "trial_count": 3,
+      "observation_count": 30,
+      "preprocessing": "none",
+      "configuration": {
+        "recognition_context_enabled": true,
+        "endpoint_mode": "soniox_primary",
+        "discord_speaking_end_delay_ms": 100,
+        "manual_finalize_fallback_ms": 300,
+        "soniox_max_endpoint_delay_ms": 1000,
+        "soniox_endpoint_latency_adjustment_level": 0,
+        "soniox_endpoint_sensitivity": 0,
+        "endpoint_silence_chunk_ms": 20,
+        "preprocessing": "none"
+      },
+      "cer": 1.2893772893772895,
+      "clean_cer": 0.8611111111111112,
+      "key_term_recall": 0.5833333333333334,
+      "language_recall": 0.7272727272727273,
+      "language_switch_recall": 0.5,
+      "code_switch_cer": 0.5555555555555556,
+      "unnatural_split_count": 0,
+      "latency_ms": {
+        "mean": 400.14062919999975,
+        "p50": 413.70777500001714,
+        "p95": 633.9800770000147
+      },
+      "finalization": {
+        "observed_boundary_count": 45,
+        "adoption_boundary_count": 30,
+        "observed_endpoint_count": 36,
+        "observed_finalized_count": 9,
+        "soniox_endpoint_count": 9,
+        "manual_fallback_count": 21,
+        "soniox_endpoint_ratio": 0.3
+      },
+      "cpu_percent": {
+        "mean": 2.122600559127844,
+        "p95": 2.6872263691151757
+      },
+      "packets": {
+        "decoded_mean": 239.9,
+        "dropped_mean": 0,
+        "dropped_ratio": 0
+      },
+      "cases": [
+        {
+          "trial": 1,
+          "case_id": "ja-clean-game",
+          "cer": 1,
+          "character_edits": 14,
+          "reference_characters": 14,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 366,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 18.48191399999996,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 601.6677640000016,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ko-clean-game",
+          "cer": 0.1111111111111111,
+          "character_edits": 1,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 125,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 313.63230900000053,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-short",
+          "cer": 0.5,
+          "character_edits": 1,
+          "reference_characters": 2,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 36,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 642.4594130000005,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 704.0659919999998,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ko-short",
+          "cer": 1,
+          "character_edits": 1,
+          "reference_characters": 1,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 40,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 612.2010759999976,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 670.4685109999991,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-low-volume",
+          "cer": 1,
+          "character_edits": 10,
+          "reference_characters": 10,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 373,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 404.5695590000032,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ko-fan-noise",
+          "cer": 0.09090909090909091,
+          "character_edits": 1,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 132,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 428.5840249999965,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-keyboard-noise",
+          "cer": 3.090909090909091,
+          "character_edits": 34,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 348,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 492.88121000000683,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-clipped",
+          "cer": 3.727272727272727,
+          "character_edits": 41,
+          "reference_characters": 11,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 370,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 322.5282409999927,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-pause-600ms",
+          "cer": 1,
+          "character_edits": 13,
+          "reference_characters": 13,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 384,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 15.049077000003308,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 165.51917800000228,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 1,
+          "case_id": "ja-ko-code-switch",
+          "cer": 0.5555555555555556,
+          "character_edits": 5,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 0.5,
+          "languages_recalled": 1,
+          "languages_expected": 2,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 225,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 18.12545799999498,
+              "has_text": false
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 398.93111400000635,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-clean-game",
+          "cer": 2.357142857142857,
+          "character_edits": 33,
+          "reference_characters": 14,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 366,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 252.11053900000115,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ko-clean-game",
+          "cer": 0.1111111111111111,
+          "character_edits": 1,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 125,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 324.1207540000032,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-short",
+          "cer": 0.5,
+          "character_edits": 1,
+          "reference_characters": 2,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 36,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 633.9800770000147,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 690.4010300000082,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ko-short",
+          "cer": 1,
+          "character_edits": 1,
+          "reference_characters": 1,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 40,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 623.854782999988,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 700.5986269999994,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-low-volume",
+          "cer": 1,
+          "character_edits": 10,
+          "reference_characters": 10,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 373,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 392.5481209999998,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ko-fan-noise",
+          "cer": 0.09090909090909091,
+          "character_edits": 1,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 132,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 426.90009400001145,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-keyboard-noise",
+          "cer": 3.090909090909091,
+          "character_edits": 34,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 348,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 504.4524049999891,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-clipped",
+          "cer": 1,
+          "character_edits": 11,
+          "reference_characters": 11,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 370,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 8.801161000010325,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 639.5896979999961,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-pause-600ms",
+          "cer": 1,
+          "character_edits": 13,
+          "reference_characters": 13,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 384,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 4.23910999999498,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 176.17619999998715,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "case_id": "ja-ko-code-switch",
+          "cer": 0.5555555555555556,
+          "character_edits": 5,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 0.5,
+          "languages_recalled": 1,
+          "languages_expected": 2,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 225,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 10.449522000009893,
+              "has_text": false
+            },
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 403.8730299999879,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-clean-game",
+          "cer": 1,
+          "character_edits": 14,
+          "reference_characters": 14,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 366,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 6.027280999987852,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 557.9073079999944,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ko-clean-game",
+          "cer": 0.1111111111111111,
+          "character_edits": 1,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 125,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 312.64374199998565,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-short",
+          "cer": 0.5,
+          "character_edits": 1,
+          "reference_characters": 2,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 36,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 609.7094109999889,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 710.559305999981,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ko-short",
+          "cer": 1,
+          "character_edits": 1,
+          "reference_characters": 1,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 40,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 630.260620999994,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 717.181167999981,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-low-volume",
+          "cer": 1,
+          "character_edits": 10,
+          "reference_characters": 10,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 0,
+          "languages_recalled": 0,
+          "languages_expected": 1,
+          "segment_count": 0,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 373,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 241.59891999996034,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ko-fan-noise",
+          "cer": 0.09090909090909091,
+          "character_edits": 1,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 132,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 431.3704209999996,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-keyboard-noise",
+          "cer": 3.090909090909091,
+          "character_edits": 34,
+          "reference_characters": 11,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 348,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 485.17401200003223,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-clipped",
+          "cer": 3.727272727272727,
+          "character_edits": 41,
+          "reference_characters": 11,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 1,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 370,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 494.63211800000863,
+              "has_text": true
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-pause-600ms",
+          "cer": 1,
+          "character_edits": 13,
+          "reference_characters": 13,
+          "key_term_recall": null,
+          "key_terms_recalled": 0,
+          "key_terms_expected": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
+          "languages_expected": 1,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 384,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 19.83068600000115,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 196.95757800003048,
+              "has_text": false
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "case_id": "ja-ko-code-switch",
+          "cer": 0.5555555555555556,
+          "character_edits": 5,
+          "reference_characters": 9,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
+          "key_terms_expected": 1,
+          "language_recall": 0.5,
+          "languages_recalled": 1,
+          "languages_expected": 2,
+          "segment_count": 1,
+          "expected_segments": 1,
+          "unnatural_split_count": 0,
+          "decoded_packet_count": 225,
+          "dropped_packet_count": 0,
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 21.024043999961577,
+              "has_text": false
+            },
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 413.70777500001714,
+              "has_text": true
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "comparisons": {
+    "context_endpoint_fallback_400": {
+      "cer_relative_improvement_percent": 27.422680412371125,
+      "key_term_recall_change": -0.16666666666666663,
+      "clean_cer_point_change": -101.38888888888889,
+      "language_switch_recall_change": 0,
+      "code_switch_cer_point_change": -170.37037037037035,
+      "p95_added_latency_ms": 158.7835920000216,
+      "gates": {
+        "overall_cer": "pass",
+        "key_terms": "fail",
+        "clean_cer": "pass",
+        "language_switching": "pass",
+        "latency": "pass",
+        "semantic_endpoint": "fail",
+        "pi_runtime": "not_evaluated"
+      }
+    }
+  },
+  "preprocessing": {
+    "decision": "not_adopted",
+    "reason": "前処理なしを基準とし、ノイズ音声のCER改善とクリーン音声の非悪化を実測するまで標準採用しません。"
+  },
+  "dataset": {
+    "manifest_sha256": "6d350a14157addc4415a4f8374ea66b0bca2d32e2d170deb5cf3e1e284c4dee2",
+    "cases": [
+      {
+        "case_id": "ja-clean-game",
+        "audio_sha256": "312cac0eacc7c406e4ee9d3f4a2fd4d76c9125af4397ce4146aae80f63b42f6b",
+        "packet_trace_sha256": "f900506314f6167e7dd7a8d71daae9c31775fc2734929693c06374b8bdb43898",
+        "audio_bytes": 700988,
+        "packet_count": 366,
+        "dropped_packet_count": 0,
+        "duration_ms": 7301.958333333333
+      },
+      {
+        "case_id": "ko-clean-game",
+        "audio_sha256": "174d8fdb43e98f42f6535067c25f878f9a6d3ada8e49687e2ac906e6f5400629",
+        "packet_trace_sha256": "2fd3779013e2f132235c596142b447cba9a0851e34a63238c435fa2b4b87bc37",
+        "audio_bytes": 238176,
+        "packet_count": 125,
+        "dropped_packet_count": 0,
+        "duration_ms": 2481
+      },
+      {
+        "case_id": "ja-short",
+        "audio_sha256": "81c9ef93313eabcc564b607e957cde90086e128b105b7ce980916a8216455eab",
+        "packet_trace_sha256": "df4088c6669074a60971cfaa07bea11a6b355d602d278763c1a5035d1affd05e",
+        "audio_bytes": 68176,
+        "packet_count": 36,
+        "dropped_packet_count": 0,
+        "duration_ms": 710.1666666666666
+      },
+      {
+        "case_id": "ko-short",
+        "audio_sha256": "fc171a80c07de471bec54220f624794c5a70161765d3d4bd0b2346ae172bc5b6",
+        "packet_trace_sha256": "8f833535ef38e2ca41d9163845a46f8de15a45d93554914bb4fa984249c5c5ef",
+        "audio_bytes": 76600,
+        "packet_count": 40,
+        "dropped_packet_count": 0,
+        "duration_ms": 797.9166666666666
+      },
+      {
+        "case_id": "ja-low-volume",
+        "audio_sha256": "c87b876eee10cf1c8c5e5763f320589ca7940d49149a55ff66db3e83c02db69e",
+        "packet_trace_sha256": "63325065599b5af36f3433f50ecc97f21828d4e46447b6f67b6de27327f914cc",
+        "audio_bytes": 715716,
+        "packet_count": 373,
+        "dropped_packet_count": 0,
+        "duration_ms": 7455.375
+      },
+      {
+        "case_id": "ko-fan-noise",
+        "audio_sha256": "cc83cde53616783e8823135d8fd949dfc3cb7311c2d7e30e5d343f4921d75a84",
+        "packet_trace_sha256": "fce32144f4a521b2debb79bdee78997e81b48b778cdd7a4c7afa7496b9acdc4c",
+        "audio_bytes": 251878,
+        "packet_count": 132,
+        "dropped_packet_count": 0,
+        "duration_ms": 2623.7291666666665
+      },
+      {
+        "case_id": "ja-keyboard-noise",
+        "audio_sha256": "23ccbf75a8be2da42b333d4756a21f3b5413465b69bee717a6d7c9ea32d2093f",
+        "packet_trace_sha256": "c9b31a91caca30ddac2038f2c4dda0acf99a6dc95e6876a8f2d30db5e617bb5b",
+        "audio_bytes": 668078,
+        "packet_count": 348,
+        "dropped_packet_count": 0,
+        "duration_ms": 6959.145833333333
+      },
+      {
+        "case_id": "ja-clipped",
+        "audio_sha256": "b507460ba635198f4ce56bb345bf68a189a2345024041889990653f1fec80696",
+        "packet_trace_sha256": "d4f10ccdda50c44acf425dc19dc289b7a53ccf4e1d4396b6da1f6dd0cd79044a",
+        "audio_bytes": 709692,
+        "packet_count": 370,
+        "dropped_packet_count": 0,
+        "duration_ms": 7392.625
+      },
+      {
+        "case_id": "ja-pause-600ms",
+        "audio_sha256": "2ff4d6ace532d28e96d112dcca42f280751b22425d8319df14b5b34f52beadf3",
+        "packet_trace_sha256": "505188d96759fb6db3b6951019629eb8c622456c2c4256a44691558100462fa7",
+        "audio_bytes": 736102,
+        "packet_count": 384,
+        "dropped_packet_count": 0,
+        "duration_ms": 8268.666666666666
+      },
+      {
+        "case_id": "ja-ko-code-switch",
+        "audio_sha256": "3ee279b842f7fc19beab19dd6ea7183e63a3d99e983358baab0daf020c37ef7b",
+        "packet_trace_sha256": "15fe3202324a72c5e3af63fb28c536b0e17e7830e98ce2dc48af28b62b6d2768",
+        "audio_bytes": 429386,
+        "packet_count": 225,
+        "dropped_packet_count": 0,
+        "duration_ms": 4593.1875
+      }
+    ]
+  }
+}

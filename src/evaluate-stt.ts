@@ -9,6 +9,7 @@ import {
   unlink,
 } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { getSonioxRegionEndpoints, type SonioxRegion } from "./config.js";
@@ -17,17 +18,26 @@ import {
   createSttEvaluationDatasetEvidence,
   loadSttEvaluationDataset,
 } from "./evaluation/stt-evaluation-files.js";
-import { runSttEvaluationDataset } from "./evaluation/stt-evaluation-runner.js";
+import {
+  runSttEndpointOnlyProbe,
+  runSttEvaluationDataset,
+} from "./evaluation/stt-evaluation-runner.js";
 import {
   createSttEvaluationReport,
+  parseSttEvaluationExperiment,
   parseSttEvaluationObservations,
+  sttEvaluationExperimentProfileMappings,
+  type SttEvaluationExperiment,
+  type SttEvaluationProfile,
 } from "./evaluation/stt-evaluation.js";
 
 const usage = `使用方法:
-  pnpm stt:evaluate run --manifest <manifest.json> --observations-output <observations.json> --output <report.json> [--stt-websocket-url <wss://...>] [--trials <1-10>]
+  pnpm stt:evaluate run --manifest <manifest.json> --observations-output <observations.json> --output <report.json> [--experiment <context_endpoint|endpoint_timing|context_endpoint_400>] [--profiles <comma-separated>] [--stt-websocket-url <wss://...>] [--trials <1-10>]
+  pnpm stt:evaluate probe-endpoint-only --manifest <manifest.json> --required-case <case-id> --output <summary.json> [--stt-websocket-url <wss://...>] [--trials 3] [--boundary-timeout-ms <milliseconds>]
   pnpm stt:evaluate score --manifest <manifest.json> --observations <observations.json> --output <report.json>
 
-評価音声、packet trace、観測結果、出力はGit管理外の.data/stt-eval/へ置いてください。`;
+評価音声、packet trace、本文入り観測結果はGit管理外の.data/stt-eval/へ置いてください。`;
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 async function readObservations(filePath: string): Promise<string> {
   try {
@@ -98,6 +108,26 @@ async function resolveSafeOutputPaths(
   return canonicalOutputPaths;
 }
 
+function isWithinPath(parentPath: string, candidatePath: string): boolean {
+  const relativePath = path.relative(parentPath, candidatePath);
+  return relativePath === "" || (
+    relativePath !== ".." &&
+    !relativePath.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relativePath)
+  );
+}
+
+async function assertPrivateObservationsPath(observationsPath: string): Promise<void> {
+  const canonicalRepositoryRoot = await realpath(repositoryRoot);
+  if (!isWithinPath(canonicalRepositoryRoot, observationsPath)) return;
+  const privateOutputRoot = path.join(canonicalRepositoryRoot, ".data", "stt-eval");
+  if (!isWithinPath(privateOutputRoot, observationsPath)) {
+    throw new Error(
+      "本文を含むobservations-outputはリポジトリ外または.data/stt-eval/配下を指定してください",
+    );
+  }
+}
+
 function sonioxSttWebSocketUrl(override: string | undefined): string {
   if (override) return override;
   const region = process.env.SONIOX_REGION;
@@ -105,6 +135,33 @@ function sonioxSttWebSocketUrl(override: string | undefined): string {
     throw new Error("SONIOX_REGIONにはus、eu、jpのいずれかを指定してください");
   }
   return getSonioxRegionEndpoints(region satisfies SonioxRegion).sttWebSocketUrl;
+}
+
+function parseProfileSelection(
+  value: string | undefined,
+  experiment: SttEvaluationExperiment,
+): SttEvaluationProfile[] | undefined {
+  if (value === undefined) return undefined;
+  const profiles = value.split(",").map((profile) => profile.trim());
+  if (profiles.length === 0 || profiles.some((profile) => profile.length === 0)) {
+    throw new Error("STT評価profilesはcomma区切りで1件以上指定してください");
+  }
+  const allowedProfiles = new Set<string>(
+    Object.values(sttEvaluationExperimentProfileMappings[experiment]),
+  );
+  const invalidProfile = profiles.find((profile) => !allowedProfiles.has(profile));
+  if (invalidProfile) {
+    throw new Error(`experiment「${experiment}」にprofile「${invalidProfile}」は含まれません`);
+  }
+  if (profiles.includes("endpoint_only_1000")) {
+    throw new Error(
+      "endpoint_only_1000はprobe-endpoint-onlyコマンドで必須caseだけを評価してください",
+    );
+  }
+  if (!profiles.includes("baseline")) {
+    throw new Error("STT評価profilesにはbaselineを含めてください");
+  }
+  return profiles as SttEvaluationProfile[];
 }
 
 async function run(args: readonly string[]): Promise<void> {
@@ -115,6 +172,8 @@ async function run(args: readonly string[]): Promise<void> {
       manifest: { type: "string" },
       "observations-output": { type: "string" },
       output: { type: "string" },
+      experiment: { type: "string" },
+      profiles: { type: "string" },
       "stt-websocket-url": { type: "string" },
       trials: { type: "string" },
     },
@@ -143,11 +202,18 @@ async function run(args: readonly string[]): Promise<void> {
   if (!resolvedObservationsOutput || !resolvedOutputPath) {
     throw new Error("評価の出力pathを解決できませんでした");
   }
+  await assertPrivateObservationsPath(resolvedObservationsOutput);
 
+  const experiment = parseSttEvaluationExperiment(
+    parsed.values.experiment ?? "context_endpoint",
+  );
+  const profiles = parseProfileSelection(parsed.values.profiles, experiment);
   const observations = await runSttEvaluationDataset(dataset, {
     apiKey,
     model,
     sttWebSocketUrl: sonioxSttWebSocketUrl(parsed.values["stt-websocket-url"]),
+    experiment,
+    ...(profiles === undefined ? {} : { profiles }),
     trials: parsed.values.trials === undefined ? 1 : Number(parsed.values.trials),
   });
   const report = {
@@ -159,9 +225,67 @@ async function run(args: readonly string[]): Promise<void> {
   console.log(JSON.stringify({
     observations: resolvedObservationsOutput,
     report: resolvedOutputPath,
+    experiment: report.experiment,
     profiles: Object.keys(report.profiles),
     case_count: dataset.cases.length,
     trial_count: report.profiles.baseline?.trial_count,
+  }));
+}
+
+async function probeEndpointOnly(args: readonly string[]): Promise<void> {
+  const parsed = parseArgs({
+    args,
+    strict: true,
+    options: {
+      manifest: { type: "string" },
+      "required-case": { type: "string" },
+      output: { type: "string" },
+      "stt-websocket-url": { type: "string" },
+      trials: { type: "string" },
+      "boundary-timeout-ms": { type: "string" },
+    },
+  });
+  const manifestPath = parsed.values.manifest;
+  const requiredCaseId = parsed.values["required-case"];
+  const outputPath = parsed.values.output;
+  if (!manifestPath || !requiredCaseId || !outputPath) throw new Error(usage);
+  const apiKey = process.env.SONIOX_API_KEY?.trim();
+  const model = process.env.SONIOX_STT_MODEL?.trim();
+  if (!apiKey) throw new Error("SONIOX_API_KEYが設定されていません");
+  if (!model) throw new Error("SONIOX_STT_MODELが設定されていません");
+
+  const dataset = await loadSttEvaluationDataset(manifestPath);
+  const protectedPaths = new Set([
+    dataset.manifestPath,
+    ...dataset.cases.flatMap((evaluationCase) => [
+      evaluationCase.audioPath,
+      evaluationCase.packetTracePath,
+    ]),
+  ]);
+  const [resolvedOutputPath] = await resolveSafeOutputPaths(
+    protectedPaths,
+    [path.resolve(outputPath)],
+  );
+  if (!resolvedOutputPath) throw new Error("評価の出力pathを解決できませんでした");
+
+  const summary = await runSttEndpointOnlyProbe(dataset, {
+    apiKey,
+    model,
+    sttWebSocketUrl: sonioxSttWebSocketUrl(parsed.values["stt-websocket-url"]),
+    requiredCaseId,
+    trials: parsed.values.trials === undefined ? 3 : Number(parsed.values.trials),
+    boundaryTimeoutMs: parsed.values["boundary-timeout-ms"] === undefined
+      ? 10_000
+      : Number(parsed.values["boundary-timeout-ms"]),
+  });
+  await writePrivateJson(resolvedOutputPath, summary);
+  console.log(JSON.stringify({
+    report: resolvedOutputPath,
+    experiment: summary.experiment,
+    profile: summary.profile,
+    required_case: summary.dataset.case.case_id,
+    trial_count: summary.trials.length,
+    outcome: summary.outcome,
   }));
 }
 
@@ -212,6 +336,10 @@ async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
   if (command === "run") {
     await run(args);
+    return;
+  }
+  if (command === "probe-endpoint-only") {
+    await probeEndpointOnly(args);
     return;
   }
   if (command === "score") {

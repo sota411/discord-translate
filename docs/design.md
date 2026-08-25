@@ -216,7 +216,7 @@ Sonioxから届く認識・翻訳結果について、各トークンが確定�
 
 `endpoint`または`finalized`が1発話の境界になる。原文と翻訳文が揃った発話だけを字幕とTTSへ渡す。境界確定後は、確定字幕の投稿とTTS生成を並行して始める。字幕投稿の完了はTTS生成開始の条件にしない。
 
-Soniox中心の候補では`max_endpoint_delay_ms=500`、Discordの発話終了から600 ms後の手動fallbackを比較した。しかし、2026年8月25日の人工音声評価ではp95追加遅延が基準を超え、不自然な分割も増えた。このため本番経路へは採用せず、現行の100 ms手動確定を維持している。評価条件と再検証方法は第8節に示す。
+Soniox中心の候補では、まず`max_endpoint_delay_ms=500`とDiscordの発話終了から600 ms後の手動fallbackを比較した。2026年8月26日には、最終音声packetから合計400、600、800 ms後のfallbackと、`max_endpoint_delay_ms=1000`のendpoint-onlyも再比較した。固有名詞、遅延、または確定不能のgateが残ったため、本番経路へは採用せず、現行の100 ms手動確定を維持している。評価条件と再検証方法は第8節に示す。
 
 TTSへ次を送る。
 
@@ -582,6 +582,8 @@ manifest version 1は、言語ペアと48 kHz・mono・PCM s16le形式を固定�
 
 packet trace version 1は、復号できずPCMへ入らなかった`dropped_packet_count`と、復号済みpacketの送信時刻`at_ms`・`byte_length`を持つ。時刻は厳密な昇順とし、byte合計はPCMと一致させる。評価時と採点時のmanifest、PCM、packet traceが同一であることは、SHA-256とpacket数で検査する。
 
+公開レポートは、本文の代わりに指標と入力SHA-256を残す監査証拠である。過去の人工音声corpus、manifest、packet trace、本文入りobservationsは`.data/stt-eval/`からGitへ追跡しない。したがって、clean checkoutだけで過去の数値は再実行できない。厳密な再実行には、公開レポートのSHA-256と一致するlocal dataが必要である。SHA-256が異なる入力は新しい実験として扱う。
+
 比較条件は次のとおり。
 
 | ID | profile | 認識用context | 発話確定 |
@@ -610,6 +612,40 @@ packet trace version 1は、復号できずPCMへ入らなかった`dropped_pack
 | D | 5.5% | -33.3ポイント | -144.4ポイント | -50ポイント | +505 ms | 0件 | 0% | 全体CER、固有名詞、期待言語、遅延、endpoint比率で不採用 |
 
 詳細なcase・trial別指標と入力SHA-256は[本文非含有レポート](./evaluation/stt-artificial-2026-08-25.json)に残す。人工音声、とくに日本語TTSのCERが高いため、この結果を実会話の精度値へ外挿しない。実Discord音声と複数人通話は未検証である。したがって、認識contextとSoniox中心の確定を本番既定へ採用せず、現行値を維持する。
+
+#### 400〜800 msとendpoint-onlyも採用基準を満たさなかった
+
+2026年8月26日には、同じmanifestとSoniox `stt-rt-v5`を使い、発話確定時間を次の5条件で比較した。A〜Dは10件を3試行し、30観測/profileを集計した。合計時間は、最終音声packetからDiscordの`SpeakingMap`が終了を通知するまでの100 msと、その後の待機時間を足した値である。
+
+| ID | profile | 手動fallbackの合計時間 | Soniox設定 |
+|---|---|---:|---|
+| A | `baseline` | 約200 ms | 現行設定 |
+| B | `endpoint_fallback_400` | 400 ms | `max_endpoint_delay_ms=1000`、積極度0、感度0 |
+| C | `endpoint_fallback_600` | 600 ms | Bと同じ |
+| D | `endpoint_fallback_800` | 800 ms | Bと同じ |
+| E | `endpoint_only_1000` | なし | Bと同じ |
+
+評価では、Discordの発話終了を模した時点で100 ms分の無音PCMを送り、その後は20 msずつ実時間に合わせて送った。音声入力が止まったままではSoniox側の意味的な区切りを同じ条件で待てないためである。この無音送信は評価runnerだけの処理であり、本番の音声経路には追加していない。B〜Dでは3秒の認識停滞と30秒の発話上限を安全装置として維持する。EだけはSoniox endpointを分離して測るため、発話単位の手動確定を無効にし、runner全体の10秒timeoutで停止する。B〜Dで手動確定する場合は、無音の実時間送信とは別に、Soniox公式の手動確定手順に沿って200 ms分の無音を送ってから`finalize()`する。
+
+| 候補 | CER相対改善 | 固有名詞再現率の差 | p95追加遅延 | 不自然な分割 | Soniox endpoint比率 | 判定 |
+|---|---:|---:|---:|---:|---:|---|
+| B（400 ms） | 40.6% | -16.7ポイント | +185 ms | 5件 | 62.9% | 固有名詞で不採用 |
+| C（600 ms） | 49.0% | -16.7ポイント | +403 ms | 9件 | 74.4% | 固有名詞と遅延で不採用 |
+| D（800 ms） | 24.5% | -8.3ポイント | +540 ms | 4件 | 70.6% | 固有名詞と遅延で不採用 |
+
+Eは同じ`ja-keyboard-noise`を3回とも10秒以内に確定できなかった。必須caseを繰り返し確定できない候補は、その時点で採用不能として残りのcaseを送らない。失敗を欠測から除外してCERを出すこともない。このため、Eには全10件のCER、固有名詞再現率、p95がなく、採用結果だけが不合格である。失敗した実行では本文を含む観測結果を保存せず、各試行のCPU、packet数、欠落数、入力SHA-256だけを残した。A〜Dのcase・trial別指標は[発話確定時間レポート](./evaluation/stt-endpoint-timing-2026-08-26.json)、Eの3試行は[endpoint-only timeout](./evaluation/stt-endpoint-only-failure-2026-08-26.json)に残す。Eの再検証は次の公開CLIで実行する。`--trials`は3以外を拒否する。
+
+```bash
+pnpm stt:evaluate probe-endpoint-only \
+  --manifest .data/stt-eval/artificial/manifest.json \
+  --required-case ja-keyboard-noise \
+  --output .data/stt-eval/endpoint-only-summary.json \
+  --trials 3
+```
+
+400 ms候補の固有名詞低下を補えるか確かめるため、`context.general`と`context.terms`も組み合わせて別の3試行を行った。全体CERはA比27.4%改善し、p95追加遅延は+159 msだった。一方、固有名詞再現率は16.7ポイント下がり、Soniox endpointが手動fallbackより先に確定した割合も30%に留まった。認識contextを足しても不採用gateは解消しなかった。case・trial別指標は[認識context・400 msレポート](./evaluation/stt-context-endpoint-400-2026-08-26.json)に残す。
+
+同じAでも、発話確定時間の実験ではCER 1.733、認識contextとの組み合わせ実験では1.777だった。Soniox応答には試行間の振れがあるため、異なる実行の絶対値同士は採否に使わず、それぞれ同時に測ったAとの差だけを使う。候補はいずれもPiへ配備していないため、PiのCPUと音声詰まりのgateは引き続き`not_evaluated`である。本番設定、`SONIOX_GENERAL_CONTEXT_ENABLED=false`、無加工PCMの経路は変更しない。
 
 Pi現行版`755561f6a1e2095b51e5db8e7e84e2353d77c5c5`では、72時間を要求した集計窓のうち、実際に取得できた約68.9時間の`runtime_health`で、STT結果があった30秒窓190件のprocess CPU p95が10.05%、最大が15.06%だった。一方、Issue #9の候補版はPiへ配備していない。event loop最大値942.146 msと`voice_packet_dropped` 5件も観測しており、ログだけでは可聴の音声詰まりを判定できない。このためPiと音声詰まりの採用gateは`not_evaluated`のままとする。集計条件と限界は[Pi現行版snapshot](./evaluation/pi-runtime-baseline-2026-08-25.json)に残す。
 

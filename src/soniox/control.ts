@@ -201,17 +201,25 @@ export class SonioxSttFactory {
   readonly #model: string;
   readonly #generalContextEnabled: boolean;
   readonly #maxEndpointDelayMs: number | undefined;
+  readonly #endpointLatencyAdjustmentLevel: number | undefined;
+  readonly #endpointSensitivity: number | undefined;
 
   public constructor(
     client: SonioxNodeClient,
     model: string,
     generalContextEnabled = false,
-    endpointOptions: { maxEndpointDelayMs?: number } = {},
+    endpointOptions: {
+      maxEndpointDelayMs?: number;
+      endpointLatencyAdjustmentLevel?: number;
+      endpointSensitivity?: number;
+    } = {},
   ) {
     this.#client = client;
     this.#model = model;
     this.#generalContextEnabled = generalContextEnabled;
     this.#maxEndpointDelayMs = endpointOptions.maxEndpointDelayMs;
+    this.#endpointLatencyAdjustmentLevel = endpointOptions.endpointLatencyAdjustmentLevel;
+    this.#endpointSensitivity = endpointOptions.endpointSensitivity;
   }
 
   public create(
@@ -239,6 +247,12 @@ export class SonioxSttFactory {
       ...(this.#maxEndpointDelayMs === undefined
         ? {}
         : { max_endpoint_delay_ms: this.#maxEndpointDelayMs }),
+      ...(this.#endpointLatencyAdjustmentLevel === undefined
+        ? {}
+        : { endpoint_latency_adjustment_level: this.#endpointLatencyAdjustmentLevel }),
+      ...(this.#endpointSensitivity === undefined
+        ? {}
+        : { endpoint_sensitivity: this.#endpointSensitivity }),
       translation: {
         type: "two_way",
         language_a: languageA,
