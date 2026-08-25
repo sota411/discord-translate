@@ -8,6 +8,7 @@ import {
 
 import {
   SttTurnFinalizer,
+  type SttAcceptedFinalizeReason,
   type SttBoundaryKind,
 } from "../audio/stt-turn-finalizer.js";
 import { SonioxSttFactory } from "../soniox/control.js";
@@ -17,54 +18,17 @@ import type {
   LoadedSttEvaluationDataset,
 } from "./stt-evaluation-files.js";
 import type {
-  SttEvaluationConfiguration,
   SttEvaluationObservations,
   SttEvaluationProfile,
 } from "./stt-evaluation.js";
+import { sttEvaluationProfileConfigurations } from "./stt-evaluation.js";
 
-const discordSpeakingEndDelayMs = 100;
-const sonioxDefaultMaxEndpointDelayMs = 2_000;
 const transcriptInactivityMs = 3_000;
 const maxTurnMs = 30_000;
 const trailingSilenceMs = 200;
 
-const profileConfigurations = {
-  baseline: {
-    recognition_context_enabled: false,
-    endpoint_mode: "manual_early",
-    discord_speaking_end_delay_ms: discordSpeakingEndDelayMs,
-    manual_finalize_fallback_ms: 100,
-    soniox_max_endpoint_delay_ms: sonioxDefaultMaxEndpointDelayMs,
-    preprocessing: "none",
-  },
-  context: {
-    recognition_context_enabled: true,
-    endpoint_mode: "manual_early",
-    discord_speaking_end_delay_ms: discordSpeakingEndDelayMs,
-    manual_finalize_fallback_ms: 100,
-    soniox_max_endpoint_delay_ms: sonioxDefaultMaxEndpointDelayMs,
-    preprocessing: "none",
-  },
-  endpoint: {
-    recognition_context_enabled: false,
-    endpoint_mode: "soniox_primary",
-    discord_speaking_end_delay_ms: discordSpeakingEndDelayMs,
-    manual_finalize_fallback_ms: 600,
-    soniox_max_endpoint_delay_ms: 500,
-    preprocessing: "none",
-  },
-  context_endpoint: {
-    recognition_context_enabled: true,
-    endpoint_mode: "soniox_primary",
-    discord_speaking_end_delay_ms: discordSpeakingEndDelayMs,
-    manual_finalize_fallback_ms: 600,
-    soniox_max_endpoint_delay_ms: 500,
-    preprocessing: "none",
-  },
-} as const satisfies Readonly<Record<SttEvaluationProfile, SttEvaluationConfiguration>>;
-
 type SttEvaluationRunResult = SttEvaluationObservations["results"][number] & {
-  configuration: SttEvaluationConfiguration;
+  configuration: typeof sttEvaluationProfileConfigurations[SttEvaluationProfile];
 };
 
 export type SttEvaluationRunObservations = Omit<SttEvaluationObservations, "dataset" | "results"> & {
@@ -121,7 +85,7 @@ async function runCase(
   boundaryTimeoutMs: number,
   finishTimeoutMs: number,
 ): Promise<SttEvaluationRunResult> {
-  const configuration = profileConfigurations[profile];
+  const configuration = sttEvaluationProfileConfigurations[profile];
   const contextFactory = new SonioxSttFactory(
     client,
     model,
@@ -138,7 +102,7 @@ async function runCase(
   const boundary = Promise.withResolvers<undefined>();
   const recognizedLanguages = new Set<"ja" | "ko">();
   const segments: string[] = [];
-  const finalizationLatenciesMs: number[] = [];
+  const finalizations: SttEvaluationRunResult["finalizations"] = [];
   let pendingText = "";
   let lastAudioAt: number | undefined;
   let lastPacketSent = false;
@@ -162,13 +126,23 @@ async function runCase(
   };
   const handleBoundary = (kind: SttBoundaryKind): void => {
     if (!finalizer.boundaryReceived(kind)) return;
+    const reason: SttAcceptedFinalizeReason | undefined = finalizer.takeAcceptedFinalizeReason();
+    if (!reason) {
+      boundary.reject(new Error("受理したSTT境界の確定理由を取得できませんでした"));
+      return;
+    }
     const hasText = pendingText.trim().length > 0;
     if (hasText) {
       segments.push(pendingText);
       pendingText = "";
     }
-    if ((hasText || lastPacketSent) && lastAudioAt !== undefined) {
-      finalizationLatenciesMs.push(Math.max(0, performance.now() - lastAudioAt));
+    if (lastAudioAt !== undefined) {
+      finalizations.push({
+        kind,
+        reason,
+        latency_ms: Math.max(0, performance.now() - lastAudioAt),
+        has_text: hasText,
+      });
     }
     if (lastPacketSent) boundary.resolve(undefined);
   };
@@ -194,7 +168,7 @@ async function runCase(
       speakingEndTimer = setTimeout(() => {
         speakingEndTimer = undefined;
         finalizer.speakingEnded();
-      }, discordSpeakingEndDelayMs);
+      }, configuration.discord_speaking_end_delay_ms);
     }
 
     await withTimeout(
@@ -215,7 +189,7 @@ async function runCase(
     );
     finished = true;
     if (pendingText.trim().length > 0) segments.push(pendingText);
-    if (finalizationLatenciesMs.length === 0) {
+    if (finalizations.length === 0) {
       throw new Error(
         `case「${evaluationCase.definition.id}」profile「${profile}」の確定遅延を取得できませんでした`,
       );
@@ -226,7 +200,7 @@ async function runCase(
       transcript: segments.join(""),
       segments,
       recognized_languages: [...recognizedLanguages],
-      finalization_latencies_ms: finalizationLatenciesMs,
+      finalizations,
       cpu_percent: measuredCpuPercent,
       decoded_packet_count: evaluationCase.packets.length,
       dropped_packet_count: evaluationCase.droppedPacketCount,

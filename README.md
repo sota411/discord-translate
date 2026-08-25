@@ -242,7 +242,7 @@ pnpm stt:evaluate score \
 | C | なし | Soniox上限500 ms、手動fallback 600 ms |
 | D | Bと同じ | Cと同じ |
 
-2026年8月25日に人工音声10件でA〜Dを実測した。CとDはCERが改善した一方、p95遅延がAより約521 ms、475 ms増え、Cでは不自然な分割も8件増えた。Bはp95追加遅延を約9 msに抑えたが、CERの相対改善は2.6%で、固有名詞再現率も改善しなかった。いずれも採用基準を満たさないため、通常運用の確定値と`SONIOX_GENERAL_CONTEXT_ENABLED=false`は変更していない。数値と入力SHA-256は[本文非含有レポート](./docs/evaluation/stt-artificial-2026-08-25.json)に残している。
+2026年8月25日に人工音声10件でA〜Dを実測した。Bは全体CERを11.1%改善したが、固有名詞再現率と日韓切り替え時の期待言語再現率が悪化した。Cは全体CERと固有名詞再現率を改善し、Soniox endpointが境界の60%を占めたが、コードスイッチCERが33.3ポイント、p95遅延が約479 ms、不自然な分割数が9件悪化した。DはコードスイッチCERが66.7ポイント、p95遅延が約483 ms悪化し、Soniox endpointも境界の33.3%に留まった。いずれも採用基準を満たさないため、通常運用の確定値と`SONIOX_GENERAL_CONTEXT_ENABLED=false`は変更していない。数値と入力SHA-256は[本文非含有レポート](./docs/evaluation/stt-artificial-2026-08-25.json)に残している。
 
 この結果は人工音声に限られる。実際のDiscord音声、複数人通話、Raspberry PiのCPUと音声詰まりは未検証であり、本番で改善した証拠にはならない。RNNoiseやDeepFilterNetも、ノイズ音声で10%以上改善し、クリーン音声を悪化させない実測がないため追加していない。標準経路は引き続き無加工PCMである。
 

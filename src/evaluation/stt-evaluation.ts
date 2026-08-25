@@ -9,6 +9,53 @@ const evaluationProfileSchema = z.enum([
   "endpoint",
   "context_endpoint",
 ]);
+const sttEvaluationConfigurationSchema = z.object({
+  recognition_context_enabled: z.boolean(),
+  endpoint_mode: z.enum(["manual_early", "soniox_primary"]),
+  discord_speaking_end_delay_ms: z.number().int().nonnegative(),
+  manual_finalize_fallback_ms: z.number().int().nonnegative(),
+  soniox_max_endpoint_delay_ms: z.number().int().positive(),
+  preprocessing: z.literal("none"),
+}).strict();
+export type SttEvaluationConfiguration = z.infer<typeof sttEvaluationConfigurationSchema>;
+
+export const sttEvaluationProfileConfigurations = {
+  baseline: {
+    recognition_context_enabled: false,
+    endpoint_mode: "manual_early",
+    discord_speaking_end_delay_ms: 100,
+    manual_finalize_fallback_ms: 100,
+    soniox_max_endpoint_delay_ms: 2_000,
+    preprocessing: "none",
+  },
+  context: {
+    recognition_context_enabled: true,
+    endpoint_mode: "manual_early",
+    discord_speaking_end_delay_ms: 100,
+    manual_finalize_fallback_ms: 100,
+    soniox_max_endpoint_delay_ms: 2_000,
+    preprocessing: "none",
+  },
+  endpoint: {
+    recognition_context_enabled: false,
+    endpoint_mode: "soniox_primary",
+    discord_speaking_end_delay_ms: 100,
+    manual_finalize_fallback_ms: 600,
+    soniox_max_endpoint_delay_ms: 500,
+    preprocessing: "none",
+  },
+  context_endpoint: {
+    recognition_context_enabled: true,
+    endpoint_mode: "soniox_primary",
+    discord_speaking_end_delay_ms: 100,
+    manual_finalize_fallback_ms: 600,
+    soniox_max_endpoint_delay_ms: 500,
+    preprocessing: "none",
+  },
+} as const satisfies Readonly<Record<
+  z.infer<typeof evaluationProfileSchema>,
+  SttEvaluationConfiguration
+>>;
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
 const translationTermSchema = z.object({
   source: z.string().trim().min(1),
@@ -70,24 +117,36 @@ const evaluationResultSchema = z.object({
   transcript: z.string(),
   segments: z.array(z.string()),
   recognized_languages: z.array(evaluationLanguageSchema),
-  finalization_latencies_ms: z.array(z.number().nonnegative()).min(1),
+  finalizations: z.array(z.object({
+    kind: z.enum(["endpoint", "finalized"]),
+    reason: z.enum([
+      "speaking_end",
+      "transcript_inactivity",
+      "max_turn_duration",
+      "soniox_endpoint",
+      "soniox_finalized",
+    ]),
+    latency_ms: z.number().nonnegative(),
+    has_text: z.boolean(),
+  }).strict()).min(1),
   cpu_percent: z.number().nonnegative(),
   decoded_packet_count: z.number().int().positive(),
   dropped_packet_count: z.number().int().nonnegative(),
-  configuration: z.object({
-    recognition_context_enabled: z.boolean(),
-    endpoint_mode: z.enum(["manual_early", "soniox_primary"]),
-    discord_speaking_end_delay_ms: z.number().int().nonnegative(),
-    manual_finalize_fallback_ms: z.number().int().nonnegative(),
-    soniox_max_endpoint_delay_ms: z.number().int().positive(),
-    preprocessing: z.literal("none"),
-  }).strict().optional(),
+  configuration: sttEvaluationConfigurationSchema,
 }).strict().superRefine((value, context) => {
   if (new Set(value.recognized_languages).size !== value.recognized_languages.length) {
     context.addIssue({
       code: "custom",
       path: ["recognized_languages"],
       message: "recognized_languagesを重複させないでください",
+    });
+  }
+  const expectedConfiguration = sttEvaluationProfileConfigurations[value.profile];
+  if (JSON.stringify(value.configuration) !== JSON.stringify(expectedConfiguration)) {
+    context.addIssue({
+      code: "custom",
+      path: ["configuration"],
+      message: `profile「${value.profile}」の実効設定と一致しません`,
     });
   }
 });
@@ -125,9 +184,6 @@ const evaluationObservationsSchema = z.object({
 export type SttEvaluationManifest = z.infer<typeof evaluationManifestSchema>;
 export type SttEvaluationObservations = z.infer<typeof evaluationObservationsSchema>;
 export type SttEvaluationProfile = z.infer<typeof evaluationProfileSchema>;
-export type SttEvaluationConfiguration = NonNullable<
-  SttEvaluationObservations["results"][number]["configuration"]
->;
 type SttEvaluationCase = SttEvaluationManifest["cases"][number];
 type SttEvaluationResult = SttEvaluationObservations["results"][number];
 
@@ -162,14 +218,23 @@ type CaseScore = {
 type ProfileScore = {
   case_count: number;
   preprocessing: "none";
-  configuration: SttEvaluationConfiguration | null;
+  configuration: SttEvaluationConfiguration;
   cer: number;
   clean_cer: number | null;
   key_term_recall: number | null;
   language_recall: number;
   language_switch_recall: number | null;
+  code_switch_cer: number | null;
   unnatural_split_count: number;
   latency_ms: { mean: number; p50: number; p95: number };
+  finalization: {
+    boundary_count: number;
+    endpoint_count: number;
+    finalized_count: number;
+    soniox_endpoint_count: number;
+    manual_fallback_count: number;
+    soniox_endpoint_ratio: number;
+  };
   cpu_percent: { mean: number; p95: number };
   packets: {
     decoded_mean: number;
@@ -184,6 +249,7 @@ type ProfileComparison = {
   key_term_recall_change: number | null;
   clean_cer_point_change: number | null;
   language_switch_recall_change: number | null;
+  code_switch_cer_point_change: number | null;
   p95_added_latency_ms: number;
   gates: {
     overall_cer: GateResult;
@@ -191,6 +257,7 @@ type ProfileComparison = {
     clean_cer: GateResult;
     language_switching: GateResult;
     latency: GateResult;
+    semantic_endpoint: GateResult;
     pi_runtime: GateResult;
   };
 };
@@ -344,25 +411,26 @@ function scoreProfile(
     .filter((evaluationCase) => evaluationCase.tags.includes("code-switch"))
     .map((evaluationCase) => evaluationCase.id));
   const switchCases = cases.filter((score) => switchIds.has(score.case_id));
-  const latencies = results.flatMap((result) => result.finalization_latencies_ms);
+  const measuredFinalizations = results.flatMap((result) => {
+    const textBoundaries = result.finalizations.filter((finalization) => finalization.has_text);
+    return textBoundaries.length > 0 ? textBoundaries : result.finalizations.slice(-1);
+  });
+  const latencies = measuredFinalizations.map((finalization) => finalization.latency_ms);
+  const finalizations = results.flatMap((result) => result.finalizations);
+  const sonioxEndpointCount = finalizations
+    .filter((finalization) => finalization.reason === "soniox_endpoint").length;
+  const manualFallbackCount = finalizations.filter((finalization) => (
+    finalization.reason === "speaking_end" ||
+    finalization.reason === "transcript_inactivity" ||
+    finalization.reason === "max_turn_duration"
+  )).length;
   const cpu = results.map((result) => result.cpu_percent);
   const decodedPackets = results.map((result) => result.decoded_packet_count);
   const droppedPackets = results.map((result) => result.dropped_packet_count);
   const packetTotal = [...decodedPackets, ...droppedPackets]
     .reduce((sum, value) => sum + value, 0);
-  const configurations = results
-    .map((result) => result.configuration)
-    .filter((configuration) => configuration !== undefined);
-  if (configurations.length !== 0 && configurations.length !== results.length) {
-    throw new Error(`profile「${results[0]?.profile ?? "unknown"}」のconfigurationが一部のcaseにありません`);
-  }
-  const configuration = configurations[0] ?? null;
-  if (
-    configuration &&
-    configurations.some((candidate) => JSON.stringify(candidate) !== JSON.stringify(configuration))
-  ) {
-    throw new Error(`profile「${results[0]?.profile ?? "unknown"}」のconfigurationがcase間で一致しません`);
-  }
+  const configuration = results[0]?.configuration;
+  if (!configuration) throw new Error("STT評価profileのconfigurationがありません");
   return {
     case_count: cases.length,
     preprocessing: "none",
@@ -374,11 +442,22 @@ function scoreProfile(
     language_switch_recall: switchCases.length === 0
       ? null
       : aggregateRatio(switchCases, "languages_recalled", "languages_expected"),
+    code_switch_cer: switchCases.length === 0 ? null : microCer(switchCases),
     unnatural_split_count: cases.reduce((sum, score) => sum + score.unnatural_split_count, 0),
     latency_ms: {
       mean: mean(latencies),
       p50: percentile(latencies, 0.5),
       p95: percentile(latencies, 0.95),
+    },
+    finalization: {
+      boundary_count: finalizations.length,
+      endpoint_count: finalizations
+        .filter((finalization) => finalization.kind === "endpoint").length,
+      finalized_count: finalizations
+        .filter((finalization) => finalization.kind === "finalized").length,
+      soniox_endpoint_count: sonioxEndpointCount,
+      manual_fallback_count: manualFallbackCount,
+      soniox_endpoint_ratio: sonioxEndpointCount / finalizations.length,
     },
     cpu_percent: { mean: mean(cpu), p95: percentile(cpu, 0.95) },
     packets: {
@@ -410,21 +489,31 @@ function compareProfile(baseline: ProfileScore, candidate: ProfileScore): Profil
       candidate.language_switch_recall === null
     ? null
     : candidate.language_switch_recall - baseline.language_switch_recall;
+  const codeSwitchCerChange = baseline.code_switch_cer === null ||
+      candidate.code_switch_cer === null
+    ? null
+    : (candidate.code_switch_cer - baseline.code_switch_cer) * 100;
   const addedLatency = candidate.latency_ms.p95 - baseline.latency_ms.p95;
   return {
     cer_relative_improvement_percent: relativeCer,
     key_term_recall_change: keyTermChange,
     clean_cer_point_change: cleanCerChange,
     language_switch_recall_change: languageSwitchChange,
+    code_switch_cer_point_change: codeSwitchCerChange,
     p95_added_latency_ms: addedLatency,
     gates: {
       overall_cer: relativeCer === null ? "not_evaluated" : gate(relativeCer >= 10),
       key_terms: keyTermChange === null ? "not_evaluated" : gate(keyTermChange > 0),
       clean_cer: cleanCerChange === null ? "not_evaluated" : gate(cleanCerChange < 1),
-      language_switching: languageSwitchChange === null
+      language_switching: codeSwitchCerChange === null
         ? "not_evaluated"
-        : gate(languageSwitchChange >= 0),
+        : languageSwitchChange === null
+          ? "not_evaluated"
+          : gate(codeSwitchCerChange <= 0 && languageSwitchChange >= 0),
       latency: gate(addedLatency <= 200),
+      semantic_endpoint: candidate.configuration.endpoint_mode === "soniox_primary"
+        ? gate(candidate.finalization.soniox_endpoint_ratio > 0.5)
+        : "not_evaluated",
       pi_runtime: "not_evaluated",
     },
   };

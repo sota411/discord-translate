@@ -1,4 +1,13 @@
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import {
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  realpath,
+  rename,
+  unlink,
+} from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 
@@ -28,27 +37,65 @@ async function readObservations(filePath: string): Promise<string> {
   }
 }
 
-async function writePrivateJson(filePath: string, value: unknown): Promise<void> {
-  await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-  await chmod(filePath, 0o600);
+async function unlinkIfExists(filePath: string): Promise<void> {
+  try {
+    await unlink(filePath);
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+  }
 }
 
-function assertOutputPathsAreSafe(
+async function writePrivateJson(filePath: string, value: unknown): Promise<void> {
+  const temporaryPath = path.join(
+    path.dirname(filePath),
+    `.${path.basename(filePath)}.${randomUUID()}.tmp`,
+  );
+  const file = await open(temporaryPath, "wx", 0o600);
+  let closed = false;
+  try {
+    await file.writeFile(`${JSON.stringify(value, null, 2)}\n`, "utf8");
+    await file.sync();
+    await file.close();
+    closed = true;
+    await rename(temporaryPath, filePath);
+  } finally {
+    if (!closed) await file.close();
+    await unlinkIfExists(temporaryPath);
+  }
+}
+
+async function resolveSafeOutputPaths(
   protectedPaths: ReadonlySet<string>,
   outputPaths: readonly string[],
-): void {
-  if (new Set(outputPaths).size !== outputPaths.length) {
-    throw new Error("評価の出力pathは相互に異なるpathを指定してください");
-  }
+): Promise<string[]> {
+  const canonicalProtectedPaths = new Set(await Promise.all(
+    [...protectedPaths].map((protectedPath) => realpath(protectedPath)),
+  ));
+  const canonicalOutputPaths: string[] = [];
   for (const outputPath of outputPaths) {
-    if (protectedPaths.has(outputPath)) {
+    await mkdir(path.dirname(outputPath), { recursive: true });
+    const canonicalParent = await realpath(path.dirname(outputPath));
+    const canonicalOutputPath = path.join(canonicalParent, path.basename(outputPath));
+    try {
+      const outputStatus = await lstat(canonicalOutputPath);
+      if (outputStatus.isSymbolicLink()) {
+        throw new Error(`評価の出力path「${outputPath}」にsymbolic linkは指定できません`);
+      }
+      if (outputStatus.isDirectory()) {
+        throw new Error(`評価の出力path「${outputPath}」にdirectoryは指定できません`);
+      }
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+    }
+    if (canonicalProtectedPaths.has(canonicalOutputPath)) {
       throw new Error("評価の出力にはmanifest、PCM、packet trace、観測入力と異なるpathを指定してください");
     }
+    canonicalOutputPaths.push(canonicalOutputPath);
   }
+  if (new Set(canonicalOutputPaths).size !== canonicalOutputPaths.length) {
+    throw new Error("評価の出力pathは相互に異なるpathを指定してください");
+  }
+  return canonicalOutputPaths;
 }
 
 function sonioxSttWebSocketUrl(override: string | undefined): string {
@@ -88,9 +135,13 @@ async function run(args: readonly string[]): Promise<void> {
       evaluationCase.packetTracePath,
     ]),
   ]);
-  const resolvedObservationsOutput = path.resolve(observationsOutput);
-  const resolvedOutputPath = path.resolve(outputPath);
-  assertOutputPathsAreSafe(protectedPaths, [resolvedObservationsOutput, resolvedOutputPath]);
+  const [resolvedObservationsOutput, resolvedOutputPath] = await resolveSafeOutputPaths(
+    protectedPaths,
+    [path.resolve(observationsOutput), path.resolve(outputPath)],
+  );
+  if (!resolvedObservationsOutput || !resolvedOutputPath) {
+    throw new Error("評価の出力pathを解決できませんでした");
+  }
 
   const observations = await runSttEvaluationDataset(dataset, {
     apiKey,
@@ -125,7 +176,7 @@ async function score(args: readonly string[]): Promise<void> {
   const observationsPath = parsed.values.observations;
   const outputPath = parsed.values.output;
   if (!manifestPath || !observationsPath || !outputPath) throw new Error(usage);
-  const resolvedOutputPath = path.resolve(outputPath);
+  const requestedOutputPath = path.resolve(outputPath);
   const protectedPaths = new Set<string>([
     path.resolve(manifestPath),
     path.resolve(observationsPath),
@@ -136,7 +187,8 @@ async function score(args: readonly string[]): Promise<void> {
     protectedPaths.add(evaluationCase.audioPath);
     protectedPaths.add(evaluationCase.packetTracePath);
   }
-  assertOutputPathsAreSafe(protectedPaths, [resolvedOutputPath]);
+  const [resolvedOutputPath] = await resolveSafeOutputPaths(protectedPaths, [requestedOutputPath]);
+  if (!resolvedOutputPath) throw new Error("評価の出力pathを解決できませんでした");
   const observations = parseSttEvaluationObservations(
     await readObservations(path.resolve(observationsPath)),
   );

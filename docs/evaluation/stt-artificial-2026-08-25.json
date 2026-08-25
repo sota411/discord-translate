@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated_at": "2026-08-25T13:27:09.628Z",
+  "generated_at": "2026-08-25T13:51:13.309Z",
   "profile_mapping": {
     "A": "baseline",
     "B": "context",
@@ -19,20 +19,29 @@
         "soniox_max_endpoint_delay_ms": 2000,
         "preprocessing": "none"
       },
-      "cer": 1.6703296703296704,
-      "clean_cer": 1.7916666666666667,
-      "key_term_recall": 0.75,
+      "cer": 1.5824175824175823,
+      "clean_cer": 1.625,
+      "key_term_recall": 0.5,
       "language_recall": 0.6363636363636364,
       "language_switch_recall": 0.5,
+      "code_switch_cer": 1,
       "unnatural_split_count": 0,
       "latency_ms": {
-        "mean": 388.5607807692305,
-        "p50": 398.60949499999697,
-        "p95": 551.1121940000012
+        "mean": 376.74259209999974,
+        "p50": 408.71217699999943,
+        "p95": 518.8150180000011
+      },
+      "finalization": {
+        "boundary_count": 18,
+        "endpoint_count": 11,
+        "finalized_count": 7,
+        "soniox_endpoint_count": 7,
+        "manual_fallback_count": 11,
+        "soniox_endpoint_ratio": 0.3888888888888889
       },
       "cpu_percent": {
-        "mean": 1.4130377665344216,
-        "p95": 2.7031113294267044
+        "mean": 1.504167602417367,
+        "p95": 2.7568201277744486
       },
       "packets": {
         "decoded_mean": 239.9,
@@ -204,11 +213,11 @@
         },
         {
           "case_id": "ja-ko-code-switch",
-          "cer": 1.8888888888888888,
-          "character_edits": 17,
+          "cer": 1,
+          "character_edits": 9,
           "reference_characters": 9,
-          "key_term_recall": 1,
-          "key_terms_recalled": 1,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
           "key_terms_expected": 1,
           "language_recall": 0.5,
           "languages_recalled": 1,
@@ -233,20 +242,29 @@
         "soniox_max_endpoint_delay_ms": 2000,
         "preprocessing": "none"
       },
-      "cer": 1.6263736263736264,
-      "clean_cer": 1.2916666666666667,
-      "key_term_recall": 0.75,
-      "language_recall": 0.7272727272727273,
-      "language_switch_recall": 0.5,
+      "cer": 1.4065934065934067,
+      "clean_cer": 0.8333333333333334,
+      "key_term_recall": 0.25,
+      "language_recall": 0.5454545454545454,
+      "language_switch_recall": 0,
+      "code_switch_cer": 1,
       "unnatural_split_count": 0,
       "latency_ms": {
-        "mean": 400.3273043076949,
-        "p50": 408.67545199999586,
-        "p95": 560.1208850000112
+        "mean": 398.36418969999795,
+        "p50": 389.5483300000051,
+        "p95": 494.79596099999617
+      },
+      "finalization": {
+        "boundary_count": 16,
+        "endpoint_count": 11,
+        "finalized_count": 5,
+        "soniox_endpoint_count": 6,
+        "manual_fallback_count": 10,
+        "soniox_endpoint_ratio": 0.375
       },
       "cpu_percent": {
-        "mean": 0.9893856912273804,
-        "p95": 1.269464356930395
+        "mean": 1.0239098244670126,
+        "p95": 1.2221535996584096
       },
       "packets": {
         "decoded_mean": 239.9,
@@ -256,16 +274,16 @@
       "cases": [
         {
           "case_id": "ja-clean-game",
-          "cer": 2.357142857142857,
-          "character_edits": 33,
+          "cer": 1,
+          "character_edits": 14,
           "reference_characters": 14,
-          "key_term_recall": 1,
-          "key_terms_recalled": 1,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
           "key_terms_expected": 1,
-          "language_recall": 1,
-          "languages_recalled": 1,
+          "language_recall": 0,
+          "languages_recalled": 0,
           "languages_expected": 1,
-          "segment_count": 1,
+          "segment_count": 0,
           "expected_segments": 1,
           "unnatural_split_count": 0,
           "decoded_packet_count": 366,
@@ -382,8 +400,8 @@
         },
         {
           "case_id": "ja-clipped",
-          "cer": 3.727272727272727,
-          "character_edits": 41,
+          "cer": 3.909090909090909,
+          "character_edits": 43,
           "reference_characters": 11,
           "key_term_recall": 0,
           "key_terms_recalled": 0,
@@ -418,16 +436,16 @@
         },
         {
           "case_id": "ja-ko-code-switch",
-          "cer": 1.3333333333333333,
-          "character_edits": 12,
+          "cer": 1,
+          "character_edits": 9,
           "reference_characters": 9,
-          "key_term_recall": 1,
-          "key_terms_recalled": 1,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
           "key_terms_expected": 1,
-          "language_recall": 0.5,
-          "languages_recalled": 1,
+          "language_recall": 0,
+          "languages_recalled": 0,
           "languages_expected": 2,
-          "segment_count": 1,
+          "segment_count": 0,
           "expected_segments": 1,
           "unnatural_split_count": 0,
           "decoded_packet_count": 225,
@@ -447,20 +465,29 @@
         "soniox_max_endpoint_delay_ms": 500,
         "preprocessing": "none"
       },
-      "cer": 0.978021978021978,
-      "clean_cer": 1.0208333333333333,
+      "cer": 0.8461538461538461,
+      "clean_cer": 0.7916666666666666,
       "key_term_recall": 0.75,
-      "language_recall": 0.7272727272727273,
+      "language_recall": 0.8181818181818182,
       "language_switch_recall": 0.5,
-      "unnatural_split_count": 8,
+      "code_switch_cer": 1.3333333333333333,
+      "unnatural_split_count": 9,
       "latency_ms": {
-        "mean": 485.7870712499989,
-        "p50": 19.751826000021538,
-        "p95": 1072.0405159999937
+        "mean": 296.1495587368431,
+        "p50": 12.475153999985196,
+        "p95": 997.5419059999986
+      },
+      "finalization": {
+        "boundary_count": 25,
+        "endpoint_count": 19,
+        "finalized_count": 6,
+        "soniox_endpoint_count": 15,
+        "manual_fallback_count": 10,
+        "soniox_endpoint_ratio": 0.6
       },
       "cpu_percent": {
-        "mean": 0.9362379569452939,
-        "p95": 1.1283497316127922
+        "mean": 0.9962347548354937,
+        "p95": 1.2624409213515493
       },
       "packets": {
         "decoded_mean": 239.9,
@@ -470,8 +497,8 @@
       "cases": [
         {
           "case_id": "ja-clean-game",
-          "cer": 0.5714285714285714,
-          "character_edits": 8,
+          "cer": 0.6428571428571429,
+          "character_edits": 9,
           "reference_characters": 14,
           "key_term_recall": 1,
           "key_terms_recalled": 1,
@@ -524,14 +551,14 @@
         },
         {
           "case_id": "ko-short",
-          "cer": 3,
-          "character_edits": 3,
+          "cer": 1,
+          "character_edits": 1,
           "reference_characters": 1,
           "key_term_recall": null,
           "key_terms_recalled": 0,
           "key_terms_expected": 0,
-          "language_recall": 0,
-          "languages_recalled": 0,
+          "language_recall": 1,
+          "languages_recalled": 1,
           "languages_expected": 1,
           "segment_count": 1,
           "expected_segments": 1,
@@ -596,8 +623,8 @@
         },
         {
           "case_id": "ja-clipped",
-          "cer": 1.7272727272727273,
-          "character_edits": 19,
+          "cer": 1.6363636363636365,
+          "character_edits": 18,
           "reference_characters": 11,
           "key_term_recall": 0,
           "key_terms_recalled": 0,
@@ -632,8 +659,8 @@
         },
         {
           "case_id": "ja-ko-code-switch",
-          "cer": 2.4444444444444446,
-          "character_edits": 22,
+          "cer": 1.3333333333333333,
+          "character_edits": 12,
           "reference_characters": 9,
           "key_term_recall": 1,
           "key_terms_recalled": 1,
@@ -641,9 +668,9 @@
           "language_recall": 0.5,
           "languages_recalled": 1,
           "languages_expected": 2,
-          "segment_count": 1,
+          "segment_count": 2,
           "expected_segments": 1,
-          "unnatural_split_count": 0,
+          "unnatural_split_count": 1,
           "decoded_packet_count": 225,
           "dropped_packet_count": 0,
           "dropped_packet_ratio": 0
@@ -661,20 +688,29 @@
         "soniox_max_endpoint_delay_ms": 500,
         "preprocessing": "none"
       },
-      "cer": 1.3516483516483517,
-      "clean_cer": 1.3958333333333333,
+      "cer": 1.120879120879121,
+      "clean_cer": 0.9583333333333334,
       "key_term_recall": 0.5,
-      "language_recall": 0.5454545454545454,
+      "language_recall": 0.45454545454545453,
       "language_switch_recall": 0.5,
-      "unnatural_split_count": 1,
+      "code_switch_cer": 1.6666666666666667,
+      "unnatural_split_count": 0,
       "latency_ms": {
-        "mean": 750.6475062666713,
-        "p50": 910.7276290000009,
-        "p95": 1025.8608420000237
+        "mean": 853.1284025000001,
+        "p50": 948.8322069999995,
+        "p95": 1002.1229929999972
+      },
+      "finalization": {
+        "boundary_count": 15,
+        "endpoint_count": 10,
+        "finalized_count": 5,
+        "soniox_endpoint_count": 5,
+        "manual_fallback_count": 10,
+        "soniox_endpoint_ratio": 0.3333333333333333
       },
       "cpu_percent": {
-        "mean": 1.059604462413816,
-        "p95": 1.5596393835537248
+        "mean": 1.0566375864262467,
+        "p95": 1.9746352650084902
       },
       "packets": {
         "decoded_mean": 239.9,
@@ -684,16 +720,16 @@
       "cases": [
         {
           "case_id": "ja-clean-game",
-          "cer": 2.357142857142857,
-          "character_edits": 33,
+          "cer": 1,
+          "character_edits": 14,
           "reference_characters": 14,
-          "key_term_recall": 1,
-          "key_terms_recalled": 1,
+          "key_term_recall": 0,
+          "key_terms_recalled": 0,
           "key_terms_expected": 1,
-          "language_recall": 1,
-          "languages_recalled": 1,
+          "language_recall": 0,
+          "languages_recalled": 0,
           "languages_expected": 1,
-          "segment_count": 1,
+          "segment_count": 0,
           "expected_segments": 1,
           "unnatural_split_count": 0,
           "decoded_packet_count": 366,
@@ -846,18 +882,18 @@
         },
         {
           "case_id": "ja-ko-code-switch",
-          "cer": 1.8888888888888888,
-          "character_edits": 17,
+          "cer": 1.6666666666666667,
+          "character_edits": 15,
           "reference_characters": 9,
-          "key_term_recall": 0,
-          "key_terms_recalled": 0,
+          "key_term_recall": 1,
+          "key_terms_recalled": 1,
           "key_terms_expected": 1,
           "language_recall": 0.5,
           "languages_recalled": 1,
           "languages_expected": 2,
-          "segment_count": 2,
+          "segment_count": 1,
           "expected_segments": 1,
-          "unnatural_split_count": 1,
+          "unnatural_split_count": 0,
           "decoded_packet_count": 225,
           "dropped_packet_count": 0,
           "dropped_packet_ratio": 0
@@ -867,47 +903,53 @@
   },
   "comparisons": {
     "context": {
-      "cer_relative_improvement_percent": 2.6315789473684252,
-      "key_term_recall_change": 0,
-      "clean_cer_point_change": -50,
-      "language_switch_recall_change": 0,
-      "p95_added_latency_ms": 9.008691000010003,
+      "cer_relative_improvement_percent": 11.1111111111111,
+      "key_term_recall_change": -0.25,
+      "clean_cer_point_change": -79.16666666666666,
+      "language_switch_recall_change": -0.5,
+      "code_switch_cer_point_change": 0,
+      "p95_added_latency_ms": -24.019057000004977,
       "gates": {
-        "overall_cer": "fail",
+        "overall_cer": "pass",
         "key_terms": "fail",
         "clean_cer": "pass",
-        "language_switching": "pass",
+        "language_switching": "fail",
         "latency": "pass",
+        "semantic_endpoint": "not_evaluated",
         "pi_runtime": "not_evaluated"
       }
     },
     "endpoint": {
-      "cer_relative_improvement_percent": 41.44736842105264,
-      "key_term_recall_change": 0,
-      "clean_cer_point_change": -77.08333333333334,
+      "cer_relative_improvement_percent": 46.52777777777777,
+      "key_term_recall_change": 0.25,
+      "clean_cer_point_change": -83.33333333333334,
       "language_switch_recall_change": 0,
-      "p95_added_latency_ms": 520.9283219999925,
+      "code_switch_cer_point_change": 33.33333333333333,
+      "p95_added_latency_ms": 478.7268879999974,
       "gates": {
         "overall_cer": "pass",
-        "key_terms": "fail",
+        "key_terms": "pass",
         "clean_cer": "pass",
-        "language_switching": "pass",
+        "language_switching": "fail",
         "latency": "fail",
+        "semantic_endpoint": "pass",
         "pi_runtime": "not_evaluated"
       }
     },
     "context_endpoint": {
-      "cer_relative_improvement_percent": 19.07894736842105,
-      "key_term_recall_change": -0.25,
-      "clean_cer_point_change": -39.58333333333335,
+      "cer_relative_improvement_percent": 29.166666666666664,
+      "key_term_recall_change": 0,
+      "clean_cer_point_change": -66.66666666666666,
       "language_switch_recall_change": 0,
-      "p95_added_latency_ms": 474.7486480000225,
+      "code_switch_cer_point_change": 66.66666666666667,
+      "p95_added_latency_ms": 483.3079749999961,
       "gates": {
         "overall_cer": "pass",
         "key_terms": "fail",
         "clean_cer": "pass",
-        "language_switching": "pass",
+        "language_switching": "fail",
         "latency": "fail",
+        "semantic_endpoint": "fail",
         "pi_runtime": "not_evaluated"
       }
     }

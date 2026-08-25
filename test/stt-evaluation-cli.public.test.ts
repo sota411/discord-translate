@@ -1,10 +1,19 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { after, test } from "node:test";
+
+import { sttEvaluationProfileConfigurations } from "../src/evaluation/stt-evaluation.js";
 
 const temporaryDirectory = mkdtempSync(path.join(tmpdir(), "discord-stt-eval-test-"));
 after(() => rmSync(temporaryDirectory, { recursive: true, force: true }));
@@ -70,10 +79,13 @@ function writeDataset(traceByteLength = 8): {
       transcript: "秘密の認識文",
       segments: ["秘密の認識文"],
       recognized_languages: ["ja"],
-      finalization_latencies_ms: [320],
+      finalizations: [
+        { kind: "finalized", reason: "speaking_end", latency_ms: 320, has_text: true },
+      ],
       cpu_percent: 5,
       decoded_packet_count: 1,
       dropped_packet_count: 0,
+      configuration: sttEvaluationProfileConfigurations.baseline,
     }],
   }));
   return {
@@ -141,4 +153,16 @@ void test("観測時と採点時のPCMが違う場合はSHA-256証拠で拒否�
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /dataset.*一致しません/u);
   assert.throws(() => readFileSync(paths.outputPath, "utf8"), /ENOENT/u);
+});
+
+void test("評価出力のsymlinkからmanifestを上書きしない", () => {
+  const paths = writeDataset();
+  const manifestBefore = readFileSync(paths.manifestPath, "utf8");
+  symlinkSync(paths.manifestPath, paths.outputPath);
+
+  const result = runScore(paths);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /symbolic link/u);
+  assert.equal(readFileSync(paths.manifestPath, "utf8"), manifestBefore);
 });

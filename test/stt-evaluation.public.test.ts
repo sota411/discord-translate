@@ -6,6 +6,7 @@ import {
   createSttEvaluationReport,
   parseSttEvaluationManifest,
   parseSttEvaluationObservations,
+  sttEvaluationProfileConfigurations,
 } from "../src/evaluation/stt-evaluation.js";
 
 const manifestJson = JSON.stringify({
@@ -94,10 +95,14 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
         transcript: "今日は犬",
         segments: ["今日は", "犬"],
         recognized_languages: ["ja"],
-        finalization_latencies_ms: [300, 500],
+        finalizations: [
+          { kind: "finalized", reason: "speaking_end", latency_ms: 300, has_text: true },
+          { kind: "finalized", reason: "speaking_end", latency_ms: 500, has_text: true },
+        ],
         cpu_percent: 10,
         decoded_packet_count: 10,
         dropped_packet_count: 0,
+        configuration: sttEvaluationProfileConfigurations.baseline,
       },
       {
         case_id: "ko-noise",
@@ -105,10 +110,13 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
         transcript: "안녕",
         segments: ["안녕"],
         recognized_languages: ["ko"],
-        finalization_latencies_ms: [400],
+        finalizations: [
+          { kind: "finalized", reason: "speaking_end", latency_ms: 400, has_text: true },
+        ],
         cpu_percent: 12,
         decoded_packet_count: 8,
         dropped_packet_count: 2,
+        configuration: sttEvaluationProfileConfigurations.baseline,
       },
       {
         case_id: "code-switch",
@@ -116,10 +124,55 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
         transcript: "今日は안녕",
         segments: ["今日は안녕"],
         recognized_languages: ["ja"],
-        finalization_latencies_ms: [450],
+        finalizations: [
+          { kind: "finalized", reason: "speaking_end", latency_ms: 450, has_text: true },
+        ],
         cpu_percent: 11,
         decoded_packet_count: 10,
         dropped_packet_count: 0,
+        configuration: sttEvaluationProfileConfigurations.baseline,
+      },
+      {
+        case_id: "ja-clean-term",
+        profile: "context",
+        transcript: "今日は猫",
+        segments: ["今日は猫"],
+        recognized_languages: ["ja"],
+        finalizations: [
+          { kind: "finalized", reason: "speaking_end", latency_ms: 300, has_text: true },
+        ],
+        cpu_percent: 10,
+        decoded_packet_count: 10,
+        dropped_packet_count: 0,
+        configuration: sttEvaluationProfileConfigurations.context,
+      },
+      {
+        case_id: "ko-noise",
+        profile: "context",
+        transcript: "안녕",
+        segments: ["안녕"],
+        recognized_languages: ["ko"],
+        finalizations: [
+          { kind: "finalized", reason: "speaking_end", latency_ms: 400, has_text: true },
+        ],
+        cpu_percent: 12,
+        decoded_packet_count: 8,
+        dropped_packet_count: 2,
+        configuration: sttEvaluationProfileConfigurations.context,
+      },
+      {
+        case_id: "code-switch",
+        profile: "context",
+        transcript: "今日は失敗",
+        segments: ["今日は失敗"],
+        recognized_languages: ["ja"],
+        finalizations: [
+          { kind: "finalized", reason: "speaking_end", latency_ms: 450, has_text: true },
+        ],
+        cpu_percent: 11,
+        decoded_packet_count: 10,
+        dropped_packet_count: 0,
+        configuration: sttEvaluationProfileConfigurations.context,
       },
       {
         case_id: "ja-clean-term",
@@ -127,10 +180,13 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
         transcript: "今日は猫",
         segments: ["今日は猫"],
         recognized_languages: ["ja"],
-        finalization_latencies_ms: [350],
+        finalizations: [
+          { kind: "endpoint", reason: "soniox_endpoint", latency_ms: 350, has_text: true },
+        ],
         cpu_percent: 10.5,
         decoded_packet_count: 10,
         dropped_packet_count: 0,
+        configuration: sttEvaluationProfileConfigurations.context_endpoint,
       },
       {
         case_id: "ko-noise",
@@ -138,10 +194,13 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
         transcript: "안녕",
         segments: ["안녕"],
         recognized_languages: ["ko"],
-        finalization_latencies_ms: [450],
+        finalizations: [
+          { kind: "endpoint", reason: "soniox_endpoint", latency_ms: 450, has_text: true },
+        ],
         cpu_percent: 12.5,
         decoded_packet_count: 8,
         dropped_packet_count: 2,
+        configuration: sttEvaluationProfileConfigurations.context_endpoint,
       },
       {
         case_id: "code-switch",
@@ -149,10 +208,13 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
         transcript: "今日は안녕",
         segments: ["今日は안녕"],
         recognized_languages: ["ja", "ko"],
-        finalization_latencies_ms: [600],
+        finalizations: [
+          { kind: "endpoint", reason: "soniox_endpoint", latency_ms: 600, has_text: true },
+        ],
         cpu_percent: 11.5,
         decoded_packet_count: 10,
         dropped_packet_count: 0,
+        configuration: sttEvaluationProfileConfigurations.context_endpoint,
       },
     ],
   }));
@@ -175,19 +237,31 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
   assert.equal(report.profiles.baseline.latency_ms.mean, 412.5);
   assert.equal(report.profiles.baseline.latency_ms.p50, 400);
   assert.equal(report.profiles.baseline.latency_ms.p95, 500);
+  assert.equal(report.profiles.baseline.finalization.manual_fallback_count, 4);
+  assert.ok(report.profiles.context_endpoint);
+  assert.ok(report.comparisons.context_endpoint);
+  assert.ok(report.comparisons.context);
+  assert.equal(report.profiles.context_endpoint.finalization.soniox_endpoint_ratio, 1);
   assert.equal(report.profiles.baseline.packets.dropped_mean, 2 / 3);
   assert.equal(report.profiles.baseline.cases[1]?.dropped_packet_count, 2);
-  assert.equal(report.profiles.context_endpoint?.cer, 0);
+  assert.equal(report.profiles.baseline.code_switch_cer, 0);
+  assert.equal(report.profiles.context_endpoint.cer, 0);
   assert.equal(report.profiles.context_endpoint.key_term_recall, 1);
   assert.equal(report.profiles.context_endpoint.language_recall, 1);
-  assert.equal(report.comparisons.context_endpoint?.cer_relative_improvement_percent, 100);
+  assert.equal(report.comparisons.context_endpoint.cer_relative_improvement_percent, 100);
   assert.equal(report.comparisons.context_endpoint.p95_added_latency_ms, 100);
+  assert.equal(report.comparisons.context_endpoint.code_switch_cer_point_change, 0);
   assert.equal(report.comparisons.context_endpoint.gates.overall_cer, "pass");
   assert.equal(report.comparisons.context_endpoint.gates.key_terms, "pass");
   assert.equal(report.comparisons.context_endpoint.gates.clean_cer, "pass");
   assert.equal(report.comparisons.context_endpoint.gates.language_switching, "pass");
   assert.equal(report.comparisons.context_endpoint.gates.latency, "pass");
+  assert.equal(report.comparisons.context_endpoint.gates.semantic_endpoint, "pass");
   assert.equal(report.comparisons.context_endpoint.gates.pi_runtime, "not_evaluated");
+  assert.equal(report.comparisons.context.language_switch_recall_change, 0);
+  const contextCodeSwitchCerChange = report.comparisons.context.code_switch_cer_point_change;
+  assert.ok(contextCodeSwitchCerChange !== null && contextCodeSwitchCerChange > 0);
+  assert.equal(report.comparisons.context.gates.language_switching, "fail");
   assert.equal(report.preprocessing.decision, "not_adopted");
 });
 
@@ -200,10 +274,13 @@ void test("観測結果は未知case・重複profile・本文以外の余分なf
       transcript: "秘密",
       segments: ["秘密"],
       recognized_languages: ["ja"],
-      finalization_latencies_ms: [100],
+      finalizations: [
+        { kind: "finalized", reason: "speaking_end", latency_ms: 100, has_text: true },
+      ],
       cpu_percent: 1,
       decoded_packet_count: 1,
       dropped_packet_count: 0,
+      configuration: sttEvaluationProfileConfigurations.baseline,
       raw_audio: "must-not-be-accepted",
     }],
   };
@@ -211,6 +288,46 @@ void test("観測結果は未知case・重複profile・本文以外の余分なf
   assert.throws(
     () => parseSttEvaluationObservations(JSON.stringify(invalid)),
     /raw_audio/u,
+  );
+});
+
+void test("観測結果はprofileに対応する実効設定を必須とする", () => {
+  assert.throws(
+    () => parseSttEvaluationObservations(JSON.stringify({
+      version: 1,
+      results: [{
+        case_id: "ja-clean-term",
+        profile: "baseline",
+        transcript: "今日は猫",
+        segments: ["今日は猫"],
+        recognized_languages: ["ja"],
+        finalization_latencies_ms: [100],
+        cpu_percent: 1,
+        decoded_packet_count: 1,
+        dropped_packet_count: 0,
+      }],
+    })),
+    /configuration/u,
+  );
+  assert.throws(
+    () => parseSttEvaluationObservations(JSON.stringify({
+      version: 1,
+      results: [{
+        case_id: "ja-clean-term",
+        profile: "baseline",
+        transcript: "今日は猫",
+        segments: ["今日は猫"],
+        recognized_languages: ["ja"],
+        finalizations: [
+          { kind: "endpoint", reason: "soniox_endpoint", latency_ms: 100, has_text: true },
+        ],
+        cpu_percent: 1,
+        decoded_packet_count: 1,
+        dropped_packet_count: 0,
+        configuration: sttEvaluationProfileConfigurations.endpoint,
+      }],
+    })),
+    /profile.*実効設定/u,
   );
 });
 

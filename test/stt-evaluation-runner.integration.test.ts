@@ -16,6 +16,7 @@ import { WebSocketServer, type RawData, type WebSocket } from "ws";
 
 import { loadSttEvaluationDataset } from "../src/evaluation/stt-evaluation-files.js";
 import { runSttEvaluationDataset } from "../src/evaluation/stt-evaluation-runner.js";
+import { createSttEvaluationReport } from "../src/evaluation/stt-evaluation.js";
 
 const temporaryDirectory = mkdtempSync(path.join(tmpdir(), "discord-stt-runner-test-"));
 after(() => rmSync(temporaryDirectory, { recursive: true, force: true }));
@@ -199,6 +200,14 @@ void test("同じPCMとpacket traceをSDK境界へA〜Dで送り、contextだけ
       observations.results.map((result) => result.configuration.soniox_max_endpoint_delay_ms),
       [2_000, 2_000, 500, 500],
     );
+    for (const result of observations.results) {
+      const firstFinalization = result.finalizations[0];
+      assert.ok(firstFinalization);
+      assert.equal(firstFinalization.kind, "endpoint");
+      assert.equal(firstFinalization.reason, "soniox_endpoint");
+      assert.equal(firstFinalization.has_text, true);
+      assert.ok(firstFinalization.latency_ms >= 0);
+    }
     assert.doesNotMatch(JSON.stringify(observations), /do-not-leak-api-key/u);
   });
 
@@ -270,4 +279,70 @@ void test("run CLIはA〜Dを実行し、本文をlocal観測結果だけへ0600
   assert.doesNotMatch(reportText, /ヴァロラント|do-not-leak-api-key/u);
   assert.equal(statSync(observationsPath).mode & 0o777, 0o600);
   assert.equal(statSync(reportPath).mode & 0o777, 0o600);
+});
+
+void test("endpoint候補でmanual fallbackが勝った境界を記録し、Soniox中心とは判定しない", async () => {
+  let finalizeRequestCount = 0;
+  await withServer((socket) => {
+    let audioMessageCount = 0;
+    socket.on("message", (data, isBinary) => {
+      if (isBinary) {
+        audioMessageCount += 1;
+        if (audioMessageCount === 1) {
+          socket.send(JSON.stringify({
+            tokens: [{
+              text: "ヴァロラント",
+              is_final: true,
+              confidence: 0.95,
+              language: "ja",
+              translation_status: "original",
+              start_ms: 0,
+              end_ms: 20,
+            }],
+            final_audio_proc_ms: 20,
+            total_audio_proc_ms: 20,
+          }));
+        }
+        return;
+      }
+      const text = rawDataToUtf8(data);
+      if (text.length === 0) {
+        socket.send(JSON.stringify({
+          tokens: [],
+          final_audio_proc_ms: 20,
+          total_audio_proc_ms: 20,
+          finished: true,
+        }));
+        return;
+      }
+      const message = JSON.parse(text) as { type?: string };
+      if (message.type === "finalize") {
+        finalizeRequestCount += 1;
+        socket.send(JSON.stringify({
+          tokens: [{ text: "<fin>", is_final: true }],
+          final_audio_proc_ms: 20,
+          total_audio_proc_ms: 20,
+        }));
+      }
+    });
+  }, async (url) => {
+    const dataset = await loadSttEvaluationDataset(writeDataset());
+    const observations = await runSttEvaluationDataset(dataset, {
+      apiKey: "do-not-leak-api-key",
+      model: "stt-rt-v5",
+      sttWebSocketUrl: url,
+      profiles: ["baseline", "endpoint"],
+      boundaryTimeoutMs: 2_000,
+      finishTimeoutMs: 1_000,
+    });
+
+    const finalization = observations.results
+      .find((result) => result.profile === "endpoint")?.finalizations[0];
+    assert.ok(finalization);
+    assert.equal(finalization.kind, "finalized");
+    assert.equal(finalization.reason, "speaking_end");
+    const report = createSttEvaluationReport(dataset.manifest, observations);
+    assert.equal(report.comparisons.endpoint?.gates.semantic_endpoint, "fail");
+  });
+  assert.equal(finalizeRequestCount, 2);
 });
