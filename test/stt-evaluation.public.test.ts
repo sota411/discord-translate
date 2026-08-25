@@ -252,6 +252,14 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
     new Date("2026-08-25T00:00:00Z"),
   );
 
+  assert.equal(report.version, 2);
+  assert.deepEqual(report.scoring, {
+    primary_cer: "micro",
+    macro_unit: "observation",
+    unicode_normalization: "NFKC",
+    whitespace: "removed",
+    edit_tie_break_order: ["substitution", "deletion", "insertion"],
+  });
   assert.deepEqual(report.profile_mapping, {
     A: "baseline",
     B: "context",
@@ -259,6 +267,36 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
     D: "context_endpoint",
   });
   assert.equal(report.profiles.baseline?.cer, 1 / 11);
+  assert.equal(report.profiles.baseline.micro_cer, 1 / 11);
+  assert.equal(report.profiles.baseline.macro_cer, 1 / 12);
+  assert.deepEqual(report.profiles.baseline.edit_counts, {
+    substitutions: 1,
+    deletions: 0,
+    insertions: 0,
+    total: 1,
+  });
+  assert.deepEqual(report.profiles.baseline.character_counts, {
+    reference_characters: 11,
+    hypothesis_characters: 11,
+  });
+  assert.deepEqual(report.profiles.baseline.key_term_counts, {
+    recalled: 0,
+    expected: 1,
+  });
+  assert.deepEqual(report.profiles.baseline.language_counts, {
+    recalled: 3,
+    expected: 4,
+  });
+  assert.deepEqual(report.profiles.baseline.language_switch_counts, {
+    recalled: 1,
+    expected: 2,
+  });
+  assert.deepEqual(report.profiles.baseline.cases[0]?.edit_counts, {
+    substitutions: 1,
+    deletions: 0,
+    insertions: 0,
+    total: 1,
+  });
   assert.equal(report.profiles.baseline.trial_count, 1);
   assert.equal(report.profiles.baseline.observation_count, 3);
   assert.ok(report.profiles.baseline.cases.every((entry) => entry.trial === 1));
@@ -286,7 +324,7 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
   assert.equal(report.comparisons.context_endpoint.gates.clean_cer, "pass");
   assert.equal(report.comparisons.context_endpoint.gates.language_switching, "pass");
   assert.equal(report.comparisons.context_endpoint.gates.latency, "pass");
-  assert.equal(report.comparisons.context_endpoint.gates.semantic_endpoint, "pass");
+  assert.equal(report.comparisons.context_endpoint.gates.semantic_endpoint, "not_evaluated");
   assert.equal(report.comparisons.context_endpoint.gates.pi_runtime, "not_evaluated");
   assert.equal(report.comparisons.context.language_switch_recall_change, 0);
   const contextCodeSwitchCerChange = report.comparisons.context.code_switch_cer_point_change;
@@ -317,6 +355,60 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
   assert.ok(
     report.preprocessing.non_noise_cer !== null &&
     report.preprocessing.non_noise_cer > report.preprocessing.noise_tagged_cer,
+  );
+});
+
+void test("CER監査情報は置換・削除・挿入を分けてmacroとmicroを集計する", () => {
+  const manifest = parseSttEvaluationManifest(manifestJson);
+  const result = (
+    caseId: string,
+    transcript: string,
+    language: "ja" | "ko",
+  ) => ({
+    case_id: caseId,
+    profile: "baseline" as const,
+    transcript,
+    segments: [transcript],
+    recognized_languages: [language],
+    finalizations: [
+      { kind: "finalized" as const, reason: "speaking_end" as const, latency_ms: 100, has_text: true },
+    ],
+    cpu_percent: 1,
+    decoded_packet_count: 1,
+    dropped_packet_count: 0,
+    configuration: sttEvaluationProfileConfigurations.baseline,
+  });
+  const observations = parseSttEvaluationObservations(JSON.stringify({
+    version: 1,
+    results: [
+      result("ja-clean-term", "今日は犬", "ja"),
+      result("ko-noise", "안", "ko"),
+      result("code-switch", "今日は안녕요", "ja"),
+    ],
+  }));
+
+  const baseline = createSttEvaluationReport(manifest, observations).profiles.baseline;
+  assert.ok(baseline);
+  assert.equal(baseline.cer, 3 / 11);
+  assert.equal(baseline.micro_cer, 3 / 11);
+  assert.equal(baseline.macro_cer, 19 / 60);
+  assert.deepEqual(baseline.edit_counts, {
+    substitutions: 1,
+    deletions: 1,
+    insertions: 1,
+    total: 3,
+  });
+  assert.deepEqual(baseline.character_counts, {
+    reference_characters: 11,
+    hypothesis_characters: 11,
+  });
+  assert.deepEqual(
+    baseline.cases.map((entry) => entry.edit_counts),
+    [
+      { substitutions: 1, deletions: 0, insertions: 0, total: 1 },
+      { substitutions: 0, deletions: 1, insertions: 0, total: 1 },
+      { substitutions: 0, deletions: 0, insertions: 1, total: 1 },
+    ],
   );
 });
 
@@ -449,7 +541,7 @@ void test("本文のないendpointでSoniox中心の採用比率を水増しし�
   const report = createSttEvaluationReport(manifest, observations);
 
   assert.equal(report.profiles.endpoint?.finalization.soniox_endpoint_ratio, 0);
-  assert.equal(report.comparisons.endpoint?.gates.semantic_endpoint, "fail");
+  assert.equal(report.comparisons.endpoint?.gates.semantic_endpoint, "not_evaluated");
   assert.deepEqual(report.profiles.endpoint.cases[0]?.finalizations, [
     { kind: "finalized", reason: "speaking_end", latency_ms: 100, has_text: true },
     { kind: "endpoint", reason: "soniox_endpoint", latency_ms: 120, has_text: false },
@@ -774,6 +866,111 @@ void test("追跡する固有名詞カタログ比較は共通語彙の不採用
   assert.equal(comparison.gates.language_switching, "fail");
   assert.equal(comparison.gates.semantic_endpoint, "fail");
   assert.equal(comparison.gates.pi_runtime, "not_evaluated");
+});
+
+void test("追跡するCER監査レポートはmicroとmacro、編集内訳、分母を本文なしで保持する", () => {
+  const reportText = readFileSync(
+    "docs/evaluation/stt-recognition-catalog-scoring-audit-2026-08-26.json",
+    "utf8",
+  );
+  const forbidden = /"(?:transcript|reference|hypothesis|translation_terms|terms|api_key|raw_audio|guild_id|user_id|trace_id|session_id)"/u;
+  assert.doesNotMatch(reportText, forbidden);
+  assert.doesNotMatch(reportText, /\/home\/sota411|\.data\/stt-eval/u);
+
+  type AuditProfile = {
+    trial_count: number;
+    observation_count: number;
+    cer: number;
+    micro_cer: number;
+    macro_cer: number;
+    edit_counts: {
+      substitutions: number;
+      deletions: number;
+      insertions: number;
+      total: number;
+    };
+    character_counts: {
+      reference_characters: number;
+      hypothesis_characters: number;
+    };
+    key_term_counts: { recalled: number; expected: number };
+    language_switch_counts: { recalled: number; expected: number } | null;
+  };
+  const report = JSON.parse(reportText) as {
+    version: number;
+    scoring: Record<string, unknown>;
+    dataset: { manifest_sha256: string; cases: unknown[] };
+    profiles: Record<string, AuditProfile>;
+    comparisons: Record<string, { gates: Record<string, string> }>;
+  };
+  assert.equal(report.version, 2);
+  assert.deepEqual(report.scoring, {
+    primary_cer: "micro",
+    macro_unit: "observation",
+    unicode_normalization: "NFKC",
+    whitespace: "removed",
+    edit_tie_break_order: ["substitution", "deletion", "insertion"],
+  });
+  const original = JSON.parse(readFileSync(
+    "docs/evaluation/stt-recognition-catalog-level1-2026-08-26.json",
+    "utf8",
+  )) as { dataset: { manifest_sha256: string } };
+  assert.equal(report.dataset.manifest_sha256, original.dataset.manifest_sha256);
+  assert.equal(report.dataset.cases.length, 10);
+
+  for (const profile of Object.values(report.profiles)) {
+    assert.equal(profile.trial_count, 3);
+    assert.equal(profile.observation_count, 30);
+    assert.equal(profile.cer, profile.micro_cer);
+    assert.equal(
+      profile.edit_counts.total,
+      profile.edit_counts.substitutions + profile.edit_counts.deletions +
+        profile.edit_counts.insertions,
+    );
+    assert.equal(
+      profile.micro_cer,
+      profile.edit_counts.total / profile.character_counts.reference_characters,
+    );
+  }
+
+  const baseline = report.profiles.baseline;
+  const level1 = report.profiles.endpoint_fallback_400_level1;
+  const catalog = report.profiles.endpoint_fallback_400_level1_catalog_terms;
+  assert.ok(baseline);
+  assert.ok(level1);
+  assert.ok(catalog);
+  assert.deepEqual(baseline.edit_counts, {
+    substitutions: 51,
+    deletions: 101,
+    insertions: 285,
+    total: 437,
+  });
+  assert.deepEqual(baseline.character_counts, {
+    reference_characters: 273,
+    hypothesis_characters: 457,
+  });
+  assert.equal(baseline.macro_cer, 1.433044733044733);
+  assert.deepEqual(baseline.key_term_counts, { recalled: 9, expected: 12 });
+  assert.deepEqual(baseline.language_switch_counts, { recalled: 3, expected: 6 });
+  assert.deepEqual(level1.edit_counts, {
+    substitutions: 53,
+    deletions: 120,
+    insertions: 65,
+    total: 238,
+  });
+  assert.deepEqual(catalog.edit_counts, {
+    substitutions: 53,
+    deletions: 132,
+    insertions: 122,
+    total: 307,
+  });
+  assert.deepEqual(catalog.key_term_counts, { recalled: 5, expected: 12 });
+  assert.deepEqual(catalog.language_switch_counts, { recalled: 1, expected: 6 });
+  assert.equal(
+    report.comparisons.endpoint_fallback_400_level1_catalog_terms
+      ?.gates.semantic_endpoint,
+    "not_evaluated",
+  );
 });
 
 void test("追跡する音質相関レポートは本文なしで前処理の不採用根拠を保持する", () => {

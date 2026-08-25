@@ -34,7 +34,7 @@ import {
 } from "./evaluation/stt-evaluation.js";
 
 const usage = `使用方法:
-  pnpm stt:evaluate run --manifest <manifest.json> --observations-output <observations.json> --output <report.json> [--experiment <context_endpoint|endpoint_timing|context_endpoint_400|endpoint_latency_level|recognition_catalog_level1|recognition_terms|recognition_source_terms>] [--profiles <comma-separated>] [--stt-websocket-url <wss://...>] [--trials <1-10>]
+  pnpm stt:evaluate run --manifest <manifest.json> --observations-output <observations.json> --output <report.json> [--experiment <context_endpoint|endpoint_timing|context_endpoint_400|endpoint_latency_level|recognition_catalog_level1|recognition_catalog_factorial|recognition_terms|recognition_source_terms>] [--profiles <comma-separated>] [--stt-websocket-url <wss://...>] [--trials <1-10>]
   pnpm stt:evaluate compare-provider --manifest <manifest.json> --observations-output <observations.json> --output <report.json> --aws-region <region> [--stt-websocket-url <wss://...>] [--trials <1-10>] [--amazon-timeout-ms <milliseconds>]
   pnpm stt:evaluate probe-endpoint-only --manifest <manifest.json> --required-case <case-id> --output <summary.json> [--stt-websocket-url <wss://...>] [--trials 3] [--boundary-timeout-ms <milliseconds>]
   pnpm stt:evaluate score --manifest <manifest.json> --observations <observations.json> --output <report.json>

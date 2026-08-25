@@ -9,6 +9,7 @@ const evaluationExperimentSchema = z.enum([
   "context_endpoint_400",
   "endpoint_latency_level",
   "recognition_catalog_level1",
+  "recognition_catalog_factorial",
   "recognition_terms",
   "recognition_source_terms",
   "provider_comparison",
@@ -25,6 +26,7 @@ const evaluationProfileSchema = z.enum([
   "context_endpoint_fallback_400",
   "endpoint_fallback_400_level1",
   "endpoint_fallback_400_level1_catalog_terms",
+  "recognition_catalog_terms",
   "recognition_terms",
   "recognition_source_terms",
   "amazon_transcribe",
@@ -182,6 +184,18 @@ export const sttEvaluationProfileConfigurations = {
     soniox_endpoint_latency_adjustment_level: 1,
     soniox_endpoint_sensitivity: 0,
     endpoint_silence_chunk_ms: 20,
+    preprocessing: "none",
+  },
+  recognition_catalog_terms: {
+    recognition_context_enabled: true,
+    recognition_context_mode: "catalog_terms",
+    endpoint_mode: "manual_early",
+    discord_speaking_end_delay_ms: 100,
+    manual_finalize_fallback_ms: 100,
+    soniox_max_endpoint_delay_ms: 2_000,
+    soniox_endpoint_latency_adjustment_level: null,
+    soniox_endpoint_sensitivity: null,
+    endpoint_silence_chunk_ms: null,
     preprocessing: "none",
   },
   recognition_terms: {
@@ -483,6 +497,12 @@ export const sttEvaluationExperimentProfileMappings = {
     B: "endpoint_fallback_400_level1",
     C: "endpoint_fallback_400_level1_catalog_terms",
   },
+  recognition_catalog_factorial: {
+    A: "baseline",
+    B: "recognition_catalog_terms",
+    C: "endpoint_fallback_400_level1",
+    D: "endpoint_fallback_400_level1_catalog_terms",
+  },
   recognition_terms: {
     A: "baseline",
     B: "recognition_terms",
@@ -513,12 +533,31 @@ export function parseSttEvaluationExperiment(value: string): SttEvaluationExperi
 
 type GateResult = "pass" | "fail" | "not_evaluated";
 
+type EditCounts = {
+  substitutions: number;
+  deletions: number;
+  insertions: number;
+  total: number;
+};
+
+type CharacterCounts = {
+  reference_characters: number;
+  hypothesis_characters: number;
+};
+
+type RecallCounts = {
+  recalled: number;
+  expected: number;
+};
+
 type CaseScore = {
   trial: number;
   case_id: string;
   cer: number;
   character_edits: number;
   reference_characters: number;
+  hypothesis_characters: number;
+  edit_counts: EditCounts;
   key_term_recall: number | null;
   key_terms_recalled: number;
   key_terms_expected: number;
@@ -553,10 +592,17 @@ type ProfileScore = {
   preprocessing: "none";
   configuration: SttEvaluationConfiguration;
   cer: number;
+  micro_cer: number;
+  macro_cer: number;
+  edit_counts: EditCounts;
+  character_counts: CharacterCounts;
   clean_cer: number | null;
   key_term_recall: number | null;
+  key_term_counts: RecallCounts;
   language_recall: number;
+  language_counts: RecallCounts;
   language_switch_recall: number | null;
+  language_switch_counts: RecallCounts | null;
   code_switch_cer: number | null;
   unnatural_split_count: number;
   latency_ms: { mean: number; p50: number; p95: number };
@@ -638,7 +684,14 @@ type QualityAnalysis = {
 };
 
 export type SttEvaluationReport = {
-  version: 1;
+  version: 2;
+  scoring: {
+    primary_cer: "micro";
+    macro_unit: "observation";
+    unicode_normalization: "NFKC";
+    whitespace: "removed";
+    edit_tie_break_order: readonly ["substitution", "deletion", "insertion"];
+  };
   generated_at: string;
   experiment: SttEvaluationExperiment;
   provider_environment?: NonNullable<SttEvaluationObservations["provider_environment"]>;
@@ -691,24 +744,57 @@ function normalizeTerm(value: string): string {
   return normalizeForComparison(value).toLocaleLowerCase("und");
 }
 
-function editDistance(left: readonly string[], right: readonly string[]): number {
-  if (left.length > right.length) return editDistance(right, left);
-  let previous = Array.from({ length: left.length + 1 }, (_, index) => index);
-  for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
-    const current = [rightIndex];
-    for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
-      const substitution = previous[leftIndex - 1] ?? Number.POSITIVE_INFINITY;
-      const deletion = previous[leftIndex] ?? Number.POSITIVE_INFINITY;
-      const insertion = current[leftIndex - 1] ?? Number.POSITIVE_INFINITY;
-      current.push(Math.min(
-        deletion + 1,
-        insertion + 1,
-        substitution + (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1),
+function incrementEditCount(
+  counts: EditCounts,
+  operation: "substitutions" | "deletions" | "insertions",
+): EditCounts {
+  return {
+    ...counts,
+    [operation]: counts[operation] + 1,
+    total: counts.total + 1,
+  };
+}
+
+function editCounts(reference: readonly string[], hypothesis: readonly string[]): EditCounts {
+  let previous = Array.from({ length: hypothesis.length + 1 }, (_, index): EditCounts => ({
+    substitutions: 0,
+    deletions: 0,
+    insertions: index,
+    total: index,
+  }));
+  for (let referenceIndex = 1; referenceIndex <= reference.length; referenceIndex += 1) {
+    const current: EditCounts[] = [{
+      substitutions: 0,
+      deletions: referenceIndex,
+      insertions: 0,
+      total: referenceIndex,
+    }];
+    for (let hypothesisIndex = 1; hypothesisIndex <= hypothesis.length; hypothesisIndex += 1) {
+      const diagonal = previous[hypothesisIndex - 1];
+      const above = previous[hypothesisIndex];
+      const left = current[hypothesisIndex - 1];
+      if (!diagonal || !above || !left) {
+        throw new Error("CER編集内訳の計算に失敗しました");
+      }
+      if (reference[referenceIndex - 1] === hypothesis[hypothesisIndex - 1]) {
+        current.push(diagonal);
+        continue;
+      }
+      const candidates = [
+        incrementEditCount(diagonal, "substitutions"),
+        incrementEditCount(above, "deletions"),
+        incrementEditCount(left, "insertions"),
+      ];
+      const selected = candidates.reduce((best, candidate) => (
+        candidate.total < best.total ? candidate : best
       ));
+      current.push(selected);
     }
     previous = current;
   }
-  return previous[left.length] ?? right.length;
+  const result = previous[hypothesis.length];
+  if (!result) throw new Error("CER編集内訳の計算に失敗しました");
+  return result;
 }
 
 function percentile(values: readonly number[], quantile: number): number {
@@ -728,7 +814,7 @@ function mean(values: readonly number[]): number {
 function scoreCase(evaluationCase: SttEvaluationCase, result: SttEvaluationResult): CaseScore {
   const reference = Array.from(normalizeForComparison(evaluationCase.reference));
   const hypothesis = Array.from(normalizeForComparison(result.transcript));
-  const characterEdits = editDistance(reference, hypothesis);
+  const counts = editCounts(reference, hypothesis);
   const normalizedTranscript = normalizeTerm(result.transcript);
   const recalledTerms = evaluationCase.key_terms
     .filter((term) => normalizedTranscript.includes(normalizeTerm(term))).length;
@@ -738,9 +824,11 @@ function scoreCase(evaluationCase: SttEvaluationCase, result: SttEvaluationResul
   return {
     trial: result.trial,
     case_id: evaluationCase.id,
-    cer: characterEdits / reference.length,
-    character_edits: characterEdits,
+    cer: counts.total / reference.length,
+    character_edits: counts.total,
     reference_characters: reference.length,
+    hypothesis_characters: hypothesis.length,
+    edit_counts: counts,
     key_term_recall: evaluationCase.key_terms.length === 0
       ? null
       : recalledTerms / evaluationCase.key_terms.length,
@@ -770,6 +858,42 @@ function microCer(scores: readonly CaseScore[]): number {
   const referenceCharacters = scores.reduce((sum, score) => sum + score.reference_characters, 0);
   if (referenceCharacters === 0) throw new Error("CERの正解文字数が0です");
   return scores.reduce((sum, score) => sum + score.character_edits, 0) / referenceCharacters;
+}
+
+function macroCer(scores: readonly CaseScore[]): number {
+  return mean(scores.map((score) => score.cer));
+}
+
+function totalEditCounts(scores: readonly CaseScore[]): EditCounts {
+  return scores.reduce<EditCounts>((total, score) => ({
+    substitutions: total.substitutions + score.edit_counts.substitutions,
+    deletions: total.deletions + score.edit_counts.deletions,
+    insertions: total.insertions + score.edit_counts.insertions,
+    total: total.total + score.edit_counts.total,
+  }), {
+    substitutions: 0,
+    deletions: 0,
+    insertions: 0,
+    total: 0,
+  });
+}
+
+function totalCharacterCounts(scores: readonly CaseScore[]): CharacterCounts {
+  return scores.reduce<CharacterCounts>((total, score) => ({
+    reference_characters: total.reference_characters + score.reference_characters,
+    hypothesis_characters: total.hypothesis_characters + score.hypothesis_characters,
+  }), { reference_characters: 0, hypothesis_characters: 0 });
+}
+
+function totalRecallCounts(
+  scores: readonly CaseScore[],
+  recalled: "key_terms_recalled" | "languages_recalled",
+  expected: "key_terms_expected" | "languages_expected",
+): RecallCounts {
+  return scores.reduce<RecallCounts>((total, score) => ({
+    recalled: total.recalled + score[recalled],
+    expected: total.expected + score[expected],
+  }), { recalled: 0, expected: 0 });
 }
 
 type QualityCase = {
@@ -1053,19 +1177,40 @@ function scoreProfile(
     .reduce((sum, value) => sum + value, 0);
   const configuration = results[0]?.configuration;
   if (!configuration) throw new Error("STT評価profileのconfigurationがありません");
+  const microCerValue = microCer(cases);
+  const keyTermCounts = totalRecallCounts(
+    cases,
+    "key_terms_recalled",
+    "key_terms_expected",
+  );
+  const languageCounts = totalRecallCounts(
+    cases,
+    "languages_recalled",
+    "languages_expected",
+  );
+  const languageSwitchCounts = switchCases.length === 0
+    ? null
+    : totalRecallCounts(switchCases, "languages_recalled", "languages_expected");
   return {
     case_count: manifest.cases.length,
     trial_count: trialIds.length,
     observation_count: cases.length,
     preprocessing: "none",
     configuration,
-    cer: microCer(cases),
+    cer: microCerValue,
+    micro_cer: microCerValue,
+    macro_cer: macroCer(cases),
+    edit_counts: totalEditCounts(cases),
+    character_counts: totalCharacterCounts(cases),
     clean_cer: cleanCases.length === 0 ? null : microCer(cleanCases),
     key_term_recall: aggregateRatio(cases, "key_terms_recalled", "key_terms_expected"),
+    key_term_counts: keyTermCounts,
     language_recall: aggregateRatio(cases, "languages_recalled", "languages_expected") ?? 0,
+    language_counts: languageCounts,
     language_switch_recall: switchCases.length === 0
       ? null
       : aggregateRatio(switchCases, "languages_recalled", "languages_expected"),
+    language_switch_counts: languageSwitchCounts,
     code_switch_cer: switchCases.length === 0 ? null : microCer(switchCases),
     unnatural_split_count: cases.reduce((sum, score) => sum + score.unnatural_split_count, 0),
     latency_ms: {
@@ -1165,10 +1310,7 @@ function compareProfile(
           ? "not_evaluated"
           : gate(codeSwitchCerChange <= 0 && languageSwitchChange >= 0),
       latency: gate(addedLatency <= 200),
-      semantic_endpoint: isSonioxConfiguration(candidate.configuration) &&
-          candidate.configuration.endpoint_mode !== "manual_early"
-        ? gate(candidate.finalization.soniox_endpoint_ratio > 0.5)
-        : "not_evaluated",
+      semantic_endpoint: "not_evaluated",
       pi_runtime: "not_evaluated",
       ...(comparesDifferentProvider
         ? { transcript_coverage: gate(transcriptCoverageChange >= 0) }
@@ -1219,7 +1361,14 @@ export function createSttEvaluationReport(
   }
   const qualityAnalysis = createQualityAnalysis(manifest, baseline);
   return {
-    version: 1,
+    version: 2,
+    scoring: {
+      primary_cer: "micro",
+      macro_unit: "observation",
+      unicode_normalization: "NFKC",
+      whitespace: "removed",
+      edit_tie_break_order: ["substitution", "deletion", "insertion"],
+    },
     generated_at: generatedAt.toISOString(),
     experiment: observations.experiment,
     ...(observations.provider_environment === undefined

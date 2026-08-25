@@ -220,6 +220,7 @@ async function runCase(
   const segments: string[] = [];
   const finalizations: SttEvaluationRunResult["finalizations"] = [];
   const originalConfidences: number[] = [];
+  const finalizedOriginalTokenIdentities = new Set<string>();
   let pendingText = "";
   let lastAudioAt: number | undefined;
   let lastPacketSent = false;
@@ -278,6 +279,19 @@ async function runCase(
     if (manualSafetyEnabled && result.tokens.length > 0) finalizer.transcriptProgressed();
     for (const token of result.tokens) {
       if (!token.is_final || token.translation_status !== "original") continue;
+      if (token.start_ms !== undefined && token.end_ms !== undefined) {
+        const identity = JSON.stringify([
+          token.start_ms,
+          token.end_ms,
+          token.text,
+          token.language ?? null,
+        ]);
+        if (finalizedOriginalTokenIdentities.has(identity)) {
+          boundary.reject(new Error("同じ時刻のfinal原文tokenが重複しています"));
+          return;
+        }
+        finalizedOriginalTokenIdentities.add(identity);
+      }
       pendingText += token.text;
       if (isEvaluationLanguage(token.language)) recognizedLanguages.add(token.language);
       originalConfidences.push(token.confidence);
@@ -424,12 +438,14 @@ export async function runSttEvaluationDataset(
     api_key: options.apiKey,
     realtime: { ws_base_url: options.sttWebSocketUrl },
   });
-  const recognitionCatalog = experiment === "recognition_catalog_level1"
+  const usesRecognitionCatalog = experiment === "recognition_catalog_level1" ||
+    experiment === "recognition_catalog_factorial";
+  const recognitionCatalog = usesRecognitionCatalog
     ? [...new Set(dataset.cases.flatMap(
       (evaluationCase) => evaluationCase.definition.key_terms,
     ))]
     : [];
-  if (experiment === "recognition_catalog_level1" && recognitionCatalog.length === 0) {
+  if (usesRecognitionCatalog && recognitionCatalog.length === 0) {
     throw new Error("固有名詞カタログ評価にはkey_termsが1件以上必要です");
   }
   const results: SttEvaluationRunResult[] = [];
