@@ -121,6 +121,29 @@ void test("semantic endpointが先に届いた場合は予約と後続のfinaliz
   finalizer.close();
 });
 
+void test("受理した境界がSoniox由来か手動fallback由来かを発話ごとに返す", (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const finalizer = new SttTurnFinalizer({
+    session: recordingSession([]),
+    speakingEndDelayMs: 100,
+    transcriptInactivityMs: 3_000,
+    maxTurnMs: 30_000,
+    trailingSilenceMs: 200,
+  });
+
+  finalizer.audioReceived();
+  assert.equal(finalizer.boundaryReceived("endpoint"), true);
+  assert.equal(finalizer.takeAcceptedFinalizeReason(), "soniox_endpoint");
+  assert.equal(finalizer.takeAcceptedFinalizeReason(), undefined);
+
+  finalizer.audioReceived();
+  finalizer.speakingEnded();
+  context.mock.timers.tick(100);
+  assert.equal(finalizer.boundaryReceived("finalized"), true);
+  assert.equal(finalizer.takeAcceptedFinalizeReason(), "speaking_end");
+  finalizer.close();
+});
+
 void test("manual finalizeをsemantic endpointが連続で先取りしても各finalized markerを無視する", (context) => {
   context.mock.timers.enable({ apis: ["setTimeout"] });
   const calls: FinalizeCall[] = [];
@@ -272,6 +295,30 @@ void test("ノイズの誤認識でテキストが進み続けても発話時間
     context.mock.timers.tick(2_000);
     finalizer.transcriptProgressed();
   }
+
+  assert.deepEqual(calls.map((call) => call.kind), ["audio", "finalize"]);
+  assert.deepEqual(reasons, ["max_turn_duration"]);
+  finalizer.close();
+});
+
+void test("STTが認識結果を返さなくても最初の音声から発話時間上限を適用する", (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const calls: FinalizeCall[] = [];
+  const reasons: string[] = [];
+  const finalizer = new SttTurnFinalizer({
+    session: recordingSession(calls),
+    speakingEndDelayMs: 100,
+    transcriptInactivityMs: 3_000,
+    maxTurnMs: 10_000,
+    trailingSilenceMs: 200,
+    onFinalize: (reason) => reasons.push(reason),
+  });
+
+  finalizer.speakingStarted();
+  finalizer.audioReceived();
+  context.mock.timers.tick(9_999);
+  assert.equal(calls.length, 0);
+  context.mock.timers.tick(1);
 
   assert.deepEqual(calls.map((call) => call.kind), ["audio", "finalize"]);
   assert.deepEqual(reasons, ["max_turn_duration"]);

@@ -36,6 +36,10 @@ import {
 import { ApplicationError } from "../domain/application-error.js";
 import type { TranslationLatencyRecorder } from "../observability/translation-latency.js";
 import {
+  SttAudioMetricsAccumulator,
+  type SttAudioMetricsLogFields,
+} from "../observability/stt-audio-metrics.js";
+import {
   createTranslationQualityObservation,
   type TranslationQualityObservation,
 } from "../observability/translation-quality.js";
@@ -90,6 +94,7 @@ type DiscordTranslationDriverOptions = {
   latency: TranslationLatencyRecorder;
   observeFlow?: TranslationFlowObserver;
   observeQuality?: (observation: TranslationQualityObservation) => void;
+  observeSttAudioMetrics?: (observation: SttAudioMetricsLogFields) => void;
   observeCaptionDelivery?: (observation: CaptionDeliveryObservation) => void;
   observeSttResult?: () => void;
   onFailure: RuntimeFailureHandler;
@@ -103,6 +108,7 @@ type SpeakerStream = {
   decoder: InstanceType<typeof OpusEncoder>;
   stt: RealtimeSttSession;
   turnFinalizer: SttTurnFinalizer;
+  audioMetrics: SttAudioMetricsAccumulator;
   utterance: StreamingUtterance;
   turnId: string;
   pendingPreview?: InterimUtterance;
@@ -175,6 +181,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
   readonly #latency: TranslationLatencyRecorder;
   readonly #observeFlow: TranslationFlowObserver;
   readonly #observeQuality: (observation: TranslationQualityObservation) => void;
+  readonly #observeSttAudioMetrics: (observation: SttAudioMetricsLogFields) => void;
   readonly #observeCaptionDelivery: (observation: CaptionDeliveryObservation) => void;
   readonly #observeSttResult: () => void;
   readonly #onFailure: RuntimeFailureHandler;
@@ -189,6 +196,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
     this.#latency = options.latency;
     this.#observeFlow = options.observeFlow ?? (() => undefined);
     this.#observeQuality = options.observeQuality ?? (() => undefined);
+    this.#observeSttAudioMetrics = options.observeSttAudioMetrics ?? (() => undefined);
     this.#observeCaptionDelivery = options.observeCaptionDelivery ?? (() => undefined);
     this.#observeSttResult = options.observeSttResult ?? (() => undefined);
     this.#onFailure = (guildId, reason, publicMessage, cause) => {
@@ -277,6 +285,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
         latency: this.#latency,
         observeFlow: this.#observeFlow,
         observeQuality: this.#observeQuality,
+        observeSttAudioMetrics: this.#observeSttAudioMetrics,
         observeCaptionDelivery: this.#observeCaptionDelivery,
         observeSttResult: this.#observeSttResult,
         onFailure: this.#onFailure,
@@ -331,6 +340,7 @@ export type TranslationRuntimeOptions = {
   latency: TranslationLatencyRecorder;
   observeFlow: TranslationFlowObserver;
   observeQuality?: (observation: TranslationQualityObservation) => void;
+  observeSttAudioMetrics?: (observation: SttAudioMetricsLogFields) => void;
   observeCaptionDelivery: (observation: CaptionDeliveryObservation) => void;
   observeSttResult?: () => void;
   onFailure: RuntimeFailureHandler;
@@ -353,6 +363,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
   readonly #latency: TranslationLatencyRecorder;
   readonly #observeFlow: TranslationFlowObserver;
   readonly #observeQuality: (observation: TranslationQualityObservation) => void;
+  readonly #observeSttAudioMetrics: (observation: SttAudioMetricsLogFields) => void;
   readonly #observeSttResult: () => void;
   readonly #onFailure: RuntimeFailureHandler;
   readonly #onWarning: (guildId: string, operation: string, cause: unknown) => void;
@@ -398,6 +409,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     this.#latency = options.latency;
     this.#observeFlow = options.observeFlow;
     this.#observeQuality = options.observeQuality ?? (() => undefined);
+    this.#observeSttAudioMetrics = options.observeSttAudioMetrics ?? (() => undefined);
     this.#observeSttResult = options.observeSttResult ?? (() => undefined);
     this.#onFailure = (guildId, reason, publicMessage, cause) => {
       options.onFailure(guildId, reason, publicMessage, cause);
@@ -616,6 +628,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       decoder: new OpusEncoder(48_000, 2),
       stt: stt.session,
       turnFinalizer,
+      audioMetrics: new SttAudioMetricsAccumulator(),
       utterance: new StreamingUtterance({
         pair: this.#session.pair,
         maxSourceDurationMs: this.#config.limits.utteranceMaxSourceSeconds * 1_000,
@@ -766,9 +779,11 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       }
       const monoPcm = decodeDiscordOpusPacketToMono(speaker.decoder, packet);
       if (!monoPcm) {
+        speaker.audioMetrics.recordDroppedPacket();
         this.#observeFlow("voice_packet_dropped");
         return;
       }
+      speaker.audioMetrics.recordDecodedPacket(monoPcm);
       speaker.stt.sendAudio(monoPcm);
       speaker.turnFinalizer.audioReceived();
       if (!speaker.burstHasPacket) {
@@ -826,11 +841,16 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       return;
     }
     if (!speaker.turnFinalizer.boundaryReceived(kind)) return;
+    const finalizeReason = speaker.turnFinalizer.takeAcceptedFinalizeReason();
+    if (!finalizeReason) throw new Error("受理したSTT境界の確定理由がありません");
     delete speaker.lastTranscriptFingerprint;
-    this.#handleEndpoint(speaker);
+    this.#handleEndpoint(speaker, finalizeReason);
   }
 
-  #handleEndpoint(speaker: SpeakerStream): void {
+  #handleEndpoint(
+    speaker: SpeakerStream,
+    finalizeReason: import("../audio/stt-turn-finalizer.js").SttAcceptedFinalizeReason,
+  ): void {
     try {
       if (
         this.#stopping ||
@@ -846,6 +866,13 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       delete speaker.pendingPreview;
       this.#flushSpeakerUsage(speaker);
       const finalized = speaker.utterance.takeAtEndpoint();
+      this.#observeSttAudioMetrics(speaker.audioMetrics.take({
+        traceId: speaker.turnId,
+        finalizeReason,
+        ...(finalized?.originalConfidence
+          ? { originalConfidence: finalized.originalConfidence }
+          : {}),
+      }));
       if (!finalized) {
         this.#observeFlow("stt_endpoint_empty");
         void this.#captions.discardPreview(speaker.turnId);

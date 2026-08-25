@@ -5,6 +5,10 @@ export type SttFinalizeReason =
   | "speaking_end"
   | "transcript_inactivity"
   | "max_turn_duration";
+export type SttAcceptedFinalizeReason =
+  | SttFinalizeReason
+  | "soniox_endpoint"
+  | "soniox_finalized";
 
 type SttTurnFinalizerOptions = {
   session: Pick<RealtimeSttSession, "sendAudio" | "finalize">;
@@ -33,6 +37,8 @@ export class SttTurnFinalizer {
   #maxTurnTimer: NodeJS.Timeout | undefined;
   #hasPendingAudio = false;
   #manualFinalizeRequested = false;
+  #manualFinalizeReason: SttFinalizeReason | undefined;
+  #acceptedFinalizeReason: SttAcceptedFinalizeReason | undefined;
   #audioAfterFinalizeRequest = false;
   #transcriptProgressAfterFinalizeRequest = false;
   #ignoredFinalizedBoundaryCount = 0;
@@ -56,6 +62,7 @@ export class SttTurnFinalizer {
     if (this.#closed) return;
     this.#hasPendingAudio = true;
     if (this.#manualFinalizeRequested) this.#audioAfterFinalizeRequest = true;
+    else this.#scheduleMaxTurnTimer();
     if (!this.#speaking) this.#scheduleSpeakingEndFinalize();
   }
 
@@ -90,13 +97,7 @@ export class SttTurnFinalizer {
   }
 
   #scheduleTranscriptTimers(): void {
-    if (!this.#maxTurnTimer) {
-      this.#maxTurnTimer = setTimeout(() => {
-        this.#maxTurnTimer = undefined;
-        this.#requestFinalize("max_turn_duration");
-      }, this.#maxTurnMs);
-      this.#maxTurnTimer.unref();
-    }
+    this.#scheduleMaxTurnTimer();
     this.#clearTranscriptInactivityTimer();
     this.#transcriptInactivityTimer = setTimeout(() => {
       this.#transcriptInactivityTimer = undefined;
@@ -105,12 +106,24 @@ export class SttTurnFinalizer {
     this.#transcriptInactivityTimer.unref();
   }
 
+  #scheduleMaxTurnTimer(): void {
+    if (!this.#maxTurnTimer) {
+      this.#maxTurnTimer = setTimeout(() => {
+        this.#maxTurnTimer = undefined;
+        this.#requestFinalize("max_turn_duration");
+      }, this.#maxTurnMs);
+      this.#maxTurnTimer.unref();
+    }
+  }
+
   public boundaryReceived(kind: SttBoundaryKind): boolean {
     if (kind === "finalized" && this.#ignoredFinalizedBoundaryCount > 0) {
       this.#ignoredFinalizedBoundaryCount -= 1;
       return false;
     }
 
+    this.#acceptedFinalizeReason = this.#manualFinalizeReason ??
+      (kind === "endpoint" ? "soniox_endpoint" : "soniox_finalized");
     this.#clearTimers();
     if (kind === "endpoint" && this.#manualFinalizeRequested) {
       this.#ignoredFinalizedBoundaryCount += 1;
@@ -118,9 +131,11 @@ export class SttTurnFinalizer {
     const hadAudioAfterFinalizeRequest = this.#audioAfterFinalizeRequest;
     this.#hasPendingAudio = hadAudioAfterFinalizeRequest || this.#speaking;
     this.#manualFinalizeRequested = false;
+    this.#manualFinalizeReason = undefined;
     this.#audioAfterFinalizeRequest = false;
     const transcriptProgressed = this.#transcriptProgressAfterFinalizeRequest;
     this.#transcriptProgressAfterFinalizeRequest = false;
+    if (hadAudioAfterFinalizeRequest) this.#scheduleMaxTurnTimer();
     if (transcriptProgressed && hadAudioAfterFinalizeRequest) {
       this.#scheduleTranscriptTimers();
     }
@@ -128,6 +143,12 @@ export class SttTurnFinalizer {
       this.#scheduleSpeakingEndFinalize();
     }
     return true;
+  }
+
+  public takeAcceptedFinalizeReason(): SttAcceptedFinalizeReason | undefined {
+    const reason = this.#acceptedFinalizeReason;
+    this.#acceptedFinalizeReason = undefined;
+    return reason;
   }
 
   public close(): void {
@@ -143,6 +164,7 @@ export class SttTurnFinalizer {
       this.#session.sendAudio(this.#silence);
       this.#session.finalize({ trailing_silence_ms: this.#trailingSilenceMs });
       this.#manualFinalizeRequested = true;
+      this.#manualFinalizeReason = reason;
       this.#onFinalize(reason);
     } catch (error) {
       this.#onError(error);

@@ -143,6 +143,9 @@ export async function startApplication(
           logger.warn("translation_quality_anomaly", observation.anomaly);
         }
       },
+      observeSttAudioMetrics: (observation) => {
+        logger.info("stt_audio_quality", observation);
+      },
       observeCaptionDelivery: (observation) => {
         logger.info("caption_delivery", observation);
       },

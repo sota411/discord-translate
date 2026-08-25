@@ -12,6 +12,7 @@ import {
   DiscordTranslationRuntime,
   type TranslationRuntimeOptions,
 } from "../src/discord/translation-driver.js";
+import type { SttAudioMetricsLogFields } from "../src/observability/stt-audio-metrics.js";
 import { validEnv } from "./helpers/valid-env.js";
 
 class FakeSttSession extends EventEmitter {
@@ -245,6 +246,7 @@ void test("Discord音声受信streamの一時エラーは再購読してセッ�
   const stt = new FakeSttSession();
   const failures: string[] = [];
   const warnings: string[] = [];
+  const audioMetrics: SttAudioMetricsLogFields[] = [];
   const connectionEvents = new EventEmitter();
   let subscriptions = 0;
   const runtime = new DiscordTranslationRuntime({
@@ -316,6 +318,9 @@ void test("Discord音声受信streamの一時エラーは再購読してセッ�
       finish: () => undefined,
     },
     observeFlow: () => undefined,
+    observeSttAudioMetrics: (observation: SttAudioMetricsLogFields) => {
+      audioMetrics.push(observation);
+    },
     onFailure: (_guildId: string, reason: string) => failures.push(reason),
     onWarning: (_guildId: string, operation: string) => warnings.push(operation),
   } as unknown as TranslationRuntimeOptions);
@@ -331,6 +336,14 @@ void test("Discord音声受信streamの一時エラーは再購読してセッ�
     await new Promise<void>((resolve) => setImmediate(resolve));
 
     assert.equal(stt.audioWrites, 1);
+    stt.emit("endpoint");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(audioMetrics.length, 1);
+    const observation = audioMetrics[0];
+    assert.ok(observation);
+    assert.equal(observation.decoded_packet_count, 1);
+    assert.equal(observation.dropped_packet_count, 0);
+    assert.equal(observation.finalize_reason, "soniox_endpoint");
     assert.deepEqual(failures, []);
     assert.deepEqual(warnings, ["voice_receive_stream_recovering"]);
   } finally {
