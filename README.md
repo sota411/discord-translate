@@ -268,6 +268,8 @@ pnpm stt:evaluate probe-endpoint-only \
 
 2026年8月25日に人工音声10件を3試行し、A〜Dを比較した。同じAでも試行別CERは1.37〜1.74に振れたため、採否には3試行の集計値を使った。BはAより全体CERが2.0%悪化し、固有名詞再現率が8.3ポイント、日韓切り替え時の期待言語再現率が16.7ポイント下がった。Cは全体CERを46.8%改善したが、固有名詞再現率が8.3ポイント下がり、p95遅延が488 ms、不自然な分割が3試行合計25件増えた。Dの全体CER改善は5.5%に留まり、固有名詞再現率が33.3ポイント、日韓切り替え時の期待言語再現率が50ポイント下がった。いずれも採用基準を満たさないため、通常運用の確定値と`SONIOX_GENERAL_CONTEXT_ENABLED=false`は変更していない。数値と入力SHA-256は[本文非含有レポート](./docs/evaluation/stt-artificial-2026-08-25.json)に残している。
 
+認識contextの影響を分けるため、2026年8月26日に`general`を送らず、登録語の`source`と`target`だけを認識用`terms`へ加える条件も比較した。全体CERはA比23.6%改善したが、固有名詞再現率は66.7%から50.0%、言語切り替え時の期待言語再現率は50.0%から0%へ下がった。この評価manifestでは、`source`が話される側の用語だった。`source`だけへ絞った別の比較でも、全体CERは0.9%悪化した。固有名詞再現率は75.0%から58.3%、言語切り替え時の期待言語再現率は50.0%から16.7%へ下がった。どちらも本番既定へ採用せず、`SONIOX_GENERAL_CONTEXT_ENABLED=false`を維持する。詳細は[両言語termsレポート](./docs/evaluation/stt-recognition-terms-2026-08-26.json)と[source限定termsレポート](./docs/evaluation/stt-recognition-source-terms-2026-08-26.json)に残している。
+
 2026年8月26日には、同じ10件を使って400、600、800 msの手動fallbackを各3試行した。400 msは全体CERを40.6%改善し、p95追加遅延も+185 msに収めたが、固有名詞再現率が16.7ポイント下がった。600 msと800 msも固有名詞再現率が下がり、p95追加遅延はそれぞれ+403 ms、+540 msだった。endpoint-onlyは、評価専用に無音PCMを実時間で送り続けても、同じキーボード雑音caseを3回とも10秒以内に確定できなかった。この終端失敗により、残り9件のCER集計は行っていない。400 msへ認識用contextを組み合わせた追加3試行も、固有名詞再現率が16.7ポイント下がり、Soniox endpointの採用率は30%に留まった。したがって、いずれも本番へ採用していない。
 
 同日、400 msのfallbackを変えずにSonioxのlevel 0と1も各3試行した。level 1は現行Aより全体CERを58.8%改善し、p95追加遅延は+177 ms、Soniox endpoint比率は56.4%だった。ただし、固有名詞再現率はAと同じ66.7%で改善せず、全体の言語再現率は63.6%から60.6%へ下がった。不自然な分割もAの0件、level 0の6件に対して9件だった。固有名詞のgateが失敗し、Pi実機も未評価なので、level 1は本番へ採用していない。詳細は[本文非含有レポート](./docs/evaluation/stt-endpoint-latency-level-2026-08-26.json)に残している。
@@ -287,6 +289,8 @@ pnpm stt:evaluate probe-endpoint-only \
 - [2026-08-26 STT認識context・400 ms評価（本文非含有）](./docs/evaluation/stt-context-endpoint-400-2026-08-26.json)
 - [2026-08-26 STT endpoint latency level評価（本文非含有）](./docs/evaluation/stt-endpoint-latency-level-2026-08-26.json)
 - [2026-08-26 STT音質相関評価（本文非含有）](./docs/evaluation/stt-audio-quality-correlation-2026-08-26.json)
+- [2026-08-26 STT両言語terms評価（本文非含有）](./docs/evaluation/stt-recognition-terms-2026-08-26.json)
+- [2026-08-26 STT source限定terms評価（本文非含有）](./docs/evaluation/stt-recognition-source-terms-2026-08-26.json)
 - [2026-08-26 endpoint-only timeout（本文非含有）](./docs/evaluation/stt-endpoint-only-failure-2026-08-26.json)
 - [公開前セキュリティ監査](./security_best_practices_report.md)
 - [環境変数の配布例](./.env.example)

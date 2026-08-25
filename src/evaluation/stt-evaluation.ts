@@ -8,6 +8,8 @@ const evaluationExperimentSchema = z.enum([
   "endpoint_timing",
   "context_endpoint_400",
   "endpoint_latency_level",
+  "recognition_terms",
+  "recognition_source_terms",
 ]);
 const evaluationProfileSchema = z.enum([
   "baseline",
@@ -20,9 +22,12 @@ const evaluationProfileSchema = z.enum([
   "endpoint_only_1000",
   "context_endpoint_fallback_400",
   "endpoint_fallback_400_level1",
+  "recognition_terms",
+  "recognition_source_terms",
 ]);
 const sttEvaluationConfigurationSchema = z.object({
   recognition_context_enabled: z.boolean(),
+  recognition_context_mode: z.enum(["terms_only", "source_terms_only"]).optional(),
   endpoint_mode: z.enum(["manual_early", "soniox_primary", "soniox_only"]),
   discord_speaking_end_delay_ms: z.number().int().nonnegative(),
   manual_finalize_fallback_ms: z.number().int().nonnegative().nullable(),
@@ -144,6 +149,30 @@ export const sttEvaluationProfileConfigurations = {
     soniox_endpoint_latency_adjustment_level: 1,
     soniox_endpoint_sensitivity: 0,
     endpoint_silence_chunk_ms: 20,
+    preprocessing: "none",
+  },
+  recognition_terms: {
+    recognition_context_enabled: true,
+    recognition_context_mode: "terms_only",
+    endpoint_mode: "manual_early",
+    discord_speaking_end_delay_ms: 100,
+    manual_finalize_fallback_ms: 100,
+    soniox_max_endpoint_delay_ms: 2_000,
+    soniox_endpoint_latency_adjustment_level: null,
+    soniox_endpoint_sensitivity: null,
+    endpoint_silence_chunk_ms: null,
+    preprocessing: "none",
+  },
+  recognition_source_terms: {
+    recognition_context_enabled: true,
+    recognition_context_mode: "source_terms_only",
+    endpoint_mode: "manual_early",
+    discord_speaking_end_delay_ms: 100,
+    manual_finalize_fallback_ms: 100,
+    soniox_max_endpoint_delay_ms: 2_000,
+    soniox_endpoint_latency_adjustment_level: null,
+    soniox_endpoint_sensitivity: null,
+    endpoint_silence_chunk_ms: null,
     preprocessing: "none",
   },
 } as const satisfies Readonly<Record<
@@ -356,6 +385,14 @@ export const sttEvaluationExperimentProfileMappings = {
     A: "baseline",
     B: "endpoint_fallback_400",
     C: "endpoint_fallback_400_level1",
+  },
+  recognition_terms: {
+    A: "baseline",
+    B: "recognition_terms",
+  },
+  recognition_source_terms: {
+    A: "baseline",
+    B: "recognition_source_terms",
   },
 } as const satisfies Readonly<Record<
   SttEvaluationExperiment,

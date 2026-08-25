@@ -159,24 +159,33 @@ async function runCase(
 ): Promise<SttEvaluationRunResult> {
   const configuration = sttEvaluationProfileConfigurations[profile];
   const manualSafetyEnabled = configuration.endpoint_mode !== "soniox_only";
+  const recognitionContextMode = "recognition_context_mode" in configuration
+    ? configuration.recognition_context_mode
+    : undefined;
   const contextFactory = new SonioxSttFactory(
     client,
     model,
-    configuration.recognition_context_enabled,
-    configuration.endpoint_mode !== "manual_early"
-      ? {
-        maxEndpointDelayMs: configuration.soniox_max_endpoint_delay_ms,
-        ...(configuration.soniox_endpoint_latency_adjustment_level === null
-          ? {}
-          : {
-            endpointLatencyAdjustmentLevel:
-              configuration.soniox_endpoint_latency_adjustment_level,
-          }),
-        ...(configuration.soniox_endpoint_sensitivity === null
-          ? {}
-          : { endpointSensitivity: configuration.soniox_endpoint_sensitivity }),
-      }
-      : {},
+    configuration.recognition_context_enabled && recognitionContextMode === undefined,
+    {
+      recognitionTermsEnabled: configuration.recognition_context_enabled,
+      recognitionTermScope: recognitionContextMode === "source_terms_only"
+        ? "source"
+        : "source_target",
+      ...(configuration.endpoint_mode !== "manual_early"
+        ? {
+          maxEndpointDelayMs: configuration.soniox_max_endpoint_delay_ms,
+          ...(configuration.soniox_endpoint_latency_adjustment_level === null
+            ? {}
+            : {
+              endpointLatencyAdjustmentLevel:
+                configuration.soniox_endpoint_latency_adjustment_level,
+            }),
+          ...(configuration.soniox_endpoint_sensitivity === null
+            ? {}
+            : { endpointSensitivity: configuration.soniox_endpoint_sensitivity }),
+        }
+        : {}),
+    },
   );
   const { session } = contextFactory.create(
     dataset.manifest.pair,

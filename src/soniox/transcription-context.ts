@@ -20,6 +20,8 @@ export type BuiltSonioxTranscriptionContext = {
   characterCount: number;
 };
 
+export type SonioxRecognitionTermScope = "source" | "source_target";
+
 function generalContext(pair: LanguagePair): NonNullable<TranscriptionContext["general"]> {
   const [languageA, languageB] = languagesForPair(pair);
   return [
@@ -46,11 +48,14 @@ function generalContext(pair: LanguagePair): NonNullable<TranscriptionContext["g
   ];
 }
 
-function recognitionTerms(translationTerms: readonly TranslationTerm[]): string[] {
+function recognitionTerms(
+  translationTerms: readonly TranslationTerm[],
+  scope: SonioxRecognitionTermScope,
+): string[] {
   const terms = new Set<string>();
   for (const translationTerm of translationTerms) {
     terms.add(translationTerm.source);
-    terms.add(translationTerm.target);
+    if (scope === "source_target") terms.add(translationTerm.target);
   }
   return [...terms];
 }
@@ -59,11 +64,13 @@ export function buildSonioxTranscriptionContext(
   pair: LanguagePair,
   translationTerms: readonly TranslationTerm[],
   includeGeneral: boolean,
+  includeRecognitionTerms = includeGeneral,
+  recognitionTermScope: SonioxRecognitionTermScope = "source_target",
 ): BuiltSonioxTranscriptionContext {
   const context: TranscriptionContext = {
     ...(includeGeneral ? { general: generalContext(pair) } : {}),
-    ...(includeGeneral && translationTerms.length > 0
-      ? { terms: recognitionTerms(translationTerms) }
+    ...(includeRecognitionTerms && translationTerms.length > 0
+      ? { terms: recognitionTerms(translationTerms, recognitionTermScope) }
       : {}),
     ...(translationTerms.length > 0
       ? { translation_terms: translationTerms.map((entry) => ({ ...entry })) }

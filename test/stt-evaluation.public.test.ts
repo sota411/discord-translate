@@ -745,6 +745,64 @@ void test("追跡する音質相関レポートは本文なしで前処理の不
   );
 });
 
+void test("追跡する認識用terms比較は両言語版とsource限定版の不採用gateを保持する", () => {
+  const reportPaths = [
+    "docs/evaluation/stt-recognition-terms-2026-08-26.json",
+    "docs/evaluation/stt-recognition-source-terms-2026-08-26.json",
+  ] as const;
+  const reportTexts = reportPaths.map((reportPath) => readFileSync(reportPath, "utf8"));
+  const forbidden = /"(?:transcript|reference|translation_terms|api_key|raw_audio|guild_id|user_id|trace_id|session_id)"/u;
+  for (const reportText of reportTexts) assert.doesNotMatch(reportText, forbidden);
+
+  const reports = reportTexts.map((reportText) => JSON.parse(reportText) as {
+    dataset: { manifest_sha256: string };
+    profiles: Record<string, {
+      trial_count: number;
+      observation_count: number;
+      key_term_recall: number | null;
+      language_switch_recall: number | null;
+    }>;
+    comparisons: Record<string, {
+      cer_relative_improvement_percent: number | null;
+      key_term_recall_change: number | null;
+      language_switch_recall_change: number | null;
+      gates: {
+        overall_cer: string;
+        key_terms: string;
+        language_switching: string;
+      };
+    }>;
+  });
+  const [bilingual, sourceOnly] = reports;
+  assert.ok(bilingual);
+  assert.ok(sourceOnly);
+  assert.equal(bilingual.dataset.manifest_sha256, sourceOnly.dataset.manifest_sha256);
+  for (const report of reports) {
+    for (const profile of Object.values(report.profiles)) {
+      assert.equal(profile.trial_count, 3);
+      assert.equal(profile.observation_count, 30);
+    }
+  }
+
+  const bilingualComparison = bilingual.comparisons.recognition_terms;
+  assert.ok(bilingualComparison);
+  assert.ok(
+    bilingualComparison.cer_relative_improvement_percent !== null &&
+    bilingualComparison.cer_relative_improvement_percent > 10,
+  );
+  assert.equal(bilingualComparison.gates.key_terms, "fail");
+  assert.equal(bilingualComparison.gates.language_switching, "fail");
+  const sourceOnlyComparison = sourceOnly.comparisons.recognition_source_terms;
+  assert.ok(sourceOnlyComparison);
+  assert.ok(
+    sourceOnlyComparison.cer_relative_improvement_percent !== null &&
+    sourceOnlyComparison.cer_relative_improvement_percent < 0,
+  );
+  assert.equal(sourceOnlyComparison.gates.overall_cer, "fail");
+  assert.equal(sourceOnlyComparison.gates.key_terms, "fail");
+  assert.equal(sourceOnlyComparison.gates.language_switching, "fail");
+});
+
 void test("追跡するPi runtime snapshotは識別子を含めず候補gateを未評価とする", () => {
   const snapshot = readFileSync(
     "docs/evaluation/pi-runtime-baseline-2026-08-25.json",

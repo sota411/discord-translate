@@ -266,6 +266,108 @@ void test("同じPCMを複数試行し、A〜Dの開始順を交替してcontext
   assert.equal(contextEndpointConfiguration.max_endpoint_delay_ms, 500);
 });
 
+void test("認識用terms実験はgeneralを送らず両言語版とsource限定版を分離する", async () => {
+  const configurations: Record<string, unknown>[] = [];
+  await withServer((socket) => {
+    socket.on("message", (data, isBinary) => {
+      if (isBinary) {
+        socket.send(JSON.stringify({
+          tokens: [
+            {
+              text: "ヴァロラント",
+              is_final: true,
+              confidence: 0.95,
+              language: "ja",
+              translation_status: "original",
+              start_ms: 0,
+              end_ms: 20,
+            },
+            { text: "<end>", is_final: true },
+          ],
+          final_audio_proc_ms: 20,
+          total_audio_proc_ms: 20,
+        }));
+        return;
+      }
+      const text = rawDataToUtf8(data);
+      if (text.length === 0) {
+        socket.send(JSON.stringify({
+          tokens: [],
+          final_audio_proc_ms: 20,
+          total_audio_proc_ms: 20,
+          finished: true,
+        }));
+        return;
+      }
+      const message = JSON.parse(text) as Record<string, unknown>;
+      if (message.api_key !== undefined) configurations.push(message);
+    });
+  }, async (url) => {
+    const dataset = await loadSttEvaluationDataset(writeDataset());
+    const observations = await runSttEvaluationDataset(dataset, {
+      apiKey: "do-not-leak-api-key",
+      model: "stt-rt-v5",
+      sttWebSocketUrl: url,
+      experiment: "recognition_terms",
+      trials: 1,
+      boundaryTimeoutMs: 1_000,
+      finishTimeoutMs: 1_000,
+    });
+    const report = createSttEvaluationReport(dataset.manifest, observations);
+
+    assert.deepEqual(observations.results.map((result) => result.profile), [
+      "baseline",
+      "recognition_terms",
+    ]);
+    assert.deepEqual(report.profile_mapping, {
+      A: "baseline",
+      B: "recognition_terms",
+    });
+
+    const sourceOnlyObservations = await runSttEvaluationDataset(dataset, {
+      apiKey: "do-not-leak-api-key",
+      model: "stt-rt-v5",
+      sttWebSocketUrl: url,
+      experiment: "recognition_source_terms",
+      trials: 1,
+      boundaryTimeoutMs: 1_000,
+      finishTimeoutMs: 1_000,
+    });
+    const sourceOnlyReport = createSttEvaluationReport(
+      dataset.manifest,
+      sourceOnlyObservations,
+    );
+    assert.deepEqual(sourceOnlyObservations.results.map((result) => result.profile), [
+      "baseline",
+      "recognition_source_terms",
+    ]);
+    assert.deepEqual(sourceOnlyReport.profile_mapping, {
+      A: "baseline",
+      B: "recognition_source_terms",
+    });
+  });
+
+  assert.equal(configurations.length, 4);
+  const [baseline, recognitionTerms, sourceOnlyBaseline, recognitionSourceTerms] =
+    configurations;
+  assert.ok(baseline);
+  assert.ok(recognitionTerms);
+  assert.ok(sourceOnlyBaseline);
+  assert.ok(recognitionSourceTerms);
+  assert.deepEqual(baseline.context, {
+    translation_terms: [{ source: "ヴァロラント", target: "발로란트" }],
+  });
+  assert.deepEqual(recognitionTerms.context, {
+    terms: ["ヴァロラント", "발로란트"],
+    translation_terms: [{ source: "ヴァロラント", target: "발로란트" }],
+  });
+  assert.deepEqual(sourceOnlyBaseline.context, baseline.context);
+  assert.deepEqual(recognitionSourceTerms.context, {
+    terms: ["ヴァロラント"],
+    translation_terms: [{ source: "ヴァロラント", target: "발로란트" }],
+  });
+});
+
 void test("run CLIは指定試行数のA〜Dを実行し、本文をlocal観測結果だけへ0600で保存する", async () => {
   const outputDirectory = path.join(temporaryDirectory, "cli-output");
   const observationsPath = path.join(outputDirectory, "observations.json");

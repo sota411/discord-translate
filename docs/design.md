@@ -620,6 +620,17 @@ baselineでは音質指標とCERのPearson相関係数、tag別とそれ以外�
 
 詳細なcase・trial別指標と入力SHA-256は[本文非含有レポート](./evaluation/stt-artificial-2026-08-25.json)に残す。人工音声、とくに日本語TTSのCERが高いため、この結果を実会話の精度値へ外挿しない。実Discord音声と複数人通話は未検証である。したがって、認識contextとSoniox中心の確定を本番既定へ採用せず、現行値を維持する。
 
+#### 認識用termsだけでも固有名詞と言語切り替えを改善できなかった
+
+`general`と`terms`を同時に変えたBの原因を分けるため、発話確定はAのまま、認識用`terms`だけを追加した。Soniox公式は、音声中に出ると予想する固有名詞や専門語を`terms`へ入れるとしている。最初の比較では登録語の`source`と`target`を重複除去して送り、次の比較では、この評価manifestで話される側の`source`だけへ絞った。`translation_terms`は両方で維持し、`general`は送っていない。各比較は同じ10件を3試行し、そのbatchで同時実行したAとの差だけを採否に使った。
+
+| 認識用terms | CER相対改善 | 固有名詞再現率の差 | 切替時の期待言語再現率差 | p95追加遅延 | 判定 |
+|---|---:|---:|---:|---:|---|
+| `source`と`target` | 23.6% | -16.7ポイント | -50.0ポイント | -9 ms | 固有名詞と言語切り替えで不採用 |
+| `source`だけ | -0.9% | -16.7ポイント | -33.3ポイント | -13 ms | 全体CER、固有名詞、言語切り替えで不採用 |
+
+両言語版では全体CERとコードスイッチCERが改善したが、期待言語の再現率は50.0%から0%へ下がった。source限定版でも50.0%から16.7%へ下がった。本文が正解へ近づいても、日韓の自動判定を失う候補は採用しない。翻訳用語と認識語彙のデータモデルを長期的に分けるまでは、登録済み`translation_terms`を認識用`terms`へ本番既定で自動流用しない。`SONIOX_GENERAL_CONTEXT_ENABLED=false`を維持する。case・trial別指標は[両言語termsレポート](./evaluation/stt-recognition-terms-2026-08-26.json)と[source限定termsレポート](./evaluation/stt-recognition-source-terms-2026-08-26.json)に残す。
+
 #### 400〜800 msとendpoint-onlyも採用基準を満たさなかった
 
 2026年8月26日には、同じmanifestとSoniox `stt-rt-v5`を使い、発話確定時間を次の5条件で比較した。A〜Dは10件を3試行し、30観測/profileを集計した。合計時間は、最終音声packetからDiscordの`SpeakingMap`が終了を通知するまでの100 msと、その後の待機時間を足した値である。

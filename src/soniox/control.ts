@@ -19,7 +19,10 @@ import {
 import type { CapacityGate } from "../session/session-manager.js";
 import { ttsSpeedMax, ttsSpeedMin } from "../session/session-settings.js";
 import { usdDecimalToMicrousd } from "../usage/usage-ledger.js";
-import { buildSonioxTranscriptionContext } from "./transcription-context.js";
+import {
+  buildSonioxTranscriptionContext,
+  type SonioxRecognitionTermScope,
+} from "./transcription-context.js";
 
 type RequestDeadline = {
   signal: AbortSignal;
@@ -200,6 +203,8 @@ export class SonioxSttFactory {
   readonly #client: SonioxNodeClient;
   readonly #model: string;
   readonly #generalContextEnabled: boolean;
+  readonly #recognitionTermsEnabled: boolean;
+  readonly #recognitionTermScope: SonioxRecognitionTermScope;
   readonly #maxEndpointDelayMs: number | undefined;
   readonly #endpointLatencyAdjustmentLevel: number | undefined;
   readonly #endpointSensitivity: number | undefined;
@@ -208,7 +213,9 @@ export class SonioxSttFactory {
     client: SonioxNodeClient,
     model: string,
     generalContextEnabled = false,
-    endpointOptions: {
+    options: {
+      recognitionTermsEnabled?: boolean;
+      recognitionTermScope?: SonioxRecognitionTermScope;
       maxEndpointDelayMs?: number;
       endpointLatencyAdjustmentLevel?: number;
       endpointSensitivity?: number;
@@ -217,9 +224,11 @@ export class SonioxSttFactory {
     this.#client = client;
     this.#model = model;
     this.#generalContextEnabled = generalContextEnabled;
-    this.#maxEndpointDelayMs = endpointOptions.maxEndpointDelayMs;
-    this.#endpointLatencyAdjustmentLevel = endpointOptions.endpointLatencyAdjustmentLevel;
-    this.#endpointSensitivity = endpointOptions.endpointSensitivity;
+    this.#recognitionTermsEnabled = options.recognitionTermsEnabled ?? generalContextEnabled;
+    this.#recognitionTermScope = options.recognitionTermScope ?? "source_target";
+    this.#maxEndpointDelayMs = options.maxEndpointDelayMs;
+    this.#endpointLatencyAdjustmentLevel = options.endpointLatencyAdjustmentLevel;
+    this.#endpointSensitivity = options.endpointSensitivity;
   }
 
   public create(
@@ -235,6 +244,8 @@ export class SonioxSttFactory {
       pair,
       translationTerms,
       this.#generalContextEnabled,
+      this.#recognitionTermsEnabled,
+      this.#recognitionTermScope,
     );
     const session = this.#client.realtime.stt({
       model: this.#model,
