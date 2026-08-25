@@ -28,6 +28,7 @@ export type SessionDescriptor = {
   startedAt: Date;
   participantIds: readonly string[];
   playbackMode: PlaybackMode;
+  ttsSpeed: number;
   audioEnabled: boolean;
   captionFailurePolicy: CaptionFailurePolicy;
   captionThreadId?: string;
@@ -61,6 +62,7 @@ export type SessionRuntime = {
   readonly captionThreadId?: string;
   updateParticipants(participantIds: readonly string[]): Promise<void>;
   setPlaybackMode(mode: PlaybackMode): Promise<void>;
+  setTtsSpeed(speed: number): Promise<void>;
   setAudioEnabled(enabled: boolean): Promise<void>;
   setCaptionFailurePolicy(policy: CaptionFailurePolicy): Promise<void>;
   stop(reason: string): Promise<void>;
@@ -232,6 +234,12 @@ export class SessionManager {
     const session = this.#requireActiveRuntime(guildId);
     await session.runtime.setPlaybackMode(mode);
     session.playbackMode = mode;
+  }
+
+  public async setTtsSpeed(guildId: string, speed: number): Promise<void> {
+    const session = this.#requireActiveRuntime(guildId);
+    await session.runtime.setTtsSpeed(speed);
+    session.ttsSpeed = speed;
   }
 
   public async setAudioEnabled(guildId: string, enabled: boolean): Promise<void> {

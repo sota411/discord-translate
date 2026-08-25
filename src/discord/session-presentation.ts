@@ -46,6 +46,7 @@ type OpenSessionPresentationInput = {
   pair: LanguagePair;
   participantDisplayNames: readonly string[];
   playbackMode: PlaybackMode;
+  ttsSpeed: number;
   audioEnabled: boolean;
   queueWarningMs: number;
   startedAt: Date;
@@ -55,7 +56,7 @@ type OpenSessionPresentationInput = {
 
 type SessionPresentationUpdate = Pick<
   SessionCardView,
-  "participantDisplayNames" | "playbackMode" | "audioEnabled" | "queueWaitMs"
+  "participantDisplayNames" | "playbackMode" | "ttsSpeed" | "audioEnabled" | "queueWaitMs"
 >;
 
 export class DiscordSessionPresentation {
@@ -97,6 +98,7 @@ export class DiscordSessionPresentation {
       queueWaitMs: 0,
       queueWarningMs: input.queueWarningMs,
       playbackMode: input.playbackMode,
+      ttsSpeed: input.ttsSpeed,
       audioEnabled: input.audioEnabled,
       active: true,
     };

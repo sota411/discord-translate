@@ -117,6 +117,7 @@ class RecordingRuntime implements SessionRuntime {
   public readonly stopReasons: string[] = [];
   public stopError: Error | undefined;
   public readonly playbackModes: string[] = [];
+  public readonly ttsSpeeds: number[] = [];
   public readonly audioStates: boolean[] = [];
   public readonly captionFailurePolicies: string[] = [];
 
@@ -132,6 +133,11 @@ class RecordingRuntime implements SessionRuntime {
 
   public setPlaybackMode(mode: "conversation" | "accuracy"): Promise<void> {
     this.playbackModes.push(mode);
+    return Promise.resolve();
+  }
+
+  public setTtsSpeed(speed: number): Promise<void> {
+    this.ttsSpeeds.push(speed);
     return Promise.resolve();
   }
 
@@ -204,6 +210,7 @@ function createHarness(options: {
       "423456789012345678",
     ]),
     maxSpeakersPerSession: options.maxSpeakersPerSession ?? 2,
+    defaultTtsSpeed: 1.15,
     sessions,
     terms,
   });
@@ -329,6 +336,7 @@ void test("許可条件を満たすと利用量・容量を確認して1セッ�
   assert.equal(result.publicMessage, undefined);
   assert.match(result.interactionMessage, /専用スレッド/u);
   assert.equal(harness.service.getSession("223456789012345678")?.playbackMode, "conversation");
+  assert.equal(harness.service.getSession("223456789012345678")?.ttsSpeed, 1.15);
   assert.equal(harness.service.getSession("223456789012345678")?.audioEnabled, true);
   assert.equal(
     harness.service.getSession("223456789012345678")?.captionFailurePolicy,
@@ -611,6 +619,42 @@ void test("実行中のカード操作は同じ停止認可を使い、設定と
   });
   assert.equal(stale.ok, false);
   assert.equal(stale.code, "SESSION_NOT_ACTIVE");
+});
+
+void test("読み上げ速度は同じ停止認可と0.7〜1.3の範囲を使い、現在のセッションだけへ反映する", async () => {
+  const harness = createHarness();
+  assert.equal((await harness.service.execute(validStart())).ok, true);
+  const session = harness.service.getSession("223456789012345678");
+  assert.ok(session);
+
+  const changed = await harness.service.execute({
+    kind: "speed",
+    rate: 1.3,
+    guildId: session.guildId,
+    actorId: "423456789012345678",
+    actorCanManageGuild: false,
+    actorVoiceChannelId: session.voiceChannelId,
+  });
+  assert.equal(changed.ok, true);
+  assert.match(changed.interactionMessage, /1\.3倍/u);
+  assert.match(changed.interactionMessage, /次に生成/u);
+  assert.equal(session.ttsSpeed, 1.3);
+  assert.deepEqual(harness.driver.runtimes[0]?.ttsSpeeds, [1.3]);
+
+  const invalid = await harness.service.execute({
+    kind: "speed",
+    rate: 1.31,
+    guildId: session.guildId,
+    actorId: session.startedByUserId,
+    actorCanManageGuild: false,
+    actorVoiceChannelId: session.voiceChannelId,
+  });
+  assert.equal(invalid.ok, false);
+  assert.match(invalid.interactionMessage, /0\.7.*1\.3/u);
+  assert.equal(session.ttsSpeed, 1.3);
+  const runtime = harness.driver.runtimes[0];
+  assert.ok(runtime);
+  assert.deepEqual(runtime.ttsSpeeds, [1.3]);
 });
 
 void test("runtimeの停止処理が失敗しても停止後の利用ログ照合を実行する", async () => {

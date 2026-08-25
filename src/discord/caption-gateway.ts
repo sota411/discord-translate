@@ -1,3 +1,5 @@
+import { performance } from "node:perf_hooks";
+
 import { ApplicationError } from "../domain/application-error.js";
 import type {
   CaptionGateway,
@@ -41,19 +43,79 @@ export type CaptionWarningOperation =
   | "caption_update"
   | "unsupported_language_warning";
 
+export type CaptionDeliveryObservation = {
+  trace_id: string;
+  outcome: "posted" | "discarded";
+  succeeded: boolean;
+  preview_requested: number;
+  preview_sent: number;
+  preview_coalesced: number;
+  final_wait_ms: number;
+  final_delivery_ms: number;
+};
+
+type Deferred<T> = {
+  promise: Promise<T>;
+  resolve(value: T): void;
+  reject(error: unknown): void;
+};
+
+type PreviewWork = {
+  input: InterimCaptionInput;
+  deferred: Deferred<undefined>;
+};
+
+type TerminalWork =
+  | {
+      kind: "post";
+      input: TranslationUtterance & { state: CaptionState };
+      requestedAt: number;
+      started: boolean;
+      deferred: Deferred<number | undefined>;
+    }
+  | {
+      kind: "discard";
+      requestedAt: number;
+      started: boolean;
+      deferred: Deferred<undefined>;
+    };
+
+type CaptionWorker = {
+  utteranceId: string;
+  running: boolean;
+  activePreview?: PreviewWork;
+  pendingPreview?: PreviewWork;
+  terminal?: TerminalWork;
+  previewRequested: number;
+  previewSent: number;
+  previewCoalesced: number;
+};
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
 type DiscordCaptionGatewayOptions = {
   failurePolicy?: CaptionFailurePolicy;
   onWarning?: (operation: CaptionWarningOperation, error: unknown) => void;
   onClosedOperationSettled?: () => void;
+  observeDelivery?: (observation: CaptionDeliveryObservation) => void;
 };
 
 export class DiscordCaptionGateway implements CaptionGateway {
   readonly #channel: CaptionTextChannel;
   readonly #entries = new Map<number, CaptionEntry>();
   readonly #interimMessages = new Map<string, EditableCaptionMessage>();
-  readonly #operations = new Map<string, Promise<unknown>>();
+  readonly #workers = new Map<string, CaptionWorker>();
   readonly #onWarning: (operation: CaptionWarningOperation, error: unknown) => void;
   readonly #onClosedOperationSettled: () => void;
+  readonly #observeDelivery: (observation: CaptionDeliveryObservation) => void;
   #failurePolicy: CaptionFailurePolicy;
   #nextReference = 1;
   #closed = false;
@@ -66,6 +128,7 @@ export class DiscordCaptionGateway implements CaptionGateway {
     this.#failurePolicy = options.failurePolicy ?? "continue_audio";
     this.#onWarning = options.onWarning ?? (() => undefined);
     this.#onClosedOperationSettled = options.onClosedOperationSettled ?? (() => undefined);
+    this.#observeDelivery = options.observeDelivery ?? (() => undefined);
   }
 
   public setFailurePolicy(policy: CaptionFailurePolicy): void {
@@ -76,90 +139,70 @@ export class DiscordCaptionGateway implements CaptionGateway {
     if (this.#closed || (interim.originalText.length === 0 && interim.translatedText.length === 0)) {
       return Promise.resolve();
     }
-    return this.#serialize(interim.utteranceId, async () => {
-      if (this.#closed) return;
-      const existing = this.#interimMessages.get(interim.utteranceId);
-      try {
-        const payload = createInterimCaptionMessagePayload(interim);
-        if (existing) {
-          await existing.edit(payload);
-        } else {
-          const message = await this.#channel.send(payload);
-          if (!this.#isClosed()) {
-            this.#interimMessages.set(interim.utteranceId, message);
-          }
-        }
-      } catch (error) {
-        this.#onWarning("caption_preview", error);
-        if (!existing && this.#failurePolicy === "stop_session") {
-          throw new ApplicationError(
-            "CAPTION_SEND_FAILED",
-            "仮字幕をDiscordへ投稿できないため、翻訳を停止します。",
-            { cause: error },
-          );
-        }
-      }
-    });
+    const worker = this.#worker(interim.utteranceId);
+    worker.previewRequested += 1;
+    const work: PreviewWork = {
+      input: interim,
+      deferred: createDeferred<undefined>(),
+    };
+    if (worker.terminal) {
+      worker.previewCoalesced += 1;
+      work.deferred.resolve(undefined);
+      return work.deferred.promise;
+    }
+    if (!worker.running) {
+      this.#startPreview(worker, work);
+      return work.deferred.promise;
+    }
+    if (worker.pendingPreview) {
+      worker.previewCoalesced += 1;
+      worker.pendingPreview.deferred.resolve(undefined);
+    }
+    worker.pendingPreview = work;
+    return work.deferred.promise;
   }
 
   public async post(
     utterance: TranslationUtterance & { state: CaptionState },
   ): Promise<number | undefined> {
     if (this.#closed) return undefined;
-    return this.#serialize(utterance.utteranceId, async () => {
-      if (this.#isClosed()) return undefined;
-      let message = this.#interimMessages.get(utterance.utteranceId);
-      let payload: CaptionMessagePayload;
-      try {
-        payload = createCaptionMessagePayload(utterance, utterance.state);
-      } catch (error) {
-        if (message) {
-          this.#interimMessages.delete(utterance.utteranceId);
-          this.#onWarning("caption_update", error);
-          try {
-            await message.delete();
-          } catch (deleteError) {
-            this.#onWarning("caption_update", deleteError);
-          }
-          return undefined;
-        }
-        return this.#handlePostFailure(error);
-      }
-      this.#interimMessages.delete(utterance.utteranceId);
-      if (message) {
-        try {
-          await message.edit(payload);
-        } catch (error) {
-          this.#onWarning("caption_update", error);
-        }
-      }
-      if (this.#isClosed()) return undefined;
-      try {
-        message ??= await this.#channel.send(payload);
-      } catch (error) {
-        return this.#handlePostFailure(error);
-      }
-      if (this.#closed) return undefined;
-      const reference = this.#nextReference;
-      this.#nextReference += 1;
-      this.#entries.set(reference, { message, utterance });
-      return reference;
-    });
+    const worker = this.#worker(utterance.utteranceId);
+    if (worker.terminal) {
+      return worker.terminal.kind === "post"
+        ? worker.terminal.deferred.promise
+        : worker.terminal.deferred.promise.then(() => undefined);
+    }
+    const terminal: Extract<TerminalWork, { kind: "post" }> = {
+      kind: "post",
+      input: utterance,
+      requestedAt: performance.now(),
+      started: false,
+      deferred: createDeferred<number | undefined>(),
+    };
+    worker.terminal = terminal;
+    this.#dropPendingPreview(worker);
+    if (!worker.running) this.#startTerminal(worker, terminal);
+    return terminal.deferred.promise;
   }
 
   public discardPreview(utteranceId: string): Promise<void> {
     if (this.#closed) return Promise.resolve();
-    return this.#serialize(utteranceId, async () => {
-      if (this.#closed) return;
-      const message = this.#interimMessages.get(utteranceId);
-      this.#interimMessages.delete(utteranceId);
-      if (!message) return;
-      try {
-        await message.delete();
-      } catch (error) {
-        this.#onWarning("caption_update", error);
-      }
-    });
+    const worker = this.#worker(utteranceId);
+    if (worker.terminal) {
+      return worker.terminal.kind === "discard"
+        ? worker.terminal.deferred.promise
+        : worker.terminal.deferred.promise.then(() => undefined);
+    }
+    const terminal: Extract<TerminalWork, { kind: "discard" }> = {
+      kind: "discard",
+      requestedAt: performance.now(),
+      started: false,
+      deferred: createDeferred<undefined>(),
+    };
+    worker.terminal = terminal;
+    this.#dropPendingPreview(worker);
+    if (!worker.running) this.#startTerminal(worker, terminal);
+    return terminal.deferred.promise;
   }
 
   public async update(reference: number, state: CaptionState): Promise<void> {
@@ -189,23 +232,214 @@ export class DiscordCaptionGateway implements CaptionGateway {
     this.#closed = true;
     this.#interimMessages.clear();
     this.#entries.clear();
-    this.#operations.clear();
+    for (const worker of this.#workers.values()) {
+      worker.activePreview?.deferred.resolve(undefined);
+      delete worker.activePreview;
+      worker.pendingPreview?.deferred.resolve(undefined);
+      delete worker.pendingPreview;
+      if (worker.terminal) {
+        if (worker.terminal.kind === "post") {
+          worker.terminal.deferred.resolve(undefined);
+        } else {
+          worker.terminal.deferred.resolve(undefined);
+        }
+        delete worker.terminal;
+      }
+    }
+    this.#workers.clear();
     return Promise.resolve();
   }
 
-  #serialize<T>(key: string, operation: () => Promise<T>): Promise<T> {
-    const previous = this.#operations.get(key) ?? Promise.resolve();
-    const current = previous.catch(() => undefined).then(operation);
-    this.#operations.set(key, current);
-    const settled = (): void => {
-      if (this.#operations.get(key) === current) this.#operations.delete(key);
-      this.#notifyClosedOperationSettled();
+  #worker(utteranceId: string): CaptionWorker {
+    const existing = this.#workers.get(utteranceId);
+    if (existing) return existing;
+    const created: CaptionWorker = {
+      utteranceId,
+      running: false,
+      previewRequested: 0,
+      previewSent: 0,
+      previewCoalesced: 0,
     };
-    void current.then(
-      settled,
-      settled,
-    );
-    return current;
+    this.#workers.set(utteranceId, created);
+    return created;
+  }
+
+  #startPreview(worker: CaptionWorker, work: PreviewWork): void {
+    worker.running = true;
+    worker.activePreview = work;
+    void (async () => {
+      try {
+        if (await this.#performPreview(work.input)) worker.previewSent += 1;
+        work.deferred.resolve(undefined);
+      } catch (error) {
+        work.deferred.reject(error);
+      } finally {
+        if (worker.activePreview === work) delete worker.activePreview;
+        worker.running = false;
+        this.#advance(worker);
+        this.#notifyClosedOperationSettled();
+      }
+    })();
+  }
+
+  #advance(worker: CaptionWorker): void {
+    if (this.#closed) {
+      worker.pendingPreview?.deferred.resolve(undefined);
+      delete worker.pendingPreview;
+      if (worker.terminal && !worker.terminal.started) {
+        if (worker.terminal.kind === "post") {
+          worker.terminal.deferred.resolve(undefined);
+        } else {
+          worker.terminal.deferred.resolve(undefined);
+        }
+        delete worker.terminal;
+      }
+      return;
+    }
+    if (worker.terminal) {
+      this.#startTerminal(worker, worker.terminal);
+      return;
+    }
+    if (worker.pendingPreview) {
+      const pending = worker.pendingPreview;
+      delete worker.pendingPreview;
+      this.#startPreview(worker, pending);
+    }
+  }
+
+  #startTerminal(worker: CaptionWorker, terminal: TerminalWork): void {
+    worker.running = true;
+    terminal.started = true;
+    const startedAt = performance.now();
+    void (async () => {
+      let succeeded = false;
+      try {
+        if (terminal.kind === "post") {
+          const reference = await this.#performPost(terminal.input);
+          succeeded = reference !== undefined;
+          terminal.deferred.resolve(reference);
+        } else {
+          succeeded = await this.#performDiscard(worker.utteranceId);
+          terminal.deferred.resolve(undefined);
+        }
+      } catch (error) {
+        terminal.deferred.reject(error);
+      } finally {
+        const completedAt = performance.now();
+        this.#observeDelivery({
+          trace_id: worker.utteranceId,
+          outcome: terminal.kind === "post" ? "posted" : "discarded",
+          succeeded,
+          preview_requested: worker.previewRequested,
+          preview_sent: worker.previewSent,
+          preview_coalesced: worker.previewCoalesced,
+          final_wait_ms: Math.max(0, Math.round(startedAt - terminal.requestedAt)),
+          final_delivery_ms: Math.max(0, Math.round(completedAt - startedAt)),
+        });
+        worker.running = false;
+        if (this.#workers.get(worker.utteranceId) === worker) {
+          this.#workers.delete(worker.utteranceId);
+        }
+        this.#notifyClosedOperationSettled();
+      }
+    })();
+  }
+
+  #dropPendingPreview(worker: CaptionWorker): void {
+    if (!worker.pendingPreview) return;
+    worker.previewCoalesced += 1;
+    worker.pendingPreview.deferred.resolve(undefined);
+    delete worker.pendingPreview;
+  }
+
+  async #performPreview(interim: InterimCaptionInput): Promise<boolean> {
+    if (this.#closed) return false;
+    const existing = this.#interimMessages.get(interim.utteranceId);
+    try {
+      const payload = createInterimCaptionMessagePayload(interim);
+      if (existing) {
+        await existing.edit(payload);
+      } else {
+        const message = await this.#channel.send(payload);
+        if (!this.#isClosed()) {
+          this.#interimMessages.set(interim.utteranceId, message);
+        }
+      }
+      return true;
+    } catch (error) {
+      this.#onWarning("caption_preview", error);
+      if (!existing && this.#failurePolicy === "stop_session") {
+        throw new ApplicationError(
+          "CAPTION_SEND_FAILED",
+          "仮字幕をDiscordへ投稿できないため、翻訳を停止します。",
+          { cause: error },
+        );
+      }
+      return false;
+    }
+  }
+
+  async #performPost(
+    utterance: TranslationUtterance & { state: CaptionState },
+  ): Promise<number | undefined> {
+    if (this.#isClosed()) return undefined;
+    let message = this.#interimMessages.get(utterance.utteranceId);
+    let payload: CaptionMessagePayload;
+    try {
+      payload = createCaptionMessagePayload(utterance, utterance.state);
+    } catch (error) {
+      if (message) {
+        this.#interimMessages.delete(utterance.utteranceId);
+        this.#onWarning("caption_update", error);
+        try {
+          await message.delete();
+        } catch (deleteError) {
+          this.#onWarning("caption_update", deleteError);
+        }
+        return undefined;
+      }
+      return this.#handlePostFailure(error);
+    }
+    this.#interimMessages.delete(utterance.utteranceId);
+    if (message) {
+      try {
+        await message.edit(payload);
+      } catch (error) {
+        this.#onWarning("caption_update", error);
+        try {
+          await message.delete();
+        } catch (deleteError) {
+          this.#onWarning("caption_update", deleteError);
+          return undefined;
+        }
+        message = undefined;
+      }
+    }
+    if (this.#isClosed()) return undefined;
+    try {
+      message ??= await this.#channel.send(payload);
+    } catch (error) {
+      return this.#handlePostFailure(error);
+    }
+    if (this.#closed) return undefined;
+    const reference = this.#nextReference;
+    this.#nextReference += 1;
+    this.#entries.set(reference, { message, utterance });
+    return reference;
+  }
+
+  async #performDiscard(utteranceId: string): Promise<boolean> {
+    if (this.#closed) return false;
+    const message = this.#interimMessages.get(utteranceId);
+    this.#interimMessages.delete(utteranceId);
+    if (!message) return true;
+    try {
+      await message.delete();
+      return true;
+    } catch (error) {
+      this.#onWarning("caption_update", error);
+      return false;
+    }
   }
 
   #isClosed(): boolean {

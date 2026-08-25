@@ -15,7 +15,13 @@ export type TranslationToken = Pick<
   | "translation_status"
   | "start_ms"
   | "end_ms"
->;
+> & Partial<Pick<RealtimeToken, "confidence">>;
+
+export type OriginalConfidenceSummary = {
+  tokenCount: number;
+  mean: number;
+  min: number;
+};
 
 export type FinalizedUtterance = {
   sourceLanguage: Language;
@@ -23,6 +29,7 @@ export type FinalizedUtterance = {
   originalText: string;
   translatedText: string;
   sourceDurationMs: number;
+  originalConfidence?: OriginalConfidenceSummary;
 };
 
 export type InterimUtterance = Pick<
@@ -61,6 +68,9 @@ export class TranslationTokenAssembler {
   #original: OriginalBuffer = { text: [] };
   readonly #originalCharactersByLanguage = new Map<Language, number>();
   readonly #translationsBySource = new Map<Language, TranslationBuffer>();
+  #originalConfidenceCount = 0;
+  #originalConfidenceSum = 0;
+  #originalConfidenceMin = Number.POSITIVE_INFINITY;
 
   public constructor(pair: LanguagePair, limits: TranslationTokenAssemblerLimits) {
     this.#languages = new Set(languagesForPair(pair));
@@ -95,6 +105,14 @@ export class TranslationTokenAssembler {
           token.language,
           (this.#originalCharactersByLanguage.get(token.language) ?? 0) +
             Array.from(token.text).length,
+        );
+      }
+      if (token.confidence !== undefined) {
+        this.#originalConfidenceCount += 1;
+        this.#originalConfidenceSum += token.confidence;
+        this.#originalConfidenceMin = Math.min(
+          this.#originalConfidenceMin,
+          token.confidence,
         );
       }
       return undefined;
@@ -135,6 +153,15 @@ export class TranslationTokenAssembler {
     const sourceDurationMs = original.startMs !== undefined && original.endMs !== undefined
       ? Math.max(0, original.endMs - original.startMs)
       : 0;
+    const originalConfidence = this.#originalConfidenceCount > 0
+      ? {
+          tokenCount: this.#originalConfidenceCount,
+          mean: Math.round(
+            (this.#originalConfidenceSum / this.#originalConfidenceCount) * 10_000,
+          ) / 10_000,
+          min: Math.round(this.#originalConfidenceMin * 10_000) / 10_000,
+        }
+      : undefined;
     this.#reset();
 
     if (!translation || !originalText || !translatedText) {
@@ -146,6 +173,7 @@ export class TranslationTokenAssembler {
       originalText,
       translatedText,
       sourceDurationMs,
+      ...(originalConfidence ? { originalConfidence } : {}),
     };
   }
 
@@ -213,6 +241,9 @@ export class TranslationTokenAssembler {
     this.#original = { text: [] };
     this.#originalCharactersByLanguage.clear();
     this.#translationsBySource.clear();
+    this.#originalConfidenceCount = 0;
+    this.#originalConfidenceSum = 0;
+    this.#originalConfidenceMin = Number.POSITIVE_INFINITY;
   }
 
   #selectTranslation(

@@ -11,6 +11,8 @@ import {
 import {
   playbackModeLabels,
   playbackModes,
+  ttsSpeedMax,
+  ttsSpeedMin,
 } from "../session/session-settings.js";
 
 export const translateCommand = new SlashCommandBuilder()
@@ -45,6 +47,19 @@ export const translateCommand = new SlashCommandBuilder()
               value: mode,
             })),
           ),
+      ),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("speed")
+      .setDescription("実行中の翻訳音声の読み上げ速度を変更します")
+      .addNumberOption((option) =>
+        option
+          .setName("rate")
+          .setDescription("読み上げ速度（0.7〜1.3倍）")
+          .setRequired(true)
+          .setMinValue(ttsSpeedMin)
+          .setMaxValue(ttsSpeedMax),
       ),
   )
   .addSubcommand((subcommand) =>

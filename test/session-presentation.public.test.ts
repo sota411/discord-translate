@@ -97,6 +97,7 @@ void test("親カードから専用スレッドを作り、状態更新後に終
     pair: "ja-ko",
     participantDisplayNames: ["Sota", "민지"],
     playbackMode: "conversation",
+    ttsSpeed: 1.15,
     audioEnabled: true,
     queueWarningMs: 2_500,
     startedAt: new Date("2026-08-19T00:00:00Z"),
@@ -110,7 +111,7 @@ void test("親カードから専用スレッドを作り、状態更新後に終
   assert.ok(initialCard);
   assert.deepEqual(contents(initialCard), [
     "**🟢 翻訳中**",
-    "日本語 ⇄ 韓国語\n参加者: Sota / 민지\n経過時間: 12:34\n現在の音声待ち: 0.0秒\nモード: 会話優先",
+    "日本語 ⇄ 韓国語\n参加者: Sota / 민지\n経過時間: 12:34\n現在の音声待ち: 0.0秒\nモード: 会話優先\n読み上げ速度: 1.15倍",
   ]);
   const buttons = serialized(initialCard)
     .filter((component) => component.type === ComponentType.Button);
@@ -124,12 +125,14 @@ void test("親カードから専用スレッドを作り、状態更新後に終
   await presentation.update({
     participantDisplayNames: ["Sota", "민지"],
     playbackMode: "accuracy",
+    ttsSpeed: 1.3,
     audioEnabled: false,
     queueWaitMs: 5_200,
   });
   const updatedCard = cards.at(-1);
   assert.ok(updatedCard);
   assert.match(contents(updatedCard).join("\n"), /正確さ優先/u);
+  assert.match(contents(updatedCard).join("\n"), /読み上げ速度: 1\.3倍/u);
   assert.match(contents(updatedCard).join("\n"), /5\.2秒/u);
   assert.match(
     contents(updatedCard).join("\n"),
@@ -174,6 +177,7 @@ void test("Discordのカード更新や終了通知が未完了でも停止要�
     pair: "ja-ko",
     participantDisplayNames: ["Sota"],
     playbackMode: "conversation",
+    ttsSpeed: 1.15,
     audioEnabled: true,
     queueWarningMs: 2_500,
     startedAt: new Date("2026-08-19T00:00:00Z"),
@@ -181,6 +185,7 @@ void test("Discordのカード更新や終了通知が未完了でも停止要�
   void presentation.update({
     participantDisplayNames: ["Sota"],
     playbackMode: "conversation",
+    ttsSpeed: 1.15,
     audioEnabled: true,
     queueWaitMs: 0,
   });
@@ -210,6 +215,7 @@ void test("Discordのカード更新や終了通知が未完了でも停止要�
     pair: "ja-ko",
     participantDisplayNames: ["Sota"],
     playbackMode: "conversation",
+    ttsSpeed: 1.15,
     audioEnabled: true,
     queueWarningMs: 2_500,
     startedAt: new Date("2026-08-19T00:00:00Z"),
@@ -264,6 +270,7 @@ void test("停止前の遅い字幕POSTが完了してスレッドを再開し�
     pair: "ja-ko",
     participantDisplayNames: ["Sota"],
     playbackMode: "conversation",
+    ttsSpeed: 1.15,
     audioEnabled: true,
     queueWarningMs: 2_500,
     startedAt: new Date("2026-08-19T00:00:00Z"),
