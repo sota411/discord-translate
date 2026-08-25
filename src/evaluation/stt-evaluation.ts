@@ -10,6 +10,7 @@ const evaluationExperimentSchema = z.enum([
   "endpoint_latency_level",
   "recognition_terms",
   "recognition_source_terms",
+  "provider_comparison",
 ]);
 const evaluationProfileSchema = z.enum([
   "baseline",
@@ -24,8 +25,9 @@ const evaluationProfileSchema = z.enum([
   "endpoint_fallback_400_level1",
   "recognition_terms",
   "recognition_source_terms",
+  "amazon_transcribe",
 ]);
-const sttEvaluationConfigurationSchema = z.object({
+const sonioxSttEvaluationConfigurationSchema = z.object({
   recognition_context_enabled: z.boolean(),
   recognition_context_mode: z.enum(["terms_only", "source_terms_only"]).optional(),
   endpoint_mode: z.enum(["manual_early", "soniox_primary", "soniox_only"]),
@@ -38,6 +40,19 @@ const sttEvaluationConfigurationSchema = z.object({
   endpoint_silence_chunk_ms: z.number().int().positive().nullable().default(null),
   preprocessing: z.literal("none"),
 }).strict();
+const amazonTranscribeEvaluationConfigurationSchema = z.object({
+  provider: z.literal("amazon_transcribe"),
+  identify_multiple_languages: z.literal(true),
+  language_options: z.tuple([z.literal("ja-JP"), z.literal("ko-KR")]).readonly(),
+  media_encoding: z.literal("pcm"),
+  media_sample_rate_hertz: z.literal(48_000),
+  partial_results_stabilization: z.literal(false),
+  preprocessing: z.literal("none"),
+}).strict();
+const sttEvaluationConfigurationSchema = z.union([
+  sonioxSttEvaluationConfigurationSchema,
+  amazonTranscribeEvaluationConfigurationSchema,
+]);
 export type SttEvaluationConfiguration = z.infer<typeof sttEvaluationConfigurationSchema>;
 
 export const sttEvaluationProfileConfigurations = {
@@ -175,6 +190,15 @@ export const sttEvaluationProfileConfigurations = {
     endpoint_silence_chunk_ms: null,
     preprocessing: "none",
   },
+  amazon_transcribe: {
+    provider: "amazon_transcribe",
+    identify_multiple_languages: true,
+    language_options: ["ja-JP", "ko-KR"],
+    media_encoding: "pcm",
+    media_sample_rate_hertz: 48_000,
+    partial_results_stabilization: false,
+    preprocessing: "none",
+  },
 } as const satisfies Readonly<Record<
   z.infer<typeof evaluationProfileSchema>,
   SttEvaluationConfiguration
@@ -286,6 +310,7 @@ const evaluationResultSchema = z.object({
       "max_turn_duration",
       "soniox_endpoint",
       "soniox_finalized",
+      "provider_final",
     ]),
     latency_ms: z.number().nonnegative(),
     has_text: z.boolean(),
@@ -311,6 +336,35 @@ const evaluationResultSchema = z.object({
       message: `profile「${value.profile}」の実効設定と一致しません`,
     });
   }
+  if (value.profile === "amazon_transcribe") {
+    const finalization = value.finalizations[0];
+    if (
+      value.finalizations.length !== 1 ||
+      finalization?.kind !== "finalized" ||
+      finalization.reason !== "provider_final"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["finalizations"],
+        message: "profile「amazon_transcribe」の確定理由はprovider_final 1件にしてください",
+      });
+    }
+    if (finalization?.has_text !== (value.transcript.trim().length > 0)) {
+      context.addIssue({
+        code: "custom",
+        path: ["finalizations", 0, "has_text"],
+        message: "profile「amazon_transcribe」のhas_textを確定本文の有無と一致させてください",
+      });
+    }
+  } else if (value.finalizations.some((finalization) => (
+    finalization.reason === "provider_final"
+  ))) {
+    context.addIssue({
+      code: "custom",
+      path: ["finalizations"],
+      message: `profile「${value.profile}」にprovider_finalは指定できません`,
+    });
+  }
 });
 const evaluationDatasetEvidenceSchema = z.object({
   manifest_sha256: sha256Schema,
@@ -324,9 +378,15 @@ const evaluationDatasetEvidenceSchema = z.object({
     duration_ms: z.number().nonnegative(),
   }).strict()).min(1),
 }).strict();
+const providerEnvironmentSchema = z.object({
+  amazon_transcribe: z.object({
+    region: z.string().regex(/^[a-z]{2}(?:-[a-z0-9]+)+-\d$/u),
+  }).strict(),
+}).strict();
 const evaluationObservationsSchema = z.object({
   version: z.literal(1),
   experiment: evaluationExperimentSchema.default("context_endpoint"),
+  provider_environment: providerEnvironmentSchema.optional(),
   dataset: evaluationDatasetEvidenceSchema.optional(),
   results: z.array(evaluationResultSchema).min(1),
 }).strict().superRefine((value, context) => {
@@ -351,6 +411,20 @@ const evaluationObservationsSchema = z.object({
       });
     }
     keys.add(key);
+  }
+  if (value.experiment === "provider_comparison" && !value.provider_environment) {
+    context.addIssue({
+      code: "custom",
+      path: ["provider_environment"],
+      message: "provider_comparisonには実測リージョンが必要です",
+    });
+  }
+  if (value.experiment !== "provider_comparison" && value.provider_environment) {
+    context.addIssue({
+      code: "custom",
+      path: ["provider_environment"],
+      message: "provider_environmentはprovider_comparisonだけに指定してください",
+    });
   }
 });
 
@@ -393,6 +467,10 @@ export const sttEvaluationExperimentProfileMappings = {
   recognition_source_terms: {
     A: "baseline",
     B: "recognition_source_terms",
+  },
+  provider_comparison: {
+    A: "baseline",
+    B: "amazon_transcribe",
   },
 } as const satisfies Readonly<Record<
   SttEvaluationExperiment,
@@ -438,7 +516,8 @@ type CaseScore = {
       | "transcript_inactivity"
       | "max_turn_duration"
       | "soniox_endpoint"
-      | "soniox_finalized";
+      | "soniox_finalized"
+      | "provider_final";
     latency_ms: number;
     has_text: boolean;
   }[];
@@ -483,6 +562,9 @@ type ProfileComparison = {
   language_switch_recall_change: number | null;
   code_switch_cer_point_change: number | null;
   p95_added_latency_ms: number;
+  baseline_transcript_coverage?: number;
+  candidate_transcript_coverage?: number;
+  transcript_coverage_change?: number;
   gates: {
     overall_cer: GateResult;
     key_terms: GateResult;
@@ -491,6 +573,7 @@ type ProfileComparison = {
     latency: GateResult;
     semantic_endpoint: GateResult;
     pi_runtime: GateResult;
+    transcript_coverage?: GateResult;
   };
 };
 
@@ -535,6 +618,7 @@ export type SttEvaluationReport = {
   version: 1;
   generated_at: string;
   experiment: SttEvaluationExperiment;
+  provider_environment?: NonNullable<SttEvaluationObservations["provider_environment"]>;
   profile_mapping: Readonly<Record<string, SttEvaluationProfile>>;
   profiles: Partial<Record<SttEvaluationProfile, ProfileScore>>;
   comparisons: Partial<Record<SttEvaluationProfile, ProfileComparison>>;
@@ -993,7 +1077,22 @@ function gate(condition: boolean): GateResult {
   return condition ? "pass" : "fail";
 }
 
-function compareProfile(baseline: ProfileScore, candidate: ProfileScore): ProfileComparison {
+function isSonioxConfiguration(
+  configuration: SttEvaluationConfiguration,
+): configuration is z.infer<typeof sonioxSttEvaluationConfigurationSchema> {
+  return !("provider" in configuration);
+}
+
+function transcriptCoverage(results: readonly SttEvaluationResult[]): number {
+  return results.filter((result) => result.transcript.trim().length > 0).length / results.length;
+}
+
+function compareProfile(
+  baseline: ProfileScore,
+  candidate: ProfileScore,
+  baselineResults: readonly SttEvaluationResult[],
+  candidateResults: readonly SttEvaluationResult[],
+): ProfileComparison {
   if (baseline.trial_count !== candidate.trial_count) {
     throw new Error("baselineと候補profileのtrial数が一致しません");
   }
@@ -1015,6 +1114,10 @@ function compareProfile(baseline: ProfileScore, candidate: ProfileScore): Profil
     ? null
     : (candidate.code_switch_cer - baseline.code_switch_cer) * 100;
   const addedLatency = candidate.latency_ms.p95 - baseline.latency_ms.p95;
+  const comparesDifferentProvider = !isSonioxConfiguration(candidate.configuration);
+  const baselineTranscriptCoverage = transcriptCoverage(baselineResults);
+  const candidateTranscriptCoverage = transcriptCoverage(candidateResults);
+  const transcriptCoverageChange = candidateTranscriptCoverage - baselineTranscriptCoverage;
   return {
     cer_relative_improvement_percent: relativeCer,
     key_term_recall_change: keyTermChange,
@@ -1022,6 +1125,13 @@ function compareProfile(baseline: ProfileScore, candidate: ProfileScore): Profil
     language_switch_recall_change: languageSwitchChange,
     code_switch_cer_point_change: codeSwitchCerChange,
     p95_added_latency_ms: addedLatency,
+    ...(comparesDifferentProvider
+      ? {
+          baseline_transcript_coverage: baselineTranscriptCoverage,
+          candidate_transcript_coverage: candidateTranscriptCoverage,
+          transcript_coverage_change: transcriptCoverageChange,
+        }
+      : {}),
     gates: {
       overall_cer: relativeCer === null ? "not_evaluated" : gate(relativeCer >= 10),
       key_terms: keyTermChange === null ? "not_evaluated" : gate(keyTermChange > 0),
@@ -1032,10 +1142,14 @@ function compareProfile(baseline: ProfileScore, candidate: ProfileScore): Profil
           ? "not_evaluated"
           : gate(codeSwitchCerChange <= 0 && languageSwitchChange >= 0),
       latency: gate(addedLatency <= 200),
-      semantic_endpoint: candidate.configuration.endpoint_mode !== "manual_early"
+      semantic_endpoint: isSonioxConfiguration(candidate.configuration) &&
+          candidate.configuration.endpoint_mode !== "manual_early"
         ? gate(candidate.finalization.soniox_endpoint_ratio > 0.5)
         : "not_evaluated",
       pi_runtime: "not_evaluated",
+      ...(comparesDifferentProvider
+        ? { transcript_coverage: gate(transcriptCoverageChange >= 0) }
+        : {}),
     },
   };
 }
@@ -1071,13 +1185,23 @@ export function createSttEvaluationReport(
   const comparisons: SttEvaluationReport["comparisons"] = {};
   for (const profile of experimentProfiles.filter((profile) => profile !== "baseline")) {
     const candidate = profiles[profile];
-    if (candidate) comparisons[profile] = compareProfile(baseline, candidate);
+    if (candidate) {
+      comparisons[profile] = compareProfile(
+        baseline,
+        candidate,
+        observations.results.filter((result) => result.profile === "baseline"),
+        observations.results.filter((result) => result.profile === profile),
+      );
+    }
   }
   const qualityAnalysis = createQualityAnalysis(manifest, baseline);
   return {
     version: 1,
     generated_at: generatedAt.toISOString(),
     experiment: observations.experiment,
+    ...(observations.provider_environment === undefined
+      ? {}
+      : { provider_environment: observations.provider_environment }),
     profile_mapping: profileMapping,
     profiles,
     comparisons,

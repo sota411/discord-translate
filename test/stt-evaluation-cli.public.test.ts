@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import {
+  chmodSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -13,11 +15,29 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { after, test } from "node:test";
 
+import { runSttEvaluationCli } from "../src/evaluate-stt.js";
+import { createSttEvaluationDatasetEvidence } from "../src/evaluation/stt-evaluation-files.js";
 import { sttEvaluationProfileConfigurations } from "../src/evaluation/stt-evaluation.js";
 
 const temporaryDirectory = mkdtempSync(path.join(tmpdir(), "discord-stt-eval-test-"));
 after(() => rmSync(temporaryDirectory, { recursive: true, force: true }));
 let datasetSequence = 0;
+
+void test("評価CLIはSonioxとAmazonの同一音声比較コマンドを案内する", () => {
+  const result = spawnSync(process.execPath, [
+    "--import",
+    "tsx",
+    "src/evaluate-stt.ts",
+    "--help",
+  ], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /compare-provider/u);
+  assert.match(result.stdout, /aws-region/u);
+});
 
 function writeDataset(traceByteLength = 8): {
   manifestPath: string;
@@ -29,7 +49,8 @@ function writeDataset(traceByteLength = 8): {
     `audio-${String(traceByteLength)}-${String(datasetSequence)}`,
   );
   datasetSequence += 1;
-  mkdirSync(audioDirectory, { recursive: true });
+  mkdirSync(audioDirectory, { recursive: true, mode: 0o700 });
+  chmodSync(audioDirectory, 0o700);
   const audioPath = path.join(audioDirectory, "sample.pcm");
   const tracePath = path.join(audioDirectory, "sample.packets.json");
   const audio = Buffer.from([0, 0, 1, 0, 2, 0, 3, 0]);
@@ -37,8 +58,8 @@ function writeDataset(traceByteLength = 8): {
     version: 1,
     packets: [{ at_ms: 0, byte_length: traceByteLength }],
   });
-  writeFileSync(audioPath, audio);
-  writeFileSync(tracePath, packetTrace);
+  writeFileSync(audioPath, audio, { mode: 0o600 });
+  writeFileSync(tracePath, packetTrace, { mode: 0o600 });
   const manifestPath = path.join(audioDirectory, "manifest.json");
   const manifest = JSON.stringify({
     version: 1,
@@ -57,7 +78,7 @@ function writeDataset(traceByteLength = 8): {
       translation_terms: [{ source: "秘密", target: "비밀" }],
     }],
   });
-  writeFileSync(manifestPath, manifest);
+  writeFileSync(manifestPath, manifest, { mode: 0o600 });
   const observationsPath = path.join(audioDirectory, "observations.json");
   writeFileSync(observationsPath, JSON.stringify({
     version: 1,
@@ -87,7 +108,7 @@ function writeDataset(traceByteLength = 8): {
       dropped_packet_count: 0,
       configuration: sttEvaluationProfileConfigurations.baseline,
     }],
-  }));
+  }), { mode: 0o600 });
   return {
     manifestPath,
     observationsPath,
@@ -118,6 +139,8 @@ void test("評価CLIはPCMとpacket traceを検証し、本文や音声を含ま
   const result = runScore(paths);
 
   assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout, new RegExp(temporaryDirectory, "u"));
+  assert.equal((JSON.parse(result.stdout) as { report_written: boolean }).report_written, true);
   const reportText = readFileSync(paths.outputPath, "utf8");
   const report = JSON.parse(reportText) as {
     profiles: { baseline: { cer: number } };
@@ -127,6 +150,107 @@ void test("評価CLIはPCMとpacket traceを検証し、本文や音声を含ま
   assert.match(report.dataset.cases[0]?.audio_sha256 ?? "", /^[a-f0-9]{64}$/u);
   assert.match(report.dataset.cases[0]?.packet_trace_sha256 ?? "", /^[a-f0-9]{64}$/u);
   assert.doesNotMatch(reportText, /秘密|認識文|AAECAw|SONIOX_API_KEY/u);
+});
+
+void test("repo外のprivate入力も0600でなければ採点前に拒否する", () => {
+  const paths = writeDataset();
+  chmodSync(paths.manifestPath, 0o644);
+
+  const result = runScore(paths);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /0600/u);
+  assert.throws(() => readFileSync(paths.outputPath, "utf8"), /ENOENT/u);
+});
+
+void test("compare-provider CLIはprivate観測と本文非含有reportを0600で保存する", async () => {
+  const paths = writeDataset();
+  const observationsOutput = path.join(path.dirname(paths.outputPath), "provider-observations.json");
+  const reportOutput = path.join(path.dirname(paths.outputPath), "provider-report.json");
+  const summary = await runSttEvaluationCli([
+    "compare-provider",
+    "--manifest",
+    paths.manifestPath,
+    "--observations-output",
+    observationsOutput,
+    "--output",
+    reportOutput,
+    "--aws-region",
+    "us-west-2",
+    "--stt-websocket-url",
+    "ws://127.0.0.1:9",
+    "--trials",
+    "1",
+  ], {
+    environment: {
+      SONIOX_API_KEY: "do-not-leak-api-key",
+      SONIOX_STT_MODEL: "stt-rt-v5",
+    },
+    async runProviderComparisonDataset(dataset, options) {
+      await Promise.resolve();
+      assert.equal(options.apiKey, "do-not-leak-api-key");
+      assert.equal(options.amazonRegion, "us-west-2");
+      assert.equal(options.trials, 1);
+      const commonResult = {
+        trial: 1,
+        case_id: "private-reference",
+        transcript: "秘密の正解文",
+        segments: ["秘密の正解文"],
+        recognized_languages: ["ja" as const],
+        cpu_percent: 1,
+        decoded_packet_count: 1,
+        dropped_packet_count: 0,
+      };
+      return {
+        version: 1,
+        experiment: "provider_comparison",
+        provider_environment: {
+          amazon_transcribe: { region: options.amazonRegion },
+        },
+        dataset: createSttEvaluationDatasetEvidence(dataset),
+        results: [
+          {
+            ...commonResult,
+            profile: "baseline",
+            finalizations: [{
+              kind: "finalized",
+              reason: "speaking_end",
+              latency_ms: 200,
+              has_text: true,
+            }],
+            configuration: sttEvaluationProfileConfigurations.baseline,
+          },
+          {
+            ...commonResult,
+            profile: "amazon_transcribe",
+            finalizations: [{
+              kind: "finalized",
+              reason: "provider_final",
+              latency_ms: 300,
+              has_text: true,
+            }],
+            configuration: sttEvaluationProfileConfigurations.amazon_transcribe,
+          },
+        ],
+      };
+    },
+  });
+
+  assert.deepEqual(summary, {
+    observations_written: true,
+    report_written: true,
+    experiment: "provider_comparison",
+    profiles: ["baseline", "amazon_transcribe"],
+    provider_region: "us-west-2",
+    case_count: 1,
+    trial_count: 1,
+  });
+  const observationsText = readFileSync(observationsOutput, "utf8");
+  const reportText = readFileSync(reportOutput, "utf8");
+  assert.match(observationsText, /秘密の正解文/u);
+  assert.doesNotMatch(reportText, /秘密|do-not-leak-api-key/u);
+  assert.equal(statSync(observationsOutput).mode & 0o777, 0o600);
+  assert.equal(statSync(reportOutput).mode & 0o777, 0o600);
 });
 
 void test("packet traceのbyte合計がPCMと違う場合は接続や出力より前に拒否する", () => {

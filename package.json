@@ -43,6 +43,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@aws-sdk/client-transcribe-streaming": "3.1117.0",
     "@eslint/js": "^10.0.0",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^24.10.13",

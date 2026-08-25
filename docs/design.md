@@ -165,7 +165,7 @@ Discord Voice
 | Discord Driver | Voice受信、STT、字幕、再生、復旧を統合する | `src/discord/translation-driver.ts` |
 | Utterance Processor | 発話確定後の字幕、TTS、FIFO、割り込みを管理する | `src/translation/utterance-processor.ts` |
 | Soniox Control | モデル・容量の事前確認、STT作成、利用量照合を行う | `src/soniox/control.ts` |
-| STT Evaluation | 同じPCMとpacket traceをA〜Dで再生し、本文非含有の比較レポートを作る | `src/evaluate-stt.ts`、`src/evaluation/` |
+| STT Evaluation | 同じPCMとpacket traceをSoniox候補または別providerへ再生し、本文非含有の比較レポートを作る | `src/evaluate-stt.ts`、`src/evaluation/` |
 | TTS Gateway | 常時接続WebSocketとTTSストリームを管理する | `src/soniox/raw-tts-gateway.ts` |
 | Usage Ledger | 利用量、見積額、照合額、保持期限、Guild登録用語をSQLiteで管理する | `src/usage/usage-ledger.ts` |
 | Safe Logger | Discord IDを仮名化し、本文を含まないJSONログを出す | `src/observability/logger.ts` |
@@ -395,6 +395,7 @@ Sonioxの401・403は認証失敗、402は予算到達、429は同時実行上�
 | Discord Gateway、Command、Components V2、履歴取得、添付 | `discord.js` | コマンド定義、権限、カード操作、Markdown出力を公式APIの型で扱える |
 | Discord音声 | `@discordjs/voice`と`@discordjs/opus` | Voice接続、受信、再生、Opus変換を既存実装へ寄せる |
 | Soniox STT、モデル、利用量、同時実行枠 | `@soniox/node` 2.3.0 | 公式クライアントの型とAPIを使う |
+| Amazon Transcribe評価 | `@aws-sdk/client-transcribe-streaming` 3.1117.0 | 評価時の署名とEventStreamを公式SDKへ任せ、本番STT経路から分離する |
 | TTS WebSocket | 採用済みの`ws` | 利用量照合用の`client_reference_id`を送る必要がある |
 | 入力と外部応答 | Zod | 環境変数、用語JSON、WebSocket応答を境界で検証する |
 | 永続化 | `better-sqlite3`とSQLite | 単一プロセスの利用量台帳を同期トランザクションで扱う |
@@ -501,6 +502,13 @@ Sonioxの参照先:
 - [利用量ログ](https://soniox.com/docs/guides/usage-logs)と[同時実行枠](https://soniox.com/docs/guides/concurrency-limits)
 - [料金](https://soniox.com/pricing)
 
+Amazon Transcribe評価の参照先:
+
+- [対応言語](https://docs.aws.amazon.com/transcribe/latest/dg/supported-languages.html)
+- [ストリーミングの多言語識別](https://docs.aws.amazon.com/transcribe/latest/dg/lang-id-stream.html)
+- [StartStreamTranscription API](https://docs.aws.amazon.com/transcribe/latest/APIReference/API_streaming_StartStreamTranscription.html)
+- [料金](https://aws.amazon.com/transcribe/pricing/)
+
 Discordの参照先:
 
 - [Voice Connections](https://docs.discord.com/developers/topics/voice-connections)
@@ -522,7 +530,7 @@ Discordの参照先:
 - SQLiteとOpusの実行検査
 - Compose設定検査とDockerビルド
 - 本番向け依存関係の監査
-- 人工音声10件を使ったSoniox実サービスのSTT A〜D比較とbaseline音質相関。DiscordとRaspberry Piは含まない
+- 人工音声10件を使ったSoniox実サービスのSTT候補比較、baseline音質相関、Amazon Transcribeとのprovider比較。DiscordとRaspberry Piは含まない
 
 以前のUIを使った版では、1人による日本語・韓国語の実サービス通話、字幕、読み上げを確認した。当時は、現在のセッションUIと話者別voiceを実装していなかった。2つの再生モードもなかった。この履歴は現行版の受入証跡として扱わない。
 
@@ -536,6 +544,7 @@ Discordの参照先:
 - 複数Guildの同時運転
 - Discord DAVE（音声のエンドツーエンド暗号化）環境での受信ストリーム復旧
 - 実デプロイ環境のGitHub Actions
+- Google Chirp、Azure Speech、Deepgram Novaとの同一音声比較
 
 ### 自動テストは外部から観測できる境界を優先する
 
@@ -568,9 +577,9 @@ docker build --tag discord-translate:local .
 
 `pnpm verify`はlint、型検査、自動テスト、production build、native module smoke、図の同期checkをまとめて実行する。図版を変更した場合は、先に`pnpm diagrams:sync`でHTMLとSVGを同期する。実Discord・実Sonioxの受入は、この自動検証とは分ける。
 
-### STT候補は同じ音声のA〜Dで採否を決める
+### STT候補は同じ音声で採否を決める
 
-STT設定の変更には`pnpm stt:evaluate`を使う。入力は、明示的に利用を許可された音声または人工音声に限る。個人音声、正解文、認識本文は`.data/stt-eval/`へ0600で保存し、Gitと通常ログへ追加しない。採否を決める実測では`--trials 3`以上を指定する。各trialではcaseごとに開始profileを回転し、常にAを先に送る時間順の偏りを避ける。指定可能な範囲は1〜10で、省略時は1である。
+STT設定の変更には`pnpm stt:evaluate`を使う。入力は、明示的に利用を許可された音声または人工音声に限る。個人音声、正解文、認識本文は`.data/stt-eval/`、または所有者だけが利用できるリポジトリ外directoryへ保存する。directoryは0700、fileは0600とし、Gitと通常ログへ追加しない。採否を決める実測では`--trials 3`以上を指定する。各trialではcaseごとに開始profileを回転し、常にAを先に送る時間順の偏りを避ける。指定可能な範囲は1〜10で、省略時は1である。
 
 manifest version 1は、言語ペアと48 kHz・mono・PCM s16le形式を固定し、caseごとに次を持つ。
 
@@ -593,12 +602,26 @@ packet trace version 1は、復号できずPCMへ入らなかった`dropped_pack
 | C | `endpoint` | なし | `max_endpoint_delay_ms=500`、手動fallback 600 ms。感度と積極度はSoniox既定値 |
 | D | `context_endpoint` | Bと同じ | Cと同じ |
 
+Soniox内の候補が基準を満たさない場合は、`compare-provider`で現行の`baseline`と別providerを同じmanifestへ送る。2026年8月26日時点で実装している候補はAmazon Transcribe Streamingだけである。公式SDKへ48 kHz・mono・PCM s16leの同一packet traceをそのまま渡し、`IdentifyMultipleLanguages=true`と`LanguageOptions=ja-JP,ko-KR`を指定する。語彙、partial結果の安定化、追加の無音、音声前処理は使わない。発話後の終了手順はproviderの公式protocolに合わせ、Sonioxでは推奨無音と`finalize()`を送り、AmazonではAudioStreamを閉じる。caseごとに開始providerを回転し、常に片方を先に実行する偏りを避ける。
+
+```bash
+pnpm stt:evaluate compare-provider \
+  --manifest .data/stt-eval/artificial/manifest.json \
+  --observations-output .data/stt-eval/artificial/provider-observations.json \
+  --output .data/stt-eval/artificial/provider-report.json \
+  --aws-region us-west-2 \
+  --trials 3
+```
+
+このコマンドはAWSの標準認証チェーンを使う。リージョンは観測条件としてレポートへ残すが、認証情報やアカウントIDは保存しない。Amazonの確定結果だけを本文と分割へ採用し、partial結果は採点しない。本番のDiscord Driverは引き続きSonioxだけを使い、Amazon SDKを本番STTへ接続しない。
+
 本文非含有レポートには次を出す。
 
 - trial数、観測件数、caseごとのtrial番号
 - CER、固有名詞・期待言語の再現率、分割数
 - 確定遅延、境界の種別・確定理由・本文有無
 - CPU、復号・欠落packet数、音質4指標、原文confidence
+- provider比較では、本文を取得できた観測の割合
 
 baselineでは音質指標とCERのPearson相関係数、tag別とそれ以外のmicro CERも出す。同一音声のtrialを独立標本として水増しせず、相関はcase単位へ集約する。確定遅延とSoniox endpoint比率は、本文のある境界だけを採否対象にする。認識本文が一つもないcaseでは、失敗を集計から消さないよう最終境界を対象にする。候補とAのtrial数が違う観測は比較しない。比較の初期採用基準は次のとおりである。
 
@@ -607,6 +630,7 @@ baselineでは音質指標とCERのPearson相関係数、tag別とそれ以外�
 - クリーン音声のCERを1ポイント以上悪化させない
 - 日本語と韓国語の切り替えを悪化させない
 - p95追加遅延をA比+200 ms以内に収める
+- provider比較では、本文取得率をAより悪化させない
 - CとDでは、手動fallbackより先に届いたSoniox endpointを受理した境界が過半数を占める
 - Raspberry Piまたは実運用ホストでCPU不足と音声詰まりを起こさない
 
@@ -675,6 +699,23 @@ Issue #9で候補としていた`endpoint_latency_adjustment_level`の0と1を�
 Aの全体CERは2.055、固有名詞再現率は66.7%、全体の言語再現率は63.6%だった。不自然な分割は0件である。CはCERと遅延のgateを通り、コードスイッチとSoniox endpoint比率も基準内だった。しかし、固有名詞再現率はAより改善していない。全体の言語再現率もAより3.0ポイント低く、不自然な分割は9件へ増えた。候補版をPiへ配備していないため、PiのCPUと音声詰まりは`not_evaluated`である。以上からlevel 1は本番へ採用せず、現行の発話確定値を維持する。case・trial別指標と入力SHA-256は[endpoint latency levelレポート](./evaluation/stt-endpoint-latency-level-2026-08-26.json)に残す。
 
 同じAでも、発話確定時間の実験ではCER 1.733、認識contextとの組み合わせ実験では1.777だった。Soniox応答には試行間の振れがあるため、異なる実行の絶対値同士は採否に使わず、それぞれ同時に測ったAとの差だけを使う。候補はいずれもPiへ配備していないため、PiのCPUと音声詰まりのgateは引き続き`not_evaluated`である。本番設定、`SONIOX_GENERAL_CONTEXT_ENABLED=false`、無加工PCMの経路は変更しない。
+
+#### AmazonはCERを下げたが、半数の観測で本文を取得できなかった
+
+Soniox内の候補が固有名詞または言語切り替えの基準を満たさなかったため、同じmanifestをAmazon Transcribe Streamingでも3試行した。この評価環境のAWS既定リージョン`us-west-2`を明示し、日韓の多言語自動識別を使った。各providerは10件を3試行し、30観測ずつである。試行内ではcaseごとに開始providerを交替した。
+
+| 指標 | Soniox baseline | Amazon Transcribe | Amazonの差または判定 |
+|---|---:|---:|---:|
+| CER | 1.835 | 1.022 | 44.3%相対改善 |
+| 固有名詞再現率 | 75.0% | 0% | -75.0ポイント。fail |
+| 日韓切り替え時の期待言語再現率 | 50.0% | 0% | -50.0ポイント。fail |
+| 本文取得率 | 86.7% | 50.0% | -36.7ポイント。fail |
+| p95確定遅延 | 483 ms | 3,378 ms | +2,895 ms。fail |
+| 不自然な分割 | 1件 | 3件 | +2件 |
+
+Amazonでは、30観測中15件で確定本文が空だった。空の認識結果は正解文とのCERが1になるため、長い誤認識を出したbaselineよりCERだけが低く見える。この反例を受け、provider比較には本文取得率の非悪化を採用gateとして追加した。全体CERとクリーン音声CERだけは通過したが、固有名詞、言語切り替え、遅延、本文取得率が不合格である。Amazonを本番STTへ採用せず、評価用runnerだけに留める。case・trial別指標と入力SHA-256は[provider比較レポート](./evaluation/stt-provider-comparison-2026-08-26.json)に残す。
+
+Google Chirp、Azure Speech、Deepgram Novaの実測には、各サービスの認証情報と公式SDKの追加が必要である。今回は認証情報の新規発行と試用契約を範囲外とした。比較を続ける場合は、各providerの公式クライアントを使い、同じmanifest、3試行、本文取得率を含む採用gateで別実験として測る。Amazon候補もPiへ配備していないため、Pi CPUと音声詰まりは`not_evaluated`である。
 
 #### 音声品質との相関ではノイズを主要因と判断できなかった
 

@@ -54,12 +54,13 @@ async function withServer(
 function writeDataset(
   directory = path.join(temporaryDirectory, "dataset"),
 ): string {
-  mkdirSync(directory, { recursive: true });
-  writeFileSync(path.join(directory, "sample.pcm"), Buffer.alloc(1_920));
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  chmodSync(directory, 0o700);
+  writeFileSync(path.join(directory, "sample.pcm"), Buffer.alloc(1_920), { mode: 0o600 });
   writeFileSync(path.join(directory, "sample.packets.json"), JSON.stringify({
     version: 1,
     packets: [{ at_ms: 0, byte_length: 1_920 }],
-  }));
+  }), { mode: 0o600 });
   const manifestPath = path.join(directory, "manifest.json");
   writeFileSync(manifestPath, JSON.stringify({
     version: 1,
@@ -77,7 +78,7 @@ function writeDataset(
       expected_segments: 1,
       translation_terms: [{ source: "ヴァロラント", target: "발로란트" }],
     }],
-  }));
+  }), { mode: 0o600 });
   return manifestPath;
 }
 

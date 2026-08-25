@@ -5,6 +5,7 @@ import {
   SonioxNodeClient,
   type RealtimeResult,
 } from "@soniox/node";
+import { TranscribeStreamingClient } from "@aws-sdk/client-transcribe-streaming";
 
 import {
   SttTurnFinalizer,
@@ -27,6 +28,10 @@ import {
   sttEvaluationExperimentProfileMappings,
   sttEvaluationProfileConfigurations,
 } from "./stt-evaluation.js";
+import {
+  runAmazonTranscribeEvaluationCase,
+  type AmazonTranscribeStreamingSender,
+} from "./amazon-transcribe-evaluation-runner.js";
 
 const transcriptInactivityMs = 3_000;
 const maxTurnMs = 30_000;
@@ -38,8 +43,12 @@ const defaultFinishTimeoutMs = 10_000;
 const pcmSampleRate = 48_000;
 const pcmBytesPerSample = 2;
 
+type SonioxSttEvaluationExperiment = Exclude<SttEvaluationExperiment, "provider_comparison">;
+type SonioxSttEvaluationProfile = Exclude<SttEvaluationProfile, "amazon_transcribe">;
+
 type SttEvaluationRunResult = SttEvaluationObservations["results"][number] & {
-  configuration: typeof sttEvaluationProfileConfigurations[SttEvaluationProfile];
+  profile: SonioxSttEvaluationProfile;
+  configuration: typeof sttEvaluationProfileConfigurations[SonioxSttEvaluationProfile];
 };
 
 export type SttEvaluationRunObservations = Omit<SttEvaluationObservations, "dataset" | "results"> & {
@@ -51,11 +60,23 @@ export type SttEvaluationRunnerOptions = {
   apiKey: string;
   model: string;
   sttWebSocketUrl: string;
-  experiment?: SttEvaluationExperiment;
-  profiles?: readonly SttEvaluationProfile[];
+  experiment?: SonioxSttEvaluationExperiment;
+  profiles?: readonly SonioxSttEvaluationProfile[];
   trials?: number;
   boundaryTimeoutMs?: number;
   finishTimeoutMs?: number;
+};
+
+export type SttProviderComparisonRunnerOptions = {
+  apiKey: string;
+  model: string;
+  sttWebSocketUrl: string;
+  amazonRegion: string;
+  amazonClient?: AmazonTranscribeStreamingSender;
+  trials?: number;
+  boundaryTimeoutMs?: number;
+  finishTimeoutMs?: number;
+  amazonTimeoutMs?: number;
 };
 
 export type SttEndpointOnlyProbeOptions = Pick<
@@ -152,7 +173,7 @@ async function runCase(
   dataset: LoadedSttEvaluationDataset,
   evaluationCase: LoadedSttEvaluationCase,
   trial: number,
-  profile: SttEvaluationProfile,
+  profile: SonioxSttEvaluationProfile,
   model: string,
   boundaryTimeoutMs: number,
   finishTimeoutMs: number,
@@ -380,7 +401,7 @@ export async function runSttEvaluationDataset(
   if (profiles.length === 0 || new Set(profiles).size !== profiles.length) {
     throw new Error("STT評価profileは重複なしで1件以上指定してください");
   }
-  const allowedProfiles = new Set<SttEvaluationProfile>(experimentProfiles);
+  const allowedProfiles = new Set<SonioxSttEvaluationProfile>(experimentProfiles);
   const invalidProfile = profiles.find((profile) => !allowedProfiles.has(profile));
   if (invalidProfile) {
     throw new Error(`experiment「${experiment}」にprofile「${invalidProfile}」は含まれません`);
@@ -424,6 +445,88 @@ export async function runSttEvaluationDataset(
   return {
     version: 1,
     experiment,
+    dataset: createSttEvaluationDatasetEvidence(dataset),
+    results,
+  };
+}
+
+export async function runSttProviderComparisonDataset(
+  dataset: LoadedSttEvaluationDataset,
+  options: SttProviderComparisonRunnerOptions,
+): Promise<SttEvaluationObservations> {
+  if (dataset.manifest.pair !== "ja-ko") {
+    throw new Error("STT provider比較はja-koの日本語・韓国語manifestだけに対応しています");
+  }
+  if (options.apiKey.trim().length === 0) throw new Error("Soniox API keyが空です");
+  if (options.model.trim().length === 0) throw new Error("Soniox STT modelが空です");
+  if (options.sttWebSocketUrl.trim().length === 0) {
+    throw new Error("Soniox STT WebSocket URLが空です");
+  }
+  const amazonRegion = options.amazonRegion.trim();
+  if (!/^[a-z]{2}(?:-[a-z0-9]+)+-\d$/u.test(amazonRegion)) {
+    throw new Error("Amazon TranscribeのAWS regionが不正です");
+  }
+  const trials = options.trials ?? 1;
+  if (!Number.isSafeInteger(trials) || trials < 1 || trials > maximumTrialCount) {
+    throw new Error(`STT評価trial数は1〜${String(maximumTrialCount)}の整数にしてください`);
+  }
+  const boundaryTimeoutMs = options.boundaryTimeoutMs ?? defaultBoundaryTimeoutMs;
+  const finishTimeoutMs = options.finishTimeoutMs ?? defaultFinishTimeoutMs;
+  const amazonTimeoutMs = options.amazonTimeoutMs ?? 20_000;
+  if (
+    !Number.isSafeInteger(boundaryTimeoutMs) || boundaryTimeoutMs <= 0 ||
+    !Number.isSafeInteger(finishTimeoutMs) || finishTimeoutMs <= 0 ||
+    !Number.isSafeInteger(amazonTimeoutMs) || amazonTimeoutMs <= 0
+  ) {
+    throw new Error("STT provider比較timeoutは正の整数にしてください");
+  }
+
+  const sonioxClient = new SonioxNodeClient({
+    api_key: options.apiKey,
+    realtime: { ws_base_url: options.sttWebSocketUrl },
+  });
+  const ownedAmazonClient = options.amazonClient === undefined
+    ? new TranscribeStreamingClient({ region: amazonRegion })
+    : undefined;
+  const amazonClient = options.amazonClient ?? ownedAmazonClient;
+  if (!amazonClient) throw new Error("Amazon Transcribe clientを作成できませんでした");
+  const profiles = ["baseline", "amazon_transcribe"] as const;
+  const results: SttEvaluationObservations["results"] = [];
+  try {
+    for (let trial = 1; trial <= trials; trial += 1) {
+      for (const [caseIndex, evaluationCase] of dataset.cases.entries()) {
+        const profileStartIndex = (trial - 1 + caseIndex) % profiles.length;
+        for (let offset = 0; offset < profiles.length; offset += 1) {
+          const profile = profiles[(profileStartIndex + offset) % profiles.length];
+          if (profile === "baseline") {
+            results.push(await runCase(
+              sonioxClient,
+              dataset,
+              evaluationCase,
+              trial,
+              profile,
+              options.model,
+              boundaryTimeoutMs,
+              finishTimeoutMs,
+            ));
+          } else {
+            results.push(await runAmazonTranscribeEvaluationCase(evaluationCase, trial, {
+              client: amazonClient,
+              timeoutMs: amazonTimeoutMs,
+            }));
+          }
+        }
+      }
+    }
+  } finally {
+    ownedAmazonClient?.destroy();
+  }
+  return {
+    version: 1,
+    experiment: "provider_comparison",
+    provider_environment: {
+      amazon_transcribe: { region: amazonRegion },
+    },
     dataset: createSttEvaluationDatasetEvidence(dataset),
     results,
   };

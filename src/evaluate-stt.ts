@@ -22,6 +22,7 @@ import {
 import {
   runSttEndpointOnlyProbe,
   runSttEvaluationDataset,
+  runSttProviderComparisonDataset,
 } from "./evaluation/stt-evaluation-runner.js";
 import {
   createSttEvaluationReport,
@@ -34,11 +35,22 @@ import {
 
 const usage = `使用方法:
   pnpm stt:evaluate run --manifest <manifest.json> --observations-output <observations.json> --output <report.json> [--experiment <context_endpoint|endpoint_timing|context_endpoint_400|endpoint_latency_level|recognition_terms|recognition_source_terms>] [--profiles <comma-separated>] [--stt-websocket-url <wss://...>] [--trials <1-10>]
+  pnpm stt:evaluate compare-provider --manifest <manifest.json> --observations-output <observations.json> --output <report.json> --aws-region <region> [--stt-websocket-url <wss://...>] [--trials <1-10>] [--amazon-timeout-ms <milliseconds>]
   pnpm stt:evaluate probe-endpoint-only --manifest <manifest.json> --required-case <case-id> --output <summary.json> [--stt-websocket-url <wss://...>] [--trials 3] [--boundary-timeout-ms <milliseconds>]
   pnpm stt:evaluate score --manifest <manifest.json> --observations <observations.json> --output <report.json>
 
-評価音声、packet trace、本文入り観測結果はGit管理外の.data/stt-eval/へ置いてください。`;
+評価音声、packet trace、本文入り観測結果はGit管理外の.data/stt-eval/、または所有者だけが利用できるリポジトリ外directoryへ置いてください。`;
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+export type SttEvaluationCliDependencies = {
+  environment: NodeJS.ProcessEnv;
+  runProviderComparisonDataset: typeof runSttProviderComparisonDataset;
+};
+
+const defaultCliDependencies: SttEvaluationCliDependencies = {
+  environment: process.env,
+  runProviderComparisonDataset: runSttProviderComparisonDataset,
+};
 
 async function readObservations(filePath: string): Promise<string> {
   try {
@@ -142,13 +154,19 @@ async function assertPrivateRepositoryFiles(
   const privateRoot = path.join(canonicalRepositoryRoot, ".data", "stt-eval");
   for (const file of files) {
     const canonicalFilePath = await realpath(file.filePath);
-    if (!isWithinPath(canonicalRepositoryRoot, canonicalFilePath)) continue;
-    if (!isWithinPath(privateRoot, canonicalFilePath)) {
+    const isRepositoryFile = isWithinPath(canonicalRepositoryRoot, canonicalFilePath);
+    if (isRepositoryFile && !isWithinPath(privateRoot, canonicalFilePath)) {
       throw new Error(
         `${file.label}はリポジトリ外または.data/stt-eval/配下へ置いてください`,
       );
     }
-    await assertOwnerOnlyDirectoryChain(privateRoot, path.dirname(canonicalFilePath));
+    const privateDirectoryRoot = isRepositoryFile
+      ? privateRoot
+      : path.dirname(canonicalFilePath);
+    await assertOwnerOnlyDirectoryChain(
+      privateDirectoryRoot,
+      path.dirname(canonicalFilePath),
+    );
     const status = await lstat(canonicalFilePath);
     if (!status.isFile() || (status.mode & 0o077) !== 0) {
       throw new Error(
@@ -176,19 +194,25 @@ async function assertPrivateDatasetPaths(dataset: LoadedSttEvaluationDataset): P
 
 async function assertPrivateObservationsPath(observationsPath: string): Promise<void> {
   const canonicalRepositoryRoot = await realpath(repositoryRoot);
-  if (!isWithinPath(canonicalRepositoryRoot, observationsPath)) return;
   const privateOutputRoot = path.join(canonicalRepositoryRoot, ".data", "stt-eval");
-  if (!isWithinPath(privateOutputRoot, observationsPath)) {
+  const isRepositoryPath = isWithinPath(canonicalRepositoryRoot, observationsPath);
+  if (isRepositoryPath && !isWithinPath(privateOutputRoot, observationsPath)) {
     throw new Error(
       "本文を含むobservations-outputはリポジトリ外または.data/stt-eval/配下を指定してください",
     );
   }
-  await assertOwnerOnlyDirectoryChain(privateOutputRoot, path.dirname(observationsPath));
+  const privateDirectoryRoot = isRepositoryPath
+    ? privateOutputRoot
+    : path.dirname(observationsPath);
+  await assertOwnerOnlyDirectoryChain(privateDirectoryRoot, path.dirname(observationsPath));
 }
 
-function sonioxSttWebSocketUrl(override: string | undefined): string {
+function sonioxSttWebSocketUrl(
+  override: string | undefined,
+  environment: NodeJS.ProcessEnv = process.env,
+): string {
   if (override) return override;
-  const region = process.env.SONIOX_REGION;
+  const region = environment.SONIOX_REGION;
   if (region !== "us" && region !== "eu" && region !== "jp") {
     throw new Error("SONIOX_REGIONにはus、eu、jpのいずれかを指定してください");
   }
@@ -197,8 +221,8 @@ function sonioxSttWebSocketUrl(override: string | undefined): string {
 
 function parseProfileSelection(
   value: string | undefined,
-  experiment: SttEvaluationExperiment,
-): SttEvaluationProfile[] | undefined {
+  experiment: Exclude<SttEvaluationExperiment, "provider_comparison">,
+): Exclude<SttEvaluationProfile, "amazon_transcribe">[] | undefined {
   if (value === undefined) return undefined;
   const profiles = value.split(",").map((profile) => profile.trim());
   if (profiles.length === 0 || profiles.some((profile) => profile.length === 0)) {
@@ -219,32 +243,18 @@ function parseProfileSelection(
   if (!profiles.includes("baseline")) {
     throw new Error("STT評価profilesにはbaselineを含めてください");
   }
-  return profiles as SttEvaluationProfile[];
+  return profiles as Exclude<SttEvaluationProfile, "amazon_transcribe">[];
 }
 
-async function run(args: readonly string[]): Promise<void> {
-  const parsed = parseArgs({
-    args,
-    strict: true,
-    options: {
-      manifest: { type: "string" },
-      "observations-output": { type: "string" },
-      output: { type: "string" },
-      experiment: { type: "string" },
-      profiles: { type: "string" },
-      "stt-websocket-url": { type: "string" },
-      trials: { type: "string" },
-    },
-  });
-  const manifestPath = parsed.values.manifest;
-  const observationsOutput = parsed.values["observations-output"];
-  const outputPath = parsed.values.output;
-  if (!manifestPath || !observationsOutput || !outputPath) throw new Error(usage);
-  const apiKey = process.env.SONIOX_API_KEY?.trim();
-  const model = process.env.SONIOX_STT_MODEL?.trim();
-  if (!apiKey) throw new Error("SONIOX_API_KEYが設定されていません");
-  if (!model) throw new Error("SONIOX_STT_MODELが設定されていません");
-
+async function prepareLiveEvaluationRun(
+  manifestPath: string,
+  observationsOutput: string,
+  outputPath: string,
+): Promise<{
+  dataset: LoadedSttEvaluationDataset;
+  resolvedObservationsOutput: string;
+  resolvedOutputPath: string;
+}> {
   const dataset = await loadSttEvaluationDataset(manifestPath);
   await assertPrivateDatasetPaths(dataset);
   const protectedPaths = new Set([
@@ -262,15 +272,52 @@ async function run(args: readonly string[]): Promise<void> {
     throw new Error("評価の出力pathを解決できませんでした");
   }
   await assertPrivateObservationsPath(resolvedObservationsOutput);
+  return { dataset, resolvedObservationsOutput, resolvedOutputPath };
+}
+
+async function run(
+  args: readonly string[],
+  environment: NodeJS.ProcessEnv,
+): Promise<Record<string, unknown>> {
+  const parsed = parseArgs({
+    args,
+    strict: true,
+    options: {
+      manifest: { type: "string" },
+      "observations-output": { type: "string" },
+      output: { type: "string" },
+      experiment: { type: "string" },
+      profiles: { type: "string" },
+      "stt-websocket-url": { type: "string" },
+      trials: { type: "string" },
+    },
+  });
+  const manifestPath = parsed.values.manifest;
+  const observationsOutput = parsed.values["observations-output"];
+  const outputPath = parsed.values.output;
+  if (!manifestPath || !observationsOutput || !outputPath) throw new Error(usage);
+  const apiKey = environment.SONIOX_API_KEY?.trim();
+  const model = environment.SONIOX_STT_MODEL?.trim();
+  if (!apiKey) throw new Error("SONIOX_API_KEYが設定されていません");
+  if (!model) throw new Error("SONIOX_STT_MODELが設定されていません");
+
+  const { dataset, resolvedObservationsOutput, resolvedOutputPath } =
+    await prepareLiveEvaluationRun(manifestPath, observationsOutput, outputPath);
 
   const experiment = parseSttEvaluationExperiment(
     parsed.values.experiment ?? "context_endpoint",
   );
+  if (experiment === "provider_comparison") {
+    throw new Error("provider_comparisonはcompare-providerコマンドで実行してください");
+  }
   const profiles = parseProfileSelection(parsed.values.profiles, experiment);
   const observations = await runSttEvaluationDataset(dataset, {
     apiKey,
     model,
-    sttWebSocketUrl: sonioxSttWebSocketUrl(parsed.values["stt-websocket-url"]),
+    sttWebSocketUrl: sonioxSttWebSocketUrl(
+      parsed.values["stt-websocket-url"],
+      environment,
+    ),
     experiment,
     ...(profiles === undefined ? {} : { profiles }),
     trials: parsed.values.trials === undefined ? 1 : Number(parsed.values.trials),
@@ -281,17 +328,81 @@ async function run(args: readonly string[]): Promise<void> {
   };
   await writePrivateJson(resolvedObservationsOutput, observations);
   await writePrivateJson(resolvedOutputPath, report);
-  console.log(JSON.stringify({
-    observations: resolvedObservationsOutput,
-    report: resolvedOutputPath,
+  return {
+    observations_written: true,
+    report_written: true,
     experiment: report.experiment,
     profiles: Object.keys(report.profiles),
     case_count: dataset.cases.length,
     trial_count: report.profiles.baseline?.trial_count,
-  }));
+  };
 }
 
-async function probeEndpointOnly(args: readonly string[]): Promise<void> {
+async function compareProvider(
+  args: readonly string[],
+  dependencies: SttEvaluationCliDependencies,
+): Promise<Record<string, unknown>> {
+  const parsed = parseArgs({
+    args,
+    strict: true,
+    options: {
+      manifest: { type: "string" },
+      "observations-output": { type: "string" },
+      output: { type: "string" },
+      "aws-region": { type: "string" },
+      "stt-websocket-url": { type: "string" },
+      trials: { type: "string" },
+      "amazon-timeout-ms": { type: "string" },
+    },
+  });
+  const manifestPath = parsed.values.manifest;
+  const observationsOutput = parsed.values["observations-output"];
+  const outputPath = parsed.values.output;
+  const amazonRegion = parsed.values["aws-region"];
+  if (!manifestPath || !observationsOutput || !outputPath || !amazonRegion) {
+    throw new Error(usage);
+  }
+  const apiKey = dependencies.environment.SONIOX_API_KEY?.trim();
+  const model = dependencies.environment.SONIOX_STT_MODEL?.trim();
+  if (!apiKey) throw new Error("SONIOX_API_KEYが設定されていません");
+  if (!model) throw new Error("SONIOX_STT_MODELが設定されていません");
+
+  const { dataset, resolvedObservationsOutput, resolvedOutputPath } =
+    await prepareLiveEvaluationRun(manifestPath, observationsOutput, outputPath);
+  const observations = await dependencies.runProviderComparisonDataset(dataset, {
+    apiKey,
+    model,
+    sttWebSocketUrl: sonioxSttWebSocketUrl(
+      parsed.values["stt-websocket-url"],
+      dependencies.environment,
+    ),
+    amazonRegion,
+    trials: parsed.values.trials === undefined ? 1 : Number(parsed.values.trials),
+    ...(parsed.values["amazon-timeout-ms"] === undefined
+      ? {}
+      : { amazonTimeoutMs: Number(parsed.values["amazon-timeout-ms"]) }),
+  });
+  const report = {
+    ...createSttEvaluationReport(dataset.manifest, observations),
+    dataset: observations.dataset,
+  };
+  await writePrivateJson(resolvedObservationsOutput, observations);
+  await writePrivateJson(resolvedOutputPath, report);
+  return {
+    observations_written: true,
+    report_written: true,
+    experiment: report.experiment,
+    profiles: Object.keys(report.profiles),
+    provider_region: report.provider_environment?.amazon_transcribe.region,
+    case_count: dataset.cases.length,
+    trial_count: report.profiles.baseline?.trial_count,
+  };
+}
+
+async function probeEndpointOnly(
+  args: readonly string[],
+  environment: NodeJS.ProcessEnv,
+): Promise<Record<string, unknown>> {
   const parsed = parseArgs({
     args,
     strict: true,
@@ -308,8 +419,8 @@ async function probeEndpointOnly(args: readonly string[]): Promise<void> {
   const requiredCaseId = parsed.values["required-case"];
   const outputPath = parsed.values.output;
   if (!manifestPath || !requiredCaseId || !outputPath) throw new Error(usage);
-  const apiKey = process.env.SONIOX_API_KEY?.trim();
-  const model = process.env.SONIOX_STT_MODEL?.trim();
+  const apiKey = environment.SONIOX_API_KEY?.trim();
+  const model = environment.SONIOX_STT_MODEL?.trim();
   if (!apiKey) throw new Error("SONIOX_API_KEYが設定されていません");
   if (!model) throw new Error("SONIOX_STT_MODELが設定されていません");
 
@@ -331,7 +442,10 @@ async function probeEndpointOnly(args: readonly string[]): Promise<void> {
   const summary = await runSttEndpointOnlyProbe(dataset, {
     apiKey,
     model,
-    sttWebSocketUrl: sonioxSttWebSocketUrl(parsed.values["stt-websocket-url"]),
+    sttWebSocketUrl: sonioxSttWebSocketUrl(
+      parsed.values["stt-websocket-url"],
+      environment,
+    ),
     requiredCaseId,
     trials: parsed.values.trials === undefined ? 3 : Number(parsed.values.trials),
     boundaryTimeoutMs: parsed.values["boundary-timeout-ms"] === undefined
@@ -339,17 +453,17 @@ async function probeEndpointOnly(args: readonly string[]): Promise<void> {
       : Number(parsed.values["boundary-timeout-ms"]),
   });
   await writePrivateJson(resolvedOutputPath, summary);
-  console.log(JSON.stringify({
-    report: resolvedOutputPath,
+  return {
+    report_written: true,
     experiment: summary.experiment,
     profile: summary.profile,
     required_case: summary.dataset.case.case_id,
     trial_count: summary.trials.length,
     outcome: summary.outcome,
-  }));
+  };
 }
 
-async function score(args: readonly string[]): Promise<void> {
+async function score(args: readonly string[]): Promise<Record<string, unknown>> {
   const parsed = parseArgs({
     args,
     strict: true,
@@ -390,37 +504,49 @@ async function score(args: readonly string[]): Promise<void> {
     dataset: createSttEvaluationDatasetEvidence(dataset),
   };
   await writePrivateJson(resolvedOutputPath, report);
-  console.log(JSON.stringify({
-    report: resolvedOutputPath,
+  return {
+    report_written: true,
     profiles: Object.keys(report.profiles),
     case_count: dataset.cases.length,
-  }));
+  };
 }
 
-async function main(): Promise<void> {
-  const [command, ...args] = process.argv.slice(2);
+export async function runSttEvaluationCli(
+  argv: readonly string[],
+  dependencyOverrides: Partial<SttEvaluationCliDependencies> = {},
+): Promise<Record<string, unknown> | undefined> {
+  const dependencies: SttEvaluationCliDependencies = {
+    ...defaultCliDependencies,
+    ...dependencyOverrides,
+  };
+  const [command, ...args] = argv;
   if (command === "run") {
-    await run(args);
-    return;
+    return await run(args, dependencies.environment);
+  }
+  if (command === "compare-provider") {
+    return await compareProvider(args, dependencies);
   }
   if (command === "probe-endpoint-only") {
-    await probeEndpointOnly(args);
-    return;
+    return await probeEndpointOnly(args, dependencies.environment);
   }
   if (command === "score") {
-    await score(args);
-    return;
+    return await score(args);
   }
   if (command === "--help" || command === "-h") {
     console.log(usage);
-    return;
+    return undefined;
   }
   throw new Error(usage);
 }
 
-try {
-  await main();
-} catch (error) {
-  console.error(error instanceof Error ? error.message : "STT評価に失敗しました");
-  process.exitCode = 1;
+const directlyInvoked = process.argv[1] !== undefined &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (directlyInvoked) {
+  try {
+    const summary = await runSttEvaluationCli(process.argv.slice(2));
+    if (summary !== undefined) console.log(JSON.stringify(summary));
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : "STT評価に失敗しました");
+    process.exitCode = 1;
+  }
 }

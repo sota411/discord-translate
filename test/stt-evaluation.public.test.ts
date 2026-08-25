@@ -803,6 +803,61 @@ void test("追跡する認識用terms比較は両言語版とsource限定版の�
   assert.equal(sourceOnlyComparison.gates.language_switching, "fail");
 });
 
+void test("追跡するprovider比較は本文取得率を含むAmazon不採用根拠を保持する", () => {
+  const reportText = readFileSync(
+    "docs/evaluation/stt-provider-comparison-2026-08-26.json",
+    "utf8",
+  );
+  const forbidden = /"(?:transcript|reference|translation_terms|api_key|raw_audio|guild_id|user_id|trace_id|session_id|access_key_id|secret_access_key)"/u;
+  assert.doesNotMatch(reportText, forbidden);
+  assert.doesNotMatch(reportText, /\/home\/sota411|\.data\/stt-eval/u);
+
+  const report = JSON.parse(reportText) as {
+    experiment: string;
+    provider_environment: { amazon_transcribe: { region: string } };
+    dataset: { manifest_sha256: string; cases: unknown[] };
+    profiles: Record<string, {
+      trial_count: number;
+      observation_count: number;
+      configuration: Record<string, unknown>;
+    }>;
+    comparisons: Record<string, {
+      cer_relative_improvement_percent: number | null;
+      baseline_transcript_coverage: number;
+      candidate_transcript_coverage: number;
+      transcript_coverage_change: number;
+      gates: Record<string, string>;
+    }>;
+  };
+  assert.equal(report.experiment, "provider_comparison");
+  assert.equal(report.provider_environment.amazon_transcribe.region, "us-west-2");
+  assert.match(report.dataset.manifest_sha256, /^[a-f0-9]{64}$/u);
+  assert.equal(report.dataset.cases.length, 10);
+  assert.deepEqual(Object.keys(report.profiles), ["baseline", "amazon_transcribe"]);
+  assert.ok(Object.values(report.profiles).every((profile) => (
+    profile.trial_count === 3 && profile.observation_count === 30
+  )));
+  assert.equal(
+    report.profiles.amazon_transcribe?.configuration.provider,
+    "amazon_transcribe",
+  );
+  const comparison = report.comparisons.amazon_transcribe;
+  assert.ok(comparison);
+  assert.ok(
+    comparison.cer_relative_improvement_percent !== null &&
+    comparison.cer_relative_improvement_percent > 40,
+  );
+  assert.equal(comparison.baseline_transcript_coverage, 26 / 30);
+  assert.equal(comparison.candidate_transcript_coverage, 15 / 30);
+  assert.ok(Math.abs(comparison.transcript_coverage_change + 11 / 30) < 1e-12);
+  assert.equal(comparison.gates.overall_cer, "pass");
+  assert.equal(comparison.gates.key_terms, "fail");
+  assert.equal(comparison.gates.language_switching, "fail");
+  assert.equal(comparison.gates.latency, "fail");
+  assert.equal(comparison.gates.transcript_coverage, "fail");
+  assert.equal(comparison.gates.pi_runtime, "not_evaluated");
+});
+
 void test("追跡するPi runtime snapshotは識別子を含めず候補gateを未評価とする", () => {
   const snapshot = readFileSync(
     "docs/evaluation/pi-runtime-baseline-2026-08-25.json",

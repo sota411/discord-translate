@@ -211,7 +211,7 @@ Raspberry PiではPi上でimageをbuildせず、CIで検証してGHCRへ配布�
 
 ## STT精度の変更は同じ音声で比較する
 
-`pnpm stt:evaluate`は、許可済みのPCM音声とpacket traceを同じ順序でSonioxへ送り、現行条件と候補条件を比較する。`--trials`には1〜10を指定でき、省略時は1である。候補の採否を決める場合は3試行以上とし、caseごとに開始profileを入れ替えて時間順の偏りを抑える。試行数に比例してSonioxの利用料金がかかる。個人音声はGitへ追加せず、`.data/stt-eval/`へ置く。
+`pnpm stt:evaluate`は、許可済みのPCM音声とpacket traceを同じ順序でSTTへ送り、現行条件と候補条件を比較する。`--trials`には1〜10を指定でき、省略時は1である。候補の採否を決める場合は3試行以上とし、caseごとに開始profileを入れ替えて時間順の偏りを抑える。試行数に比例して外部STTの利用料金がかかる。個人音声はGitへ追加せず、`.data/stt-eval/`、または所有者だけが利用できるリポジトリ外directoryへ置く。directoryは0700、fileは0600にする。
 
 ```bash
 install -d -m 700 .data/stt-eval
@@ -223,7 +223,7 @@ pnpm stt:evaluate run \
   --trials 3
 ```
 
-manifestには、48 kHz・mono・PCM s16le音声、正解文、期待する言語と分割数、固有名詞、翻訳用語を記録する。packet traceには、packetごとの送信時刻・byte数と、発話全体の欠落数を記録する。詳しいfieldは[設計書のSTT評価](./docs/design.md#stt候補は同じ音声のadで採否を決める)を参照する。
+manifestには、48 kHz・mono・PCM s16le音声、正解文、期待する言語と分割数、固有名詞、翻訳用語を記録する。packet traceには、packetごとの送信時刻・byte数と、発話全体の欠落数を記録する。詳しいfieldは[設計書のSTT評価](./docs/design.md#stt候補は同じ音声で採否を決める)を参照する。
 
 追跡する評価レポートは指標と入力SHA-256の監査証拠であり、過去の人工音声corpusそのものではない。manifest、PCM、packet trace、本文入りobservationsは`.data/stt-eval/`のlocal dataであり、Gitには含めない。過去の数値を厳密に再実行するには、公開レポートのSHA-256と一致するlocal dataが必要である。clean checkoutだけでは再実行できない。別の入力で実行した場合は、過去レポートの再現ではなく新しい実験として扱う。
 
@@ -241,6 +241,17 @@ pnpm stt:evaluate score \
   --manifest .data/stt-eval/manifest.json \
   --observations .data/stt-eval/observations.json \
   --output .data/stt-eval/report.json
+```
+
+Sonioxの現行条件とAmazon Transcribe Streamingを比べる場合は、AWSの標準認証チェーンを用意し、実測リージョンを明示する。比較は同じcase内で開始先を交替し、Amazonには語彙を追加せず、日韓の多言語自動識別を指定する。音声は同一packet traceを使うが、発話後の終了手順は各providerの公式protocolに従う。本文入りobservationsの扱いはSoniox内の比較と同じである。
+
+```bash
+pnpm stt:evaluate compare-provider \
+  --manifest .data/stt-eval/manifest.json \
+  --observations-output .data/stt-eval/provider-observations.json \
+  --output .data/stt-eval/provider-report.json \
+  --aws-region us-west-2 \
+  --trials 3
 ```
 
 既定の`context_endpoint`実験で使う評価profileは次の4つである。
@@ -274,6 +285,8 @@ pnpm stt:evaluate probe-endpoint-only \
 
 同日、400 msのfallbackを変えずにSonioxのlevel 0と1も各3試行した。level 1は現行Aより全体CERを58.8%改善し、p95追加遅延は+177 ms、Soniox endpoint比率は56.4%だった。ただし、固有名詞再現率はAと同じ66.7%で改善せず、全体の言語再現率は63.6%から60.6%へ下がった。不自然な分割もAの0件、level 0の6件に対して9件だった。固有名詞のgateが失敗し、Pi実機も未評価なので、level 1は本番へ採用していない。詳細は[本文非含有レポート](./docs/evaluation/stt-endpoint-latency-level-2026-08-26.json)に残している。
 
+Soniox内の候補が採用基準を満たさなかったため、同じ10件をAmazon Transcribe Streamingの多言語自動識別でも3試行した。Amazonは全体CERを44.3%改善したが、本文を取得できた観測は30件中15件だけだった。本文取得率はSonioxの86.7%から50.0%へ下がり、固有名詞再現率は75.0%から0%、日韓切り替え時の期待言語再現率は50.0%から0%へ下がった。p95は483 msから3,378 msへ増えた。空の認識結果はCERが1になるため、CERだけでは改善と判定せず、本文取得率の非悪化もprovider比較のgateにしている。固有名詞、言語切り替え、遅延、本文取得率が不合格なので、Amazonは評価専用のままとし、本番STTへ採用していない。詳細は[provider比較レポート](./docs/evaluation/stt-provider-comparison-2026-08-26.json)に残している。Google Chirp、Azure Speech、Deepgram Novaの実測には、各サービスの認証情報と公式SDKの追加が必要である。今回は認証情報の新規発行と試用契約を範囲外とした。
+
 音質との関係も、同じ10件の現行baselineを3試行して確認した。PCM品質の4指標は30観測すべてで取得した。原文confidenceは、原文tokenが返った24観測で取得した。noiseタグ2件のCERは0.50で、非noise 8件の2.063を下回ったため、ノイズを主要因とは判断していない。音割れ率とCERの相関は`r=0.651`、最低confidenceとCERの相関は`r=-0.759`だった。前者は音割れ1件、後者はconfidenceを取得できた8件だけの結果である。どちらも因果関係または標準採用の根拠にはしない。詳細は[音質相関レポート](./docs/evaluation/stt-audio-quality-correlation-2026-08-26.json)に残している。
 
 これらの結果は人工音声に限られる。実際のDiscord音声、複数人通話、候補版を動かしたRaspberry PiのCPUと音声詰まりは未検証であり、本番で改善した証拠にはならない。Pi現行版で実際に取得できた約68.9時間のCPU参考値は[本文非含有snapshot](./docs/evaluation/pi-runtime-baseline-2026-08-25.json)へ分離した。RNNoiseやDeepFilterNetは、今回の入力でノイズが主要因ではなく、前処理による10%以上の改善も未確認なので追加していない。標準経路は引き続き無加工PCMである。
@@ -291,6 +304,7 @@ pnpm stt:evaluate probe-endpoint-only \
 - [2026-08-26 STT音質相関評価（本文非含有）](./docs/evaluation/stt-audio-quality-correlation-2026-08-26.json)
 - [2026-08-26 STT両言語terms評価（本文非含有）](./docs/evaluation/stt-recognition-terms-2026-08-26.json)
 - [2026-08-26 STT source限定terms評価（本文非含有）](./docs/evaluation/stt-recognition-source-terms-2026-08-26.json)
+- [2026-08-26 STT provider比較（本文非含有）](./docs/evaluation/stt-provider-comparison-2026-08-26.json)
 - [2026-08-26 endpoint-only timeout（本文非含有）](./docs/evaluation/stt-endpoint-only-failure-2026-08-26.json)
 - [公開前セキュリティ監査](./security_best_practices_report.md)
 - [環境変数の配布例](./.env.example)
