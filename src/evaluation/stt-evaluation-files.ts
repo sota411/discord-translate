@@ -7,10 +7,12 @@ import { z } from "zod";
 import {
   parseSttEvaluationManifest,
   type SttEvaluationManifest,
+  type SttEvaluationObservations,
 } from "./stt-evaluation.js";
 
 const packetTraceSchema = z.object({
   version: z.literal(1),
+  dropped_packet_count: z.number().int().nonnegative().default(0),
   packets: z.array(z.object({
     at_ms: z.number().int().nonnegative(),
     byte_length: z.number().int().positive().refine((value) => value % 2 === 0, {
@@ -43,6 +45,7 @@ export type LoadedSttEvaluationCase = {
   audioSha256: string;
   packetTraceSha256: string;
   packets: SttEvaluationPacket[];
+  droppedPacketCount: number;
   durationMs: number;
 };
 
@@ -61,6 +64,7 @@ export type SttEvaluationDatasetEvidence = {
     packet_trace_sha256: string;
     audio_bytes: number;
     packet_count: number;
+    dropped_packet_count: number;
     duration_ms: number;
   }[];
 };
@@ -135,6 +139,7 @@ export async function loadSttEvaluationDataset(
       audioSha256: hash(audio),
       packetTraceSha256: hash(packetTraceBytes),
       packets,
+      droppedPacketCount: packetTrace.dropped_packet_count,
       durationMs: lastPacket.at_ms + lastPacketDurationMs,
     });
   }
@@ -153,7 +158,31 @@ export function createSttEvaluationDatasetEvidence(
       audio_bytes: evaluationCase.packets
         .reduce((sum, packet) => sum + packet.audio.length, 0),
       packet_count: evaluationCase.packets.length,
+      dropped_packet_count: evaluationCase.droppedPacketCount,
       duration_ms: evaluationCase.durationMs,
     })),
   };
+}
+
+export function assertSttEvaluationDatasetEvidenceMatches(
+  dataset: LoadedSttEvaluationDataset,
+  observations: SttEvaluationObservations,
+): void {
+  if (!observations.dataset) {
+    throw new Error("STT評価観測結果にdatasetのSHA-256証拠がありません");
+  }
+  const expected = createSttEvaluationDatasetEvidence(dataset);
+  if (JSON.stringify(observations.dataset) !== JSON.stringify(expected)) {
+    throw new Error("STT評価観測結果のdataset証拠が指定されたmanifest・PCM・packet traceと一致しません");
+  }
+  const evidenceByCase = new Map(expected.cases.map((entry) => [entry.case_id, entry]));
+  for (const result of observations.results) {
+    const evidence = evidenceByCase.get(result.case_id);
+    if (
+      result.decoded_packet_count !== evidence?.packet_count ||
+      result.dropped_packet_count !== evidence.dropped_packet_count
+    ) {
+      throw new Error(`case「${result.case_id}」のpacket観測数がdataset証拠と一致しません`);
+    }
+  }
 }

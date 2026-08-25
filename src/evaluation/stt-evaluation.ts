@@ -9,6 +9,7 @@ const evaluationProfileSchema = z.enum([
   "endpoint",
   "context_endpoint",
 ]);
+const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
 const translationTermSchema = z.object({
   source: z.string().trim().min(1),
   target: z.string().trim().min(1),
@@ -71,6 +72,16 @@ const evaluationResultSchema = z.object({
   recognized_languages: z.array(evaluationLanguageSchema),
   finalization_latencies_ms: z.array(z.number().nonnegative()).min(1),
   cpu_percent: z.number().nonnegative(),
+  decoded_packet_count: z.number().int().positive(),
+  dropped_packet_count: z.number().int().nonnegative(),
+  configuration: z.object({
+    recognition_context_enabled: z.boolean(),
+    endpoint_mode: z.enum(["manual_early", "soniox_primary"]),
+    discord_speaking_end_delay_ms: z.number().int().nonnegative(),
+    manual_finalize_fallback_ms: z.number().int().nonnegative(),
+    soniox_max_endpoint_delay_ms: z.number().int().positive(),
+    preprocessing: z.literal("none"),
+  }).strict().optional(),
 }).strict().superRefine((value, context) => {
   if (new Set(value.recognized_languages).size !== value.recognized_languages.length) {
     context.addIssue({
@@ -80,8 +91,21 @@ const evaluationResultSchema = z.object({
     });
   }
 });
+const evaluationDatasetEvidenceSchema = z.object({
+  manifest_sha256: sha256Schema,
+  cases: z.array(z.object({
+    case_id: z.string().min(1),
+    audio_sha256: sha256Schema,
+    packet_trace_sha256: sha256Schema,
+    audio_bytes: z.number().int().positive(),
+    packet_count: z.number().int().positive(),
+    dropped_packet_count: z.number().int().nonnegative(),
+    duration_ms: z.number().nonnegative(),
+  }).strict()).min(1),
+}).strict();
 const evaluationObservationsSchema = z.object({
   version: z.literal(1),
+  dataset: evaluationDatasetEvidenceSchema.optional(),
   results: z.array(evaluationResultSchema).min(1),
 }).strict().superRefine((value, context) => {
   const keys = new Set<string>();
@@ -101,6 +125,9 @@ const evaluationObservationsSchema = z.object({
 export type SttEvaluationManifest = z.infer<typeof evaluationManifestSchema>;
 export type SttEvaluationObservations = z.infer<typeof evaluationObservationsSchema>;
 export type SttEvaluationProfile = z.infer<typeof evaluationProfileSchema>;
+export type SttEvaluationConfiguration = NonNullable<
+  SttEvaluationObservations["results"][number]["configuration"]
+>;
 type SttEvaluationCase = SttEvaluationManifest["cases"][number];
 type SttEvaluationResult = SttEvaluationObservations["results"][number];
 
@@ -127,19 +154,28 @@ type CaseScore = {
   segment_count: number;
   expected_segments: number;
   unnatural_split_count: number;
+  decoded_packet_count: number;
+  dropped_packet_count: number;
+  dropped_packet_ratio: number;
 };
 
 type ProfileScore = {
   case_count: number;
   preprocessing: "none";
+  configuration: SttEvaluationConfiguration | null;
   cer: number;
   clean_cer: number | null;
   key_term_recall: number | null;
   language_recall: number;
   language_switch_recall: number | null;
   unnatural_split_count: number;
-  latency_ms: { p50: number; p95: number };
+  latency_ms: { mean: number; p50: number; p95: number };
   cpu_percent: { mean: number; p95: number };
+  packets: {
+    decoded_mean: number;
+    dropped_mean: number;
+    dropped_ratio: number;
+  };
   cases: CaseScore[];
 };
 
@@ -262,6 +298,10 @@ function scoreCase(evaluationCase: SttEvaluationCase, result: SttEvaluationResul
     segment_count: result.segments.length,
     expected_segments: evaluationCase.expected_segments,
     unnatural_split_count: Math.max(0, result.segments.length - evaluationCase.expected_segments),
+    decoded_packet_count: result.decoded_packet_count,
+    dropped_packet_count: result.dropped_packet_count,
+    dropped_packet_ratio: result.dropped_packet_count /
+      (result.decoded_packet_count + result.dropped_packet_count),
   };
 }
 
@@ -306,9 +346,27 @@ function scoreProfile(
   const switchCases = cases.filter((score) => switchIds.has(score.case_id));
   const latencies = results.flatMap((result) => result.finalization_latencies_ms);
   const cpu = results.map((result) => result.cpu_percent);
+  const decodedPackets = results.map((result) => result.decoded_packet_count);
+  const droppedPackets = results.map((result) => result.dropped_packet_count);
+  const packetTotal = [...decodedPackets, ...droppedPackets]
+    .reduce((sum, value) => sum + value, 0);
+  const configurations = results
+    .map((result) => result.configuration)
+    .filter((configuration) => configuration !== undefined);
+  if (configurations.length !== 0 && configurations.length !== results.length) {
+    throw new Error(`profile「${results[0]?.profile ?? "unknown"}」のconfigurationが一部のcaseにありません`);
+  }
+  const configuration = configurations[0] ?? null;
+  if (
+    configuration &&
+    configurations.some((candidate) => JSON.stringify(candidate) !== JSON.stringify(configuration))
+  ) {
+    throw new Error(`profile「${results[0]?.profile ?? "unknown"}」のconfigurationがcase間で一致しません`);
+  }
   return {
     case_count: cases.length,
     preprocessing: "none",
+    configuration,
     cer: microCer(cases),
     clean_cer: cleanCases.length === 0 ? null : microCer(cleanCases),
     key_term_recall: aggregateRatio(cases, "key_terms_recalled", "key_terms_expected"),
@@ -317,8 +375,19 @@ function scoreProfile(
       ? null
       : aggregateRatio(switchCases, "languages_recalled", "languages_expected"),
     unnatural_split_count: cases.reduce((sum, score) => sum + score.unnatural_split_count, 0),
-    latency_ms: { p50: percentile(latencies, 0.5), p95: percentile(latencies, 0.95) },
+    latency_ms: {
+      mean: mean(latencies),
+      p50: percentile(latencies, 0.5),
+      p95: percentile(latencies, 0.95),
+    },
     cpu_percent: { mean: mean(cpu), p95: percentile(cpu, 0.95) },
+    packets: {
+      decoded_mean: mean(decodedPackets),
+      dropped_mean: mean(droppedPackets),
+      dropped_ratio: packetTotal === 0
+        ? 0
+        : droppedPackets.reduce((sum, value) => sum + value, 0) / packetTotal,
+    },
     cases,
   };
 }

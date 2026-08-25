@@ -41,6 +41,30 @@ void test("STTは認識精度を優先してendpoint調整をSoniox既定値へ�
   assert.equal("endpoint_sensitivity" in received, false);
 });
 
+void test("Soniox中心profileは意味判定を保ったままendpoint上限だけを500msへ設定する", () => {
+  let received: Record<string, unknown> | undefined;
+  const factory = new SonioxSttFactory(
+    {
+      realtime: {
+        stt: (input: Record<string, unknown>) => {
+          received = input;
+          return {};
+        },
+      },
+    } as never,
+    "stt-rt-v5",
+    false,
+    { maxEndpointDelayMs: 500 },
+  );
+
+  factory.create("ja-ko", "request-ref", []);
+
+  assert.ok(received);
+  assert.equal(received.max_endpoint_delay_ms, 500);
+  assert.equal("endpoint_latency_adjustment_level" in received, false);
+  assert.equal("endpoint_sensitivity" in received, false);
+});
+
 void test("3言語ペアをSonioxの双方向翻訳設定へ正しく変換する", () => {
   const received: Record<string, unknown>[] = [];
   const factory = new SonioxSttFactory(
@@ -105,7 +129,7 @@ void test("セッション開始時に固定した翻訳用語だけをSTT conte
   assert.equal("context" in (received[1] ?? {}), false);
 });
 
-void test("構造化会話contextを言語ペアごとに送り、用語をASR termsへ転用しない", () => {
+void test("認識contextを有効にするとgeneralと重複除去したASR termsを翻訳指定から分離して送る", () => {
   const received: Record<string, unknown>[] = [];
   const factory = new SonioxSttFactory(
     {
@@ -122,6 +146,7 @@ void test("構造化会話contextを言語ペアごとに送り、用語をASR t
 
   const created = factory.create("ja-ko", "request-1", [
     { source: "塾", target: "학원" },
+    { source: "학원", target: "academy" },
   ]);
 
   assert.deepEqual(received[0]?.context, {
@@ -144,11 +169,14 @@ void test("構造化会話contextを言語ペアごとに送り、用語をASR t
         value: "Natural casual conversation; preserve negation, subject, direction, beneficiary, proper nouns, and idiomatic meaning",
       },
     ],
-    translation_terms: [{ source: "塾", target: "학원" }],
+    terms: ["塾", "학원", "academy"],
+    translation_terms: [
+      { source: "塾", target: "학원" },
+      { source: "학원", target: "academy" },
+    ],
   });
   const request = received[0];
   assert.ok(request);
-  assert.equal("terms" in (request.context as Record<string, unknown>), false);
   assert.equal(
     created.initialTextCharacterCount,
     Array.from(JSON.stringify(request.context)).length,

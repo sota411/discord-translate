@@ -95,6 +95,8 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
         recognized_languages: ["ja"],
         finalization_latencies_ms: [300, 500],
         cpu_percent: 10,
+        decoded_packet_count: 10,
+        dropped_packet_count: 0,
       },
       {
         case_id: "ko-noise",
@@ -104,6 +106,8 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
         recognized_languages: ["ko"],
         finalization_latencies_ms: [400],
         cpu_percent: 12,
+        decoded_packet_count: 8,
+        dropped_packet_count: 2,
       },
       {
         case_id: "code-switch",
@@ -113,6 +117,8 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
         recognized_languages: ["ja"],
         finalization_latencies_ms: [450],
         cpu_percent: 11,
+        decoded_packet_count: 10,
+        dropped_packet_count: 0,
       },
       {
         case_id: "ja-clean-term",
@@ -122,6 +128,8 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
         recognized_languages: ["ja"],
         finalization_latencies_ms: [350],
         cpu_percent: 10.5,
+        decoded_packet_count: 10,
+        dropped_packet_count: 0,
       },
       {
         case_id: "ko-noise",
@@ -131,6 +139,8 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
         recognized_languages: ["ko"],
         finalization_latencies_ms: [450],
         cpu_percent: 12.5,
+        decoded_packet_count: 8,
+        dropped_packet_count: 2,
       },
       {
         case_id: "code-switch",
@@ -140,6 +150,8 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
         recognized_languages: ["ja", "ko"],
         finalization_latencies_ms: [600],
         cpu_percent: 11.5,
+        decoded_packet_count: 10,
+        dropped_packet_count: 0,
       },
     ],
   }));
@@ -159,8 +171,11 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
   assert.equal(report.profiles.baseline?.cer, 1 / 11);
   assert.equal(report.profiles.baseline.key_term_recall, 0);
   assert.equal(report.profiles.baseline.unnatural_split_count, 1);
+  assert.equal(report.profiles.baseline.latency_ms.mean, 412.5);
   assert.equal(report.profiles.baseline.latency_ms.p50, 400);
   assert.equal(report.profiles.baseline.latency_ms.p95, 500);
+  assert.equal(report.profiles.baseline.packets.dropped_mean, 2 / 3);
+  assert.equal(report.profiles.baseline.cases[1]?.dropped_packet_count, 2);
   assert.equal(report.profiles.context_endpoint?.cer, 0);
   assert.equal(report.profiles.context_endpoint.key_term_recall, 1);
   assert.equal(report.profiles.context_endpoint.language_recall, 1);
@@ -186,6 +201,8 @@ void test("観測結果は未知case・重複profile・本文以外の余分なf
       recognized_languages: ["ja"],
       finalization_latencies_ms: [100],
       cpu_percent: 1,
+      decoded_packet_count: 1,
+      dropped_packet_count: 0,
       raw_audio: "must-not-be-accepted",
     }],
   };

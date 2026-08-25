@@ -46,6 +46,15 @@ function generalContext(pair: LanguagePair): NonNullable<TranscriptionContext["g
   ];
 }
 
+function recognitionTerms(translationTerms: readonly TranslationTerm[]): string[] {
+  const terms = new Set<string>();
+  for (const translationTerm of translationTerms) {
+    terms.add(translationTerm.source);
+    terms.add(translationTerm.target);
+  }
+  return [...terms];
+}
+
 export function buildSonioxTranscriptionContext(
   pair: LanguagePair,
   translationTerms: readonly TranslationTerm[],
@@ -53,6 +62,9 @@ export function buildSonioxTranscriptionContext(
 ): BuiltSonioxTranscriptionContext {
   const context: TranscriptionContext = {
     ...(includeGeneral ? { general: generalContext(pair) } : {}),
+    ...(includeGeneral && translationTerms.length > 0
+      ? { terms: recognitionTerms(translationTerms) }
+      : {}),
     ...(translationTerms.length > 0
       ? { translation_terms: translationTerms.map((entry) => ({ ...entry })) }
       : {}),
