@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
   mkdtempSync,
   mkdirSync,
@@ -50,8 +51,9 @@ async function withServer(
   }
 }
 
-function writeDataset(): string {
-  const directory = path.join(temporaryDirectory, "dataset");
+function writeDataset(
+  directory = path.join(temporaryDirectory, "dataset"),
+): string {
   mkdirSync(directory, { recursive: true });
   writeFileSync(path.join(directory, "sample.pcm"), Buffer.alloc(1_920));
   writeFileSync(path.join(directory, "sample.packets.json"), JSON.stringify({
@@ -377,6 +379,125 @@ void test("run CLIはendpoint timing実験の既定batchをA〜Dに限定する"
   assert.notEqual(rejected.status, 0);
   assert.match(rejected.stderr, /endpoint_only_1000.*probe-endpoint-only/u);
   assert.equal(existsSync(path.join(outputDirectory, "rejected-observations.json")), false);
+});
+
+void test("run CLIは400ms fallbackを固定してendpoint latency level 0と1だけを比較する", async () => {
+  const outputDirectory = path.join(temporaryDirectory, "endpoint-latency-level-cli-output");
+  const observationsPath = path.join(outputDirectory, "observations.json");
+  const reportPath = path.join(outputDirectory, "report.json");
+  const configurations: Record<string, unknown>[] = [];
+  await withServer((socket) => {
+    socket.on("message", (data, isBinary) => {
+      if (isBinary) {
+        socket.send(JSON.stringify({
+          tokens: [
+            {
+              text: "ヴァロラント",
+              is_final: true,
+              confidence: 0.95,
+              language: "ja",
+              translation_status: "original",
+              start_ms: 0,
+              end_ms: 20,
+            },
+            { text: "<end>", is_final: true },
+          ],
+          final_audio_proc_ms: 20,
+          total_audio_proc_ms: 20,
+        }));
+        return;
+      }
+      const text = rawDataToUtf8(data);
+      if (text.length === 0) {
+        socket.send(JSON.stringify({
+          tokens: [],
+          final_audio_proc_ms: 20,
+          total_audio_proc_ms: 20,
+          finished: true,
+        }));
+        return;
+      }
+      const message = JSON.parse(text) as Record<string, unknown>;
+      if (message.api_key !== undefined) configurations.push(message);
+    });
+  }, async (url) => {
+    const result = await runEvaluationCli([
+      "run",
+      "--manifest",
+      writeDataset(),
+      "--observations-output",
+      observationsPath,
+      "--output",
+      reportPath,
+      "--experiment",
+      "endpoint_latency_level",
+      "--stt-websocket-url",
+      url,
+    ], {
+      ...process.env,
+      SONIOX_API_KEY: "do-not-leak-api-key",
+      SONIOX_STT_MODEL: "stt-rt-v5",
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    const standardOutput = JSON.parse(result.stdout) as {
+      experiment: string;
+      profiles: string[];
+    };
+    assert.equal(standardOutput.experiment, "endpoint_latency_level");
+    assert.deepEqual(standardOutput.profiles, [
+      "baseline",
+      "endpoint_fallback_400",
+      "endpoint_fallback_400_level1",
+    ]);
+    assert.doesNotMatch(`${result.stdout}${result.stderr}`, /do-not-leak-api-key|ヴァロラント/u);
+  });
+
+  const observations = JSON.parse(readFileSync(observationsPath, "utf8")) as {
+    experiment: string;
+    results: {
+      profile: string;
+      configuration: {
+        manual_finalize_fallback_ms: number | null;
+        soniox_endpoint_latency_adjustment_level: number | null;
+      };
+    }[];
+  };
+  const report = JSON.parse(readFileSync(reportPath, "utf8")) as {
+    experiment: string;
+    profile_mapping: Record<string, string>;
+  };
+  assert.equal(observations.experiment, "endpoint_latency_level");
+  assert.deepEqual(observations.results.map((entry) => entry.profile), [
+    "baseline",
+    "endpoint_fallback_400",
+    "endpoint_fallback_400_level1",
+  ]);
+  assert.deepEqual(
+    observations.results.map((entry) => entry.configuration.manual_finalize_fallback_ms),
+    [100, 300, 300],
+  );
+  assert.deepEqual(
+    observations.results.map(
+      (entry) => entry.configuration.soniox_endpoint_latency_adjustment_level,
+    ),
+    [null, 0, 1],
+  );
+  assert.deepEqual(report.profile_mapping, {
+    A: "baseline",
+    B: "endpoint_fallback_400",
+    C: "endpoint_fallback_400_level1",
+  });
+  assert.equal(report.experiment, "endpoint_latency_level");
+
+  assert.equal(configurations.length, 3);
+  assert.equal("endpoint_latency_adjustment_level" in (configurations[0] ?? {}), false);
+  assert.equal(configurations[1]?.endpoint_latency_adjustment_level, 0);
+  assert.equal(configurations[2]?.endpoint_latency_adjustment_level, 1);
+  for (const configuration of configurations.slice(1)) {
+    assert.equal(configuration.max_endpoint_delay_ms, 1_000);
+    assert.equal(configuration.endpoint_sensitivity, 0);
+  }
 });
 
 void test("endpoint候補でmanual fallbackが勝った境界を記録し、Soniox中心とは判定しない", async () => {
@@ -966,8 +1087,56 @@ void test("run CLIは本文入りobservationsを.data/stt-eval配下へ0600で�
       assert.equal(result.status, 0, result.stderr);
     });
     assert.equal(statSync(observationsPath).mode & 0o777, 0o600);
+    assert.equal(statSync(outputDirectory).mode & 0o777, 0o700);
   } finally {
     rmSync(outputDirectory, { recursive: true, force: true });
+  }
+});
+
+void test("run CLIは.data/stt-eval内のgroup・otherが読める入力を接続前に拒否する", async () => {
+  const datasetDirectory = path.join(
+    process.cwd(),
+    ".data",
+    "stt-eval",
+    "private-input-permission-integration",
+  );
+  const observationsPath = path.join(datasetDirectory, "observations.json");
+  const reportPath = path.join(temporaryDirectory, "private-input-permission-report.json");
+  rmSync(datasetDirectory, { recursive: true, force: true });
+  mkdirSync(datasetDirectory, { recursive: true, mode: 0o700 });
+  const manifestPath = writeDataset(datasetDirectory);
+  chmodSync(manifestPath, 0o600);
+  chmodSync(path.join(datasetDirectory, "sample.packets.json"), 0o600);
+  chmodSync(path.join(datasetDirectory, "sample.pcm"), 0o644);
+  let connectionCount = 0;
+  try {
+    await withServer((socket) => {
+      connectionCount += 1;
+      handleSuccessfulSttConnection(socket);
+    }, async (url) => {
+      const result = await runEvaluationCli([
+        "run",
+        "--manifest",
+        manifestPath,
+        "--observations-output",
+        observationsPath,
+        "--output",
+        reportPath,
+        "--stt-websocket-url",
+        url,
+      ], {
+        ...process.env,
+        SONIOX_API_KEY: "do-not-leak-api-key",
+        SONIOX_STT_MODEL: "stt-rt-v5",
+      });
+
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /PCM.*0600/u);
+    });
+    assert.equal(connectionCount, 0);
+    assert.equal(existsSync(observationsPath), false);
+  } finally {
+    rmSync(datasetDirectory, { recursive: true, force: true });
   }
 });
 

@@ -546,6 +546,68 @@ void test("追跡するendpoint比較は本文を含めず、不採用gateとtim
   assert.equal(failure.observations_written, false);
 });
 
+void test("追跡するendpoint latency level比較は単一変数の実測結果と不採用根拠を保持する", () => {
+  const reportText = readFileSync(
+    "docs/evaluation/stt-endpoint-latency-level-2026-08-26.json",
+    "utf8",
+  );
+  const forbidden = /"(?:transcript|reference|translation_terms|api_key|raw_audio|guild_id|user_id|trace_id|session_id)"/u;
+  assert.doesNotMatch(reportText, forbidden);
+
+  const report = JSON.parse(reportText) as {
+    experiment: string;
+    dataset: { manifest_sha256: string; cases: unknown[] };
+    profile_mapping: Record<string, string>;
+    profiles: Record<string, {
+      trial_count: number;
+      observation_count: number;
+      unnatural_split_count: number;
+      configuration: {
+        manual_finalize_fallback_ms: number | null;
+        soniox_endpoint_latency_adjustment_level: number | null;
+      };
+    }>;
+    comparisons: Record<string, { gates: Record<string, string> }>;
+  };
+  assert.equal(report.experiment, "endpoint_latency_level");
+  assert.match(report.dataset.manifest_sha256, /^[a-f0-9]{64}$/u);
+  assert.equal(report.dataset.cases.length, 10);
+  assert.deepEqual(report.profile_mapping, {
+    A: "baseline",
+    B: "endpoint_fallback_400",
+    C: "endpoint_fallback_400_level1",
+  });
+  assert.deepEqual(Object.keys(report.profiles), [
+    "baseline",
+    "endpoint_fallback_400",
+    "endpoint_fallback_400_level1",
+  ]);
+  assert.ok(Object.values(report.profiles).every((profile) => (
+    profile.trial_count === 3 && profile.observation_count === 30
+  )));
+
+  const baseline = report.profiles.baseline;
+  const level0 = report.profiles.endpoint_fallback_400;
+  const level1 = report.profiles.endpoint_fallback_400_level1;
+  assert.ok(baseline);
+  assert.ok(level0);
+  assert.ok(level1);
+  assert.equal(level0.configuration.manual_finalize_fallback_ms, 300);
+  assert.equal(level1.configuration.manual_finalize_fallback_ms, 300);
+  assert.equal(level0.configuration.soniox_endpoint_latency_adjustment_level, 0);
+  assert.equal(level1.configuration.soniox_endpoint_latency_adjustment_level, 1);
+  assert.ok(level1.unnatural_split_count > level0.unnatural_split_count);
+  assert.ok(level0.unnatural_split_count > baseline.unnatural_split_count);
+
+  const comparison = report.comparisons.endpoint_fallback_400_level1;
+  assert.ok(comparison);
+  assert.equal(comparison.gates.overall_cer, "pass");
+  assert.equal(comparison.gates.latency, "pass");
+  assert.equal(comparison.gates.semantic_endpoint, "pass");
+  assert.equal(comparison.gates.key_terms, "fail");
+  assert.equal(comparison.gates.pi_runtime, "not_evaluated");
+});
+
 void test("追跡するPi runtime snapshotは識別子を含めず候補gateを未評価とする", () => {
   const snapshot = readFileSync(
     "docs/evaluation/pi-runtime-baseline-2026-08-25.json",

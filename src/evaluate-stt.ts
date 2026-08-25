@@ -17,6 +17,7 @@ import {
   assertSttEvaluationDatasetEvidenceMatches,
   createSttEvaluationDatasetEvidence,
   loadSttEvaluationDataset,
+  type LoadedSttEvaluationDataset,
 } from "./evaluation/stt-evaluation-files.js";
 import {
   runSttEndpointOnlyProbe,
@@ -32,7 +33,7 @@ import {
 } from "./evaluation/stt-evaluation.js";
 
 const usage = `使用方法:
-  pnpm stt:evaluate run --manifest <manifest.json> --observations-output <observations.json> --output <report.json> [--experiment <context_endpoint|endpoint_timing|context_endpoint_400>] [--profiles <comma-separated>] [--stt-websocket-url <wss://...>] [--trials <1-10>]
+  pnpm stt:evaluate run --manifest <manifest.json> --observations-output <observations.json> --output <report.json> [--experiment <context_endpoint|endpoint_timing|context_endpoint_400|endpoint_latency_level>] [--profiles <comma-separated>] [--stt-websocket-url <wss://...>] [--trials <1-10>]
   pnpm stt:evaluate probe-endpoint-only --manifest <manifest.json> --required-case <case-id> --output <summary.json> [--stt-websocket-url <wss://...>] [--trials 3] [--boundary-timeout-ms <milliseconds>]
   pnpm stt:evaluate score --manifest <manifest.json> --observations <observations.json> --output <report.json>
 
@@ -83,7 +84,7 @@ async function resolveSafeOutputPaths(
   ));
   const canonicalOutputPaths: string[] = [];
   for (const outputPath of outputPaths) {
-    await mkdir(path.dirname(outputPath), { recursive: true });
+    await mkdir(path.dirname(outputPath), { recursive: true, mode: 0o700 });
     const canonicalParent = await realpath(path.dirname(outputPath));
     const canonicalOutputPath = path.join(canonicalParent, path.basename(outputPath));
     try {
@@ -117,6 +118,62 @@ function isWithinPath(parentPath: string, candidatePath: string): boolean {
   );
 }
 
+async function assertOwnerOnlyDirectoryChain(
+  privateRoot: string,
+  directoryPath: string,
+): Promise<void> {
+  let currentPath = directoryPath;
+  while (isWithinPath(privateRoot, currentPath)) {
+    const status = await lstat(currentPath);
+    if (!status.isDirectory() || (status.mode & 0o077) !== 0) {
+      throw new Error(
+        `STT評価のprivate directory「${currentPath}」は所有者だけが利用できる0700にしてください`,
+      );
+    }
+    if (currentPath === privateRoot) return;
+    currentPath = path.dirname(currentPath);
+  }
+}
+
+async function assertPrivateRepositoryFiles(
+  files: readonly { filePath: string; label: string }[],
+): Promise<void> {
+  const canonicalRepositoryRoot = await realpath(repositoryRoot);
+  const privateRoot = path.join(canonicalRepositoryRoot, ".data", "stt-eval");
+  for (const file of files) {
+    const canonicalFilePath = await realpath(file.filePath);
+    if (!isWithinPath(canonicalRepositoryRoot, canonicalFilePath)) continue;
+    if (!isWithinPath(privateRoot, canonicalFilePath)) {
+      throw new Error(
+        `${file.label}はリポジトリ外または.data/stt-eval/配下へ置いてください`,
+      );
+    }
+    await assertOwnerOnlyDirectoryChain(privateRoot, path.dirname(canonicalFilePath));
+    const status = await lstat(canonicalFilePath);
+    if (!status.isFile() || (status.mode & 0o077) !== 0) {
+      throw new Error(
+        `${file.label}「${canonicalFilePath}」は所有者だけが読み書きできる0600にしてください`,
+      );
+    }
+  }
+}
+
+async function assertPrivateDatasetPaths(dataset: LoadedSttEvaluationDataset): Promise<void> {
+  await assertPrivateRepositoryFiles([
+    { filePath: dataset.manifestPath, label: "STT評価manifest" },
+    ...dataset.cases.flatMap((evaluationCase) => [
+      {
+        filePath: evaluationCase.audioPath,
+        label: `case「${evaluationCase.definition.id}」のPCM`,
+      },
+      {
+        filePath: evaluationCase.packetTracePath,
+        label: `case「${evaluationCase.definition.id}」のpacket trace`,
+      },
+    ]),
+  ]);
+}
+
 async function assertPrivateObservationsPath(observationsPath: string): Promise<void> {
   const canonicalRepositoryRoot = await realpath(repositoryRoot);
   if (!isWithinPath(canonicalRepositoryRoot, observationsPath)) return;
@@ -126,6 +183,7 @@ async function assertPrivateObservationsPath(observationsPath: string): Promise<
       "本文を含むobservations-outputはリポジトリ外または.data/stt-eval/配下を指定してください",
     );
   }
+  await assertOwnerOnlyDirectoryChain(privateOutputRoot, path.dirname(observationsPath));
 }
 
 function sonioxSttWebSocketUrl(override: string | undefined): string {
@@ -188,6 +246,7 @@ async function run(args: readonly string[]): Promise<void> {
   if (!model) throw new Error("SONIOX_STT_MODELが設定されていません");
 
   const dataset = await loadSttEvaluationDataset(manifestPath);
+  await assertPrivateDatasetPaths(dataset);
   const protectedPaths = new Set([
     dataset.manifestPath,
     ...dataset.cases.flatMap((evaluationCase) => [
@@ -255,6 +314,7 @@ async function probeEndpointOnly(args: readonly string[]): Promise<void> {
   if (!model) throw new Error("SONIOX_STT_MODELが設定されていません");
 
   const dataset = await loadSttEvaluationDataset(manifestPath);
+  await assertPrivateDatasetPaths(dataset);
   const protectedPaths = new Set([
     dataset.manifestPath,
     ...dataset.cases.flatMap((evaluationCase) => [
@@ -310,6 +370,11 @@ async function score(args: readonly string[]): Promise<void> {
   ]);
 
   const dataset = await loadSttEvaluationDataset(manifestPath);
+  await assertPrivateDatasetPaths(dataset);
+  await assertPrivateRepositoryFiles([{
+    filePath: path.resolve(observationsPath),
+    label: "STT評価observations",
+  }]);
   for (const evaluationCase of dataset.cases) {
     protectedPaths.add(evaluationCase.audioPath);
     protectedPaths.add(evaluationCase.packetTracePath);

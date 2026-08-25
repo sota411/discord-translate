@@ -7,6 +7,7 @@ const evaluationExperimentSchema = z.enum([
   "context_endpoint",
   "endpoint_timing",
   "context_endpoint_400",
+  "endpoint_latency_level",
 ]);
 const evaluationProfileSchema = z.enum([
   "baseline",
@@ -18,6 +19,7 @@ const evaluationProfileSchema = z.enum([
   "endpoint_fallback_800",
   "endpoint_only_1000",
   "context_endpoint_fallback_400",
+  "endpoint_fallback_400_level1",
 ]);
 const sttEvaluationConfigurationSchema = z.object({
   recognition_context_enabled: z.boolean(),
@@ -129,6 +131,17 @@ export const sttEvaluationProfileConfigurations = {
     manual_finalize_fallback_ms: 300,
     soniox_max_endpoint_delay_ms: 1_000,
     soniox_endpoint_latency_adjustment_level: 0,
+    soniox_endpoint_sensitivity: 0,
+    endpoint_silence_chunk_ms: 20,
+    preprocessing: "none",
+  },
+  endpoint_fallback_400_level1: {
+    recognition_context_enabled: false,
+    endpoint_mode: "soniox_primary",
+    discord_speaking_end_delay_ms: 100,
+    manual_finalize_fallback_ms: 300,
+    soniox_max_endpoint_delay_ms: 1_000,
+    soniox_endpoint_latency_adjustment_level: 1,
     soniox_endpoint_sensitivity: 0,
     endpoint_silence_chunk_ms: 20,
     preprocessing: "none",
@@ -299,6 +312,11 @@ export const sttEvaluationExperimentProfileMappings = {
     A: "baseline",
     B: "endpoint_fallback_400",
     C: "context_endpoint_fallback_400",
+  },
+  endpoint_latency_level: {
+    A: "baseline",
+    B: "endpoint_fallback_400",
+    C: "endpoint_fallback_400_level1",
   },
 } as const satisfies Readonly<Record<
   SttEvaluationExperiment,

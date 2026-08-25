@@ -645,6 +645,17 @@ pnpm stt:evaluate probe-endpoint-only \
 
 400 ms候補の固有名詞低下を補えるか確かめるため、`context.general`と`context.terms`も組み合わせて別の3試行を行った。全体CERはA比27.4%改善し、p95追加遅延は+159 msだった。一方、固有名詞再現率は16.7ポイント下がり、Soniox endpointが手動fallbackより先に確定した割合も30%に留まった。認識contextを足しても不採用gateは解消しなかった。case・trial別指標は[認識context・400 msレポート](./evaluation/stt-context-endpoint-400-2026-08-26.json)に残す。
 
+#### level 1はCERを改善したが、固有名詞を改善できず分割も増えた
+
+Issue #9で候補としていた`endpoint_latency_adjustment_level`の0と1を、同じmanifestで追加比較した。Aは現行条件、BとCは手動fallbackの合計時間を400 msに固定した。CはBのlevelだけを1へ変更し、`max_endpoint_delay_ms=1000`、`endpoint_sensitivity=0`、20 ms単位の無音送信は変えていない。各条件を3試行し、30観測/profileを集計した。
+
+| 候補 | CER相対改善 | 固有名詞再現率の差 | 全体の言語再現率 | p95追加遅延 | 不自然な分割 | Soniox endpoint比率 | 判定 |
+|---|---:|---:|---:|---:|---:|---:|---|
+| B（level 0） | 42.1% | -16.7ポイント | 75.8% | +170 ms | 6件 | 52.8% | 固有名詞で不採用 |
+| C（level 1） | 58.8% | 0ポイント | 60.6% | +177 ms | 9件 | 56.4% | 固有名詞で不採用。分割も増加 |
+
+Aの全体CERは2.055、固有名詞再現率は66.7%、全体の言語再現率は63.6%だった。不自然な分割は0件である。CはCERと遅延のgateを通り、コードスイッチとSoniox endpoint比率も基準内だった。しかし、固有名詞再現率はAより改善していない。全体の言語再現率もAより3.0ポイント低く、不自然な分割は9件へ増えた。候補版をPiへ配備していないため、PiのCPUと音声詰まりは`not_evaluated`である。以上からlevel 1は本番へ採用せず、現行の発話確定値を維持する。case・trial別指標と入力SHA-256は[endpoint latency levelレポート](./evaluation/stt-endpoint-latency-level-2026-08-26.json)に残す。
+
 同じAでも、発話確定時間の実験ではCER 1.733、認識contextとの組み合わせ実験では1.777だった。Soniox応答には試行間の振れがあるため、異なる実行の絶対値同士は採否に使わず、それぞれ同時に測ったAとの差だけを使う。候補はいずれもPiへ配備していないため、PiのCPUと音声詰まりのgateは引き続き`not_evaluated`である。本番設定、`SONIOX_GENERAL_CONTEXT_ENABLED=false`、無加工PCMの経路は変更しない。
 
 Pi現行版`755561f6a1e2095b51e5db8e7e84e2353d77c5c5`では、72時間を要求した集計窓のうち、実際に取得できた約68.9時間の`runtime_health`で、STT結果があった30秒窓190件のprocess CPU p95が10.05%、最大が15.06%だった。一方、Issue #9の候補版はPiへ配備していない。event loop最大値942.146 msと`voice_packet_dropped` 5件も観測しており、ログだけでは可聴の音声詰まりを判定できない。このためPiと音声詰まりの採用gateは`not_evaluated`のままとする。集計条件と限界は[Pi現行版snapshot](./evaluation/pi-runtime-baseline-2026-08-25.json)に残す。
