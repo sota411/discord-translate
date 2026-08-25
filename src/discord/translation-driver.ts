@@ -36,6 +36,10 @@ import {
 import { ApplicationError } from "../domain/application-error.js";
 import type { TranslationLatencyRecorder } from "../observability/translation-latency.js";
 import {
+  createTranslationQualityObservation,
+  type TranslationQualityObservation,
+} from "../observability/translation-quality.js";
+import {
   sttFinalizeFlowStage,
   type TranslationFlowObserver,
 } from "../observability/translation-flow.js";
@@ -52,7 +56,10 @@ import { StreamingUtterance } from "../translation/streaming-utterance.js";
 import type { InterimUtterance } from "../translation/token-assembler.js";
 import { UtteranceProcessor } from "../translation/utterance-processor.js";
 import type { UsageLedger } from "../usage/usage-ledger.js";
-import { DiscordCaptionGateway } from "./caption-gateway.js";
+import {
+  DiscordCaptionGateway,
+  type CaptionDeliveryObservation,
+} from "./caption-gateway.js";
 import { DiscordPlaybackGateway } from "./playback-gateway.js";
 import { DiscordSessionPresentation } from "./session-presentation.js";
 import { UnsupportedLanguageWarning } from "./unsupported-language-warning.js";
@@ -82,6 +89,9 @@ type DiscordTranslationDriverOptions = {
   tts: TtsGateway;
   latency: TranslationLatencyRecorder;
   observeFlow?: TranslationFlowObserver;
+  observeQuality?: (observation: TranslationQualityObservation) => void;
+  observeCaptionDelivery?: (observation: CaptionDeliveryObservation) => void;
+  observeSttResult?: () => void;
   onFailure: RuntimeFailureHandler;
   onWarning?: (guildId: string, operation: string, cause: unknown) => void;
 };
@@ -164,6 +174,9 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
   readonly #tts: TtsGateway;
   readonly #latency: TranslationLatencyRecorder;
   readonly #observeFlow: TranslationFlowObserver;
+  readonly #observeQuality: (observation: TranslationQualityObservation) => void;
+  readonly #observeCaptionDelivery: (observation: CaptionDeliveryObservation) => void;
+  readonly #observeSttResult: () => void;
   readonly #onFailure: RuntimeFailureHandler;
   readonly #onWarning: (guildId: string, operation: string, cause: unknown) => void;
 
@@ -175,6 +188,9 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
     this.#tts = options.tts;
     this.#latency = options.latency;
     this.#observeFlow = options.observeFlow ?? (() => undefined);
+    this.#observeQuality = options.observeQuality ?? (() => undefined);
+    this.#observeCaptionDelivery = options.observeCaptionDelivery ?? (() => undefined);
+    this.#observeSttResult = options.observeSttResult ?? (() => undefined);
     this.#onFailure = (guildId, reason, publicMessage, cause) => {
       options.onFailure(guildId, reason, publicMessage, cause);
     };
@@ -237,6 +253,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
         pair: session.pair,
         participantDisplayNames: this.#participantDisplayNames(guild, participantIds),
         playbackMode: session.playbackMode,
+        ttsSpeed: session.ttsSpeed,
         audioEnabled: session.audioEnabled,
         queueWarningMs: conversationAudioMaxDelayMs,
         startedAt: session.startedAt,
@@ -259,6 +276,9 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
         tts: this.#tts,
         latency: this.#latency,
         observeFlow: this.#observeFlow,
+        observeQuality: this.#observeQuality,
+        observeCaptionDelivery: this.#observeCaptionDelivery,
+        observeSttResult: this.#observeSttResult,
         onFailure: this.#onFailure,
         onWarning: this.#onWarning,
       });
@@ -310,6 +330,9 @@ export type TranslationRuntimeOptions = {
   tts: TtsGateway;
   latency: TranslationLatencyRecorder;
   observeFlow: TranslationFlowObserver;
+  observeQuality?: (observation: TranslationQualityObservation) => void;
+  observeCaptionDelivery: (observation: CaptionDeliveryObservation) => void;
+  observeSttResult?: () => void;
   onFailure: RuntimeFailureHandler;
   onWarning: (guildId: string, operation: string, cause: unknown) => void;
 };
@@ -329,6 +352,8 @@ export class DiscordTranslationRuntime implements SessionRuntime {
   readonly #tts: TtsGateway;
   readonly #latency: TranslationLatencyRecorder;
   readonly #observeFlow: TranslationFlowObserver;
+  readonly #observeQuality: (observation: TranslationQualityObservation) => void;
+  readonly #observeSttResult: () => void;
   readonly #onFailure: RuntimeFailureHandler;
   readonly #onWarning: (guildId: string, operation: string, cause: unknown) => void;
   readonly #player: AudioPlayer;
@@ -362,6 +387,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       onClosedOperationSettled: () => {
         this.#presentation.rearchiveAfterClose();
       },
+      observeDelivery: options.observeCaptionDelivery,
     });
     this.#connection = options.connection;
     this.#config = options.config;
@@ -371,6 +397,8 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     this.#tts = options.tts;
     this.#latency = options.latency;
     this.#observeFlow = options.observeFlow;
+    this.#observeQuality = options.observeQuality ?? (() => undefined);
+    this.#observeSttResult = options.observeSttResult ?? (() => undefined);
     this.#onFailure = (guildId, reason, publicMessage, cause) => {
       options.onFailure(guildId, reason, publicMessage, cause);
     };
@@ -390,6 +418,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       tts: options.tts,
       maxQueueWaitMs: options.config.limits.playbackQueueMaxMs,
       playbackMode: options.session.playbackMode,
+      ttsSpeed: options.session.ttsSpeed,
       maxSourceDurationMs: options.config.limits.utteranceMaxSourceSeconds * 1000,
       maxInputCharacters: options.config.limits.ttsMaxInputCharacters,
       latency: options.latency,
@@ -468,6 +497,11 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     if (mode !== "accuracy") this.#accuracyDelayWarning = undefined;
     this.#processor.setPlaybackMode(mode);
     await this.#refreshPresentation({ playbackMode: mode });
+  }
+
+  public async setTtsSpeed(speed: number): Promise<void> {
+    this.#processor.setTtsSpeed(speed);
+    await this.#refreshPresentation({ ttsSpeed: speed });
   }
 
   public async setAudioEnabled(enabled: boolean): Promise<void> {
@@ -764,6 +798,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     ) {
       return;
     }
+    this.#observeSttResult();
     try {
       const fingerprint = transcriptFingerprint(result);
       if (fingerprint !== undefined && fingerprint !== speaker.lastTranscriptFingerprint) {
@@ -825,6 +860,16 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       }
       const utteranceId = speaker.turnId;
       speaker.turnId = randomUUID();
+      this.#observeQuality(createTranslationQualityObservation({
+        traceId: utteranceId,
+        sourceLanguage: finalized.sourceLanguage,
+        targetLanguage: finalized.targetLanguage,
+        originalText: finalized.originalText,
+        translatedText: finalized.translatedText,
+        ...(finalized.originalConfidence
+          ? { originalConfidence: finalized.originalConfidence }
+          : {}),
+      }));
       this.#latency.start(
         utteranceId,
         speaker.lastAudioAtMonotonic ?? performance.now(),
@@ -958,6 +1003,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
   async #refreshPresentation(
     override: Partial<{
       playbackMode: import("../session/session-settings.js").PlaybackMode;
+      ttsSpeed: number;
       audioEnabled: boolean;
       queueWaitMs: number;
     }> = {},
@@ -984,6 +1030,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     await this.#presentation.update({
       participantDisplayNames,
       playbackMode,
+      ttsSpeed: override.ttsSpeed ?? this.#session.ttsSpeed,
       audioEnabled: override.audioEnabled ?? this.#session.audioEnabled,
       queueWaitMs,
     });

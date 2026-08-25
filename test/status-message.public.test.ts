@@ -17,6 +17,7 @@ void test("現在のセッション状態を利用者向けの全項目入りメ
     startedAt: new Date("2026-08-21T02:03:04Z"),
     participantIds: ["user-1", "user-2"],
     playbackMode: "conversation",
+    ttsSpeed: 1.3,
     audioEnabled: true,
     captionFailurePolicy: "continue_audio",
     captionThreadId: "thread-1",
@@ -29,6 +30,7 @@ void test("現在のセッション状態を利用者向けの全項目入りメ
     "参加者: Sota / 민지",
     "経過時間: 1:02:03",
     "モード: 会話優先",
+    "読み上げ速度: 1.3倍",
     "音声: 有効",
     "字幕スレッド: <#thread-1>",
   ].join("\n"));
@@ -48,6 +50,7 @@ void test("接続中で字幕スレッド未作成の場合も未確定状態を
     startedAt: new Date("2026-08-21T03:05:00Z"),
     participantIds: ["user-1"],
     playbackMode: "accuracy",
+    ttsSpeed: 0.7,
     audioEnabled: false,
     captionFailurePolicy: "continue_audio",
   }, ["Sota"], new Date("2026-08-21T03:05:07Z"));

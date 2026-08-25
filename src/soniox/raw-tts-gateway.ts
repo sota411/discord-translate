@@ -455,7 +455,7 @@ export class RawSonioxTtsGateway implements TtsGateway {
         voice: input.voiceId,
         audio_format: "pcm_s16le",
         sample_rate: 48_000,
-        speed: this.#speed,
+        speed: input.speed ?? this.#speed,
         reduce_silence: true,
         stream_id: input.utteranceId,
         client_reference_id: requestRef,

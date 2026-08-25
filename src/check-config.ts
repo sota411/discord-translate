@@ -3,7 +3,10 @@ import { loadTranslationTerms } from "./config/translation-terms.js";
 
 try {
   const config = loadConfig();
-  loadTranslationTerms(config.storage.translationTermsPath);
+  loadTranslationTerms(
+    config.storage.translationTermsPath,
+    config.soniox.generalContextEnabled,
+  );
   console.log("設定は有効です。Botを起動できます。");
 } catch (error) {
   if (error instanceof ConfigError) {

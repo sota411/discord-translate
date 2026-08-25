@@ -438,9 +438,11 @@ class MissingCaptions implements CaptionGateway {
 
 class RecordingTts implements TtsGateway {
   public readonly started: string[] = [];
+  public readonly speeds: (number | undefined)[] = [];
 
-  public synthesize(input: { text: string }): Promise<SynthesizedSpeech> {
+  public synthesize(input: { text: string; speed?: number }): Promise<SynthesizedSpeech> {
     this.started.push(input.text);
+    this.speeds.push(input.speed);
     return Promise.resolve({
       audio: Readable.from([Buffer.from([1, 0, 2, 0])]),
       completed: Promise.resolve(),
@@ -448,6 +450,34 @@ class RecordingTts implements TtsGateway {
     });
   }
 }
+
+void test("実行中に変えた読み上げ速度を次に生成するTTSリクエストから反映する", async () => {
+  const captions = new RecordingCaptions();
+  const tts = new RecordingTts();
+  const playback = new BlockingPlayback();
+  const processor = new UtteranceProcessor({
+    captions,
+    tts,
+    playback,
+    ttsSpeed: 1.15,
+    maxQueueWaitMs: 10_000,
+    maxSourceDurationMs: 30_000,
+    maxInputCharacters: 300,
+    onFatal: (error) => assert.fail(error.message),
+  });
+
+  processor.enqueue(queuedUtterance("u-speed-1", "一つ目", "첫 번째"));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  processor.setTtsSpeed(1.3);
+  processor.enqueue(queuedUtterance("u-speed-2", "二つ目", "두 번째"));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(tts.speeds, [1.15, 1.3]);
+  playback.releases.shift()?.();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  playback.releases.shift()?.();
+  await processor.whenIdle();
+});
 
 class SecondSynthesisFailsTts implements TtsGateway {
   #calls = 0;

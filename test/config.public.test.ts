@@ -39,6 +39,24 @@ void test("TTS速度を省略した場合は1.15倍を製品既定値にする",
   assert.equal(config.soniox.ttsSpeed, 1.15);
 });
 
+void test("構造化会話contextは明示的に有効化し、不正な真偽値を拒否する", () => {
+  assert.equal(loadConfig(
+    validEnv({ SONIOX_GENERAL_CONTEXT_ENABLED: undefined }),
+    new Date("2026-08-15T00:00:00Z"),
+  ).soniox.generalContextEnabled, false);
+  assert.equal(loadConfig(
+    validEnv({ SONIOX_GENERAL_CONTEXT_ENABLED: "true" }),
+    new Date("2026-08-15T00:00:00Z"),
+  ).soniox.generalContextEnabled, true);
+  assert.throws(
+    () => loadConfig(
+      validEnv({ SONIOX_GENERAL_CONTEXT_ENABLED: "1" }),
+      new Date("2026-08-15T00:00:00Z"),
+    ),
+    /SONIOX_GENERAL_CONTEXT_ENABLED/u,
+  );
+});
+
 void test("同時話者数を3人に設定できる", () => {
   const config = loadConfig(
     validEnv({ MAX_SPEAKERS_PER_SESSION: "3" }),
@@ -159,7 +177,7 @@ void test("翻訳用語JSONは対応ペア、空文字、重複、context上限�
     "ja-ko": [{ source: "VALORANT", target: "발로란트" }],
     "ja-en": [],
     "ko-en": [],
-  }))["ja-ko"], [{ source: "VALORANT", target: "발로란트" }]);
+  }), false)["ja-ko"], [{ source: "VALORANT", target: "발로란트" }]);
 
   assert.throws(
     () => parseTranslationTerms(JSON.stringify({
@@ -169,7 +187,7 @@ void test("翻訳用語JSONは対応ペア、空文字、重複、context上限�
       ],
       "ja-en": [],
       "ko-en": [],
-    })),
+    }), false),
     /ja-ko.*重複/u,
   );
   assert.throws(
@@ -177,7 +195,7 @@ void test("翻訳用語JSONは対応ペア、空文字、重複、context上限�
       "ja-ko": [{ source: "", target: "x" }],
       "ja-en": [],
       "ko-en": [],
-    })),
+    }), false),
     /source/u,
   );
   assert.throws(
@@ -185,8 +203,22 @@ void test("翻訳用語JSONは対応ペア、空文字、重複、context上限�
       "ja-ko": [{ source: "x".repeat(10_001), target: "y" }],
       "ja-en": [],
       "ko-en": [],
-    })),
+    }), false),
     /10,000/u,
+  );
+});
+
+void test("general context無効時は送信しない固定文を用語上限へ含めない", () => {
+  const json = JSON.stringify({
+    "ja-ko": [{ source: "term", target: "x".repeat(9_400) }],
+    "ja-en": [],
+    "ko-en": [],
+  });
+
+  assert.doesNotThrow(() => parseTranslationTerms(json, false));
+  assert.throws(
+    () => parseTranslationTerms(json, true),
+    /ja-ko.*10,000/u,
   );
 });
 

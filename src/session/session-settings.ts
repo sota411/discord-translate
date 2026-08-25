@@ -1,5 +1,7 @@
 export const playbackModes = ["conversation", "accuracy"] as const;
 export const conversationAudioMaxDelayMs = 2_500;
+export const ttsSpeedMin = 0.7;
+export const ttsSpeedMax = 1.3;
 
 export type PlaybackMode = (typeof playbackModes)[number];
 
@@ -19,6 +21,14 @@ export const captionFailurePolicyLabels: Readonly<Record<CaptionFailurePolicy, s
 
 export function isPlaybackMode(value: string): value is PlaybackMode {
   return playbackModes.includes(value as PlaybackMode);
+}
+
+export function isTtsSpeed(value: number): boolean {
+  return Number.isFinite(value) && value >= ttsSpeedMin && value <= ttsSpeedMax;
+}
+
+export function formatTtsSpeed(value: number): string {
+  return `${String(value)}倍`;
 }
 
 export function isCaptionFailurePolicy(value: string): value is CaptionFailurePolicy {

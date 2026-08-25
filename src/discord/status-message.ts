@@ -6,6 +6,7 @@ import type {
   SessionState,
 } from "../session/session-manager.js";
 import { playbackModeLabels } from "../session/session-settings.js";
+import { formatTtsSpeed } from "../session/session-settings.js";
 
 const sessionStateLabels: Readonly<Record<SessionState, string>> = {
   AUTHORIZING: "利用条件を確認中",
@@ -31,6 +32,7 @@ export function createSessionStatusMessage(
     `参加者: ${participants || "なし"}`,
     `経過時間: ${formatElapsed(elapsedMs)}`,
     `モード: ${playbackModeLabels[session.playbackMode]}`,
+    `読み上げ速度: ${formatTtsSpeed(session.ttsSpeed)}`,
     `音声: ${session.audioEnabled ? "有効" : "無効（字幕のみ）"}`,
     `字幕スレッド: ${session.captionThreadId ? `<#${session.captionThreadId}>` : "作成中"}`,
   ].join("\n");

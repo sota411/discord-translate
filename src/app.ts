@@ -12,7 +12,12 @@ import { TranslationTermCatalog } from "./config/translation-term-catalog.js";
 import { loadTranslationTerms } from "./config/translation-terms.js";
 import { DiscordBotController } from "./discord/bot-controller.js";
 import { DiscordTranslationDriver } from "./discord/translation-driver.js";
+import { safeDiscordRateLimitFields } from "./observability/discord-rate-limit.js";
 import { createSafeLogger, type SafeLogger } from "./observability/logger.js";
+import {
+  startRuntimeHealthMonitor,
+  type RuntimeHealthMonitor,
+} from "./observability/runtime-health.js";
 import { createTranslationLatencyRecorder } from "./observability/translation-latency.js";
 import { SessionManager } from "./session/session-manager.js";
 import {
@@ -38,7 +43,10 @@ export async function startApplication(
   const latency = createTranslationLatencyRecorder((fields) => {
     logger.info("translation_latency", fields);
   });
-  const staticTerms = loadTranslationTerms(config.storage.translationTermsPath);
+  const staticTerms = loadTranslationTerms(
+    config.storage.translationTermsPath,
+    config.soniox.generalContextEnabled,
+  );
   const ledger = UsageLedger.open({
     databasePath: config.storage.sqlitePath,
     pricing: config.pricing,
@@ -49,10 +57,17 @@ export async function startApplication(
     },
     reconcileMaxStalenessSeconds: config.usage.reconcileMaxStalenessSeconds,
   });
+  const runtimeHealth = startRuntimeHealthMonitor((fields) => {
+    logger.info("runtime_health", fields);
+  });
   let client: Client | undefined;
   let reconciliationTimer: NodeJS.Timeout | undefined;
   try {
-    const terms = new TranslationTermCatalog(staticTerms, ledger);
+    const terms = new TranslationTermCatalog(
+      staticTerms,
+      ledger,
+      config.soniox.generalContextEnabled,
+    );
     terms.assertGuildsValid(config.discord.allowedGuildIds);
     const recovered = ledger.recoverInterruptedWork(new Date());
     logger.info("startup_recovery_complete", {
@@ -102,6 +117,7 @@ export async function startApplication(
     const sttFactory = new SonioxSttFactory(
       soniox,
       config.soniox.sttModel,
+      config.soniox.generalContextEnabled,
     );
     const tts = new RawSonioxTtsGateway({
       url: config.soniox.ttsWebSocketUrl,
@@ -121,6 +137,16 @@ export async function startApplication(
       tts,
       latency,
       observeFlow: (stage) => logger.info("translation_flow", { stage }),
+      observeQuality: (observation) => {
+        logger.info("translation_quality", observation.quality);
+        if (observation.anomaly) {
+          logger.warn("translation_quality_anomaly", observation.anomaly);
+        }
+      },
+      observeCaptionDelivery: (observation) => {
+        logger.info("caption_delivery", observation);
+      },
+      observeSttResult: () => runtimeHealth.recordSttResult(),
       onFailure: (guildId, reason, publicMessage, cause) => {
         void controllerReference.current?.handleRuntimeFailure(
           guildId,
@@ -151,6 +177,7 @@ export async function startApplication(
       allowedGuildIds: config.discord.allowedGuildIds,
       allowedUserIds: config.discord.allowedUserIds,
       maxSpeakersPerSession: config.limits.maxSpeakersPerSession,
+      defaultTtsSpeed: config.soniox.ttsSpeed,
       sessions,
       terms,
     });
@@ -166,6 +193,9 @@ export async function startApplication(
     });
     discordClient.on(Events.Error, (error) => {
       logger.error("discord_client_error", error);
+    });
+    discordClient.rest.on("rateLimited", (data) => {
+      logger.warn("discord_rate_limited", safeDiscordRateLimitFields(data));
     });
 
     const ready = once(discordClient, Events.ClientReady);
@@ -194,6 +224,7 @@ export async function startApplication(
           tts,
           ledger,
           reconciliationTimer: timer,
+          runtimeHealth,
           waitForReconciliation: () => reconciliationQueue.wait(),
         });
         return shutdownPromise;
@@ -201,6 +232,7 @@ export async function startApplication(
     };
   } catch (error) {
     if (reconciliationTimer) clearInterval(reconciliationTimer);
+    runtimeHealth.stop();
     await client?.destroy();
     ledger.close();
     logger.error("application_start_failed", error);
@@ -222,11 +254,13 @@ async function shutdownApplication(input: {
   tts: RawSonioxTtsGateway;
   ledger: UsageLedger;
   reconciliationTimer: NodeJS.Timeout;
+  runtimeHealth: RuntimeHealthMonitor;
   waitForReconciliation: () => Promise<void>;
 }): Promise<void> {
   input.logger.info("application_shutdown_started", { reason: input.reason });
   input.controller.stopAcceptingCommands();
   clearInterval(input.reconciliationTimer);
+  input.runtimeHealth.stop();
   try {
     await input.sessions.stopAll(input.reason);
   } finally {

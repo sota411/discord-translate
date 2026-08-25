@@ -61,6 +61,7 @@ export type TtsSynthesisRequest = {
   speakerUserId: string;
   voiceId: string;
   language: Language;
+  speed?: number;
 };
 
 export type TtsGateway = {
@@ -142,6 +143,7 @@ type UtteranceProcessorOptions = {
   playback: PlaybackGateway;
   maxQueueWaitMs: number;
   playbackMode?: PlaybackMode;
+  ttsSpeed?: number;
   conversationQueueMaxWaitMs?: number;
   maxSourceDurationMs: number;
   maxInputCharacters: number;
@@ -178,6 +180,7 @@ export class UtteranceProcessor {
   #drainPromise: Promise<void> | undefined;
   #queueWake: (() => void) | undefined;
   #playbackMode: PlaybackMode;
+  #ttsSpeed: number;
   #audioEnabled = true;
   #stopped = false;
   #usageFailure: ApplicationError | undefined;
@@ -190,6 +193,7 @@ export class UtteranceProcessor {
     this.#conversationQueueMaxWaitMs =
       options.conversationQueueMaxWaitMs ?? conversationAudioMaxDelayMs;
     this.#playbackMode = options.playbackMode ?? "conversation";
+    this.#ttsSpeed = options.ttsSpeed ?? 1;
     this.#maxSourceDurationMs = options.maxSourceDurationMs;
     this.#maxInputCharacters = options.maxInputCharacters;
     this.#now = options.now ?? (() => Date.now());
@@ -231,6 +235,10 @@ export class UtteranceProcessor {
         this.#armConversationDeadline(queued, controller);
       }
     }
+  }
+
+  public setTtsSpeed(speed: number): void {
+    this.#ttsSpeed = speed;
   }
 
   public setAudioEnabled(enabled: boolean): void {
@@ -481,6 +489,7 @@ export class UtteranceProcessor {
           speakerUserId: queued.utterance.speakerUserId,
           voiceId: queued.utterance.voiceId,
           language: queued.utterance.targetLanguage,
+          speed: this.#ttsSpeed,
           text: queued.utterance.translatedText,
         }, AbortSignal.any([
           this.#abortController.signal,

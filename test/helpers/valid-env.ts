@@ -32,6 +32,7 @@ export function validEnv(
     SONIOX_STT_MODEL: "stt-rt-v5",
     SONIOX_TTS_MODEL: "tts-rt-v2",
     SONIOX_TTS_SPEED: "1.15",
+    SONIOX_GENERAL_CONTEXT_ENABLED: "false",
     SONIOX_VOICE_JA: "ja-test-voice",
     SONIOX_VOICE_KO: "ko-test-voice",
     SONIOX_VOICE_EN: "en-test-voice",

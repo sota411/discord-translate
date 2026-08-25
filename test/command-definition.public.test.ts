@@ -21,10 +21,13 @@ void test("translateコマンドはGuild専用で既定権限なし、言語ペ�
 
   const start = json.options?.find((option) => option.name === "start");
   const stop = json.options?.find((option) => option.name === "stop");
+  const speed = json.options?.find((option) => option.name === "speed");
   assert.ok(start);
   assert.ok(stop);
+  assert.ok(speed);
   assert.equal(start.type, 1);
   assert.equal(stop.type, 1);
+  assert.equal(speed.type, 1);
 
   const pair = "options" in start
     ? start.options?.find((option) => option.name === "pair")
@@ -52,6 +55,14 @@ void test("translateコマンドはGuild専用で既定権限なし、言語ペ�
       ["正確さ優先", "accuracy"],
     ],
   );
+
+  const rate = "options" in speed
+    ? speed.options?.find((option) => option.name === "rate")
+    : undefined;
+  assert.ok(rate);
+  assert.equal(rate.required, true);
+  assert.equal("min_value" in rate ? rate.min_value : undefined, 0.7);
+  assert.equal("max_value" in rate ? rate.max_value : undefined, 1.3);
 });
 
 void test("status・export・registerはGuild全員へ表示し、用語管理を3サブコマンドで公開する", () => {

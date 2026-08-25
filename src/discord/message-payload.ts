@@ -26,6 +26,9 @@ import {
   playbackModeLabels,
   playbackModes,
   type PlaybackMode,
+  formatTtsSpeed,
+  ttsSpeedMax,
+  ttsSpeedMin,
 } from "../session/session-settings.js";
 import type {
   CaptionState,
@@ -46,6 +49,7 @@ export type SessionCardView = {
   queueWaitMs: number;
   queueWarningMs: number;
   playbackMode: PlaybackMode;
+  ttsSpeed: number;
   audioEnabled: boolean;
   active: boolean;
   stopReason?: string;
@@ -204,6 +208,7 @@ export function createSessionCardMessagePayload(
     `経過時間: ${formatElapsed(view.elapsedMs)}`,
     `現在の音声待ち: ${(view.queueWaitMs / 1_000).toFixed(1)}秒`,
     `モード: ${playbackModeLabels[view.playbackMode]}${view.audioEnabled ? "" : "（字幕のみ）"}`,
+    `読み上げ速度: ${formatTtsSpeed(view.ttsSpeed)}`,
   ];
   if (
     view.active &&
@@ -243,6 +248,7 @@ export function createSessionCardMessagePayload(
 export function createSessionSettingsMessagePayload(input: {
   sessionId: string;
   playbackMode: PlaybackMode;
+  ttsSpeed: number;
   captionFailurePolicy: CaptionFailurePolicy;
 }): ComponentsMessagePayload {
   const playbackSelect = new StringSelectMenuBuilder()
@@ -263,7 +269,7 @@ export function createSessionSettingsMessagePayload(input: {
         .setDefault(input.captionFailurePolicy === policy)));
   return payload(new ContainerBuilder()
     .addTextDisplayComponents(textDisplay(
-      "**セッション設定**\n-# 変更はこの翻訳セッションだけに適用されます。",
+      `**セッション設定**\n読み上げ速度: ${formatTtsSpeed(input.ttsSpeed)}\n-# \`/translate speed rate:1.15\` で${String(ttsSpeedMin)}〜${String(ttsSpeedMax)}倍に変更できます。この翻訳セッションだけに適用されます。`,
     ))
     .addActionRowComponents(
       new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(playbackSelect),

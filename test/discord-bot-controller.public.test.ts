@@ -182,6 +182,7 @@ void test("実行時失敗ではRuntimeのセッションカード終了処理�
     startedAt: new Date("2026-08-16T00:00:00Z"),
     participantIds: ["323456789012345678"],
     playbackMode: "conversation" as const,
+    ttsSpeed: 1.15,
     audioEnabled: true,
     captionFailurePolicy: "continue_audio" as const,
   };
@@ -232,6 +233,7 @@ void test("セッションカードの設定ボタンを同じ認可経路へ渡
     startedAt: new Date("2026-08-19T00:00:00Z"),
     participantIds: ["323456789012345678"],
     playbackMode: "conversation" as const,
+    ttsSpeed: 1.15,
     audioEnabled: true,
     captionFailurePolicy: "continue_audio" as const,
   };
@@ -331,6 +333,7 @@ void test("CONNECTING中の音声参加者変更も認可検査へ渡す", async
       startedAt: new Date("2026-08-16T00:00:00Z"),
       participantIds: ["323456789012345678"],
       playbackMode: "conversation" as const,
+      ttsSpeed: 1.15,
       audioEnabled: true,
       captionFailurePolicy: "continue_audio" as const,
     }),

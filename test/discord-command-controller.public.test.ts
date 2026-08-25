@@ -52,6 +52,7 @@ void test("statusを認可サービスへ渡し、参加者名を含む状態を
     startedAt: new Date("2026-08-21T03:00:00Z"),
     participantIds: ["user-1", "user-2"],
     playbackMode: "conversation" as const,
+    ttsSpeed: 1.15,
     audioEnabled: true,
     captionFailurePolicy: "continue_audio" as const,
     captionThreadId: "thread-1",
@@ -93,6 +94,53 @@ void test("statusを認可サービスへ渡し、参加者名を含む状態を
   assert.match(String(edits[0]), /状態: 翻訳中/u);
   assert.match(String(edits[0]), /参加者: Sota \/ 민지/u);
   assert.match(String(edits[0]), /字幕スレッド: <#thread-1>/u);
+});
+
+void test("translate speedのrateと操作認可情報をコマンドサービスへ渡す", async () => {
+  const inputs: TranslationCommandInput[] = [];
+  const edits: unknown[] = [];
+  const controller = new DiscordBotController({
+    client: {} as Client,
+    commands: commands(inputs, {
+      ok: true,
+      ephemeral: true,
+      interactionMessage: "読み上げ速度を1.3倍へ変更しました。",
+    }),
+    logger: logger(),
+  });
+  const interaction = {
+    isChatInputCommand: () => true,
+    commandName: "translate",
+    guildId: "guild-1",
+    user: { id: "user-1" },
+    memberPermissions: { has: () => false },
+    guild: {
+      members: {
+        cache: new Map([["user-1", { voice: { channelId: "voice-1" } }]]),
+      },
+    },
+    options: {
+      getSubcommand: () => "speed",
+      getNumber: (name: string) => name === "rate" ? 1.3 : null,
+    },
+    deferReply: () => Promise.resolve(),
+    editReply: (value: unknown) => {
+      edits.push(value);
+      return Promise.resolve();
+    },
+  } as unknown as ChatInputCommandInteraction;
+
+  await controller.handleInteraction(interaction);
+
+  assert.deepEqual(inputs, [{
+    kind: "speed",
+    rate: 1.3,
+    guildId: "guild-1",
+    actorId: "user-1",
+    actorCanManageGuild: false,
+    actorVoiceChannelId: "voice-1",
+  }]);
+  assert.deepEqual(edits, ["読み上げ速度を1.3倍へ変更しました。"]);
 });
 
 void test("register addの3引数を認可サービスへそのまま渡す", async () => {
