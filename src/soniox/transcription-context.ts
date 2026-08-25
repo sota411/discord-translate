@@ -67,8 +67,13 @@ export function buildSonioxTranscriptionContext(
 export function assertSonioxContextFits(
   pair: LanguagePair,
   translationTerms: readonly TranslationTerm[],
+  includeGeneralContext: boolean,
 ): void {
-  const { characterCount } = buildSonioxTranscriptionContext(pair, translationTerms, true);
+  const { characterCount } = buildSonioxTranscriptionContext(
+    pair,
+    translationTerms,
+    includeGeneralContext,
+  );
   if (characterCount > sonioxContextCharacterLimit) {
     throw new Error(
       `${pair}: Soniox contextの${sonioxContextCharacterLimit.toLocaleString("en-US")}文字上限を超えています`,

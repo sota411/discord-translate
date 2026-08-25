@@ -31,7 +31,10 @@ const termsSchema = z.object({
   "ko-en": z.array(termSchema),
 }).strict();
 
-export function parseTranslationTerms(json: string): TranslationTerms {
+export function parseTranslationTerms(
+  json: string,
+  includeGeneralContext: boolean,
+): TranslationTerms {
   let value: unknown;
   try {
     value = JSON.parse(json) as unknown;
@@ -47,7 +50,11 @@ export function parseTranslationTerms(json: string): TranslationTerms {
   }
 
   for (const pair of languagePairs) {
-    assertTranslationTermsFitContext(pair, result.data[pair]);
+    assertTranslationTermsFitContext(
+      pair,
+      result.data[pair],
+      includeGeneralContext,
+    );
   }
   return result.data;
 }
@@ -61,6 +68,7 @@ export function translationTermsCharacterCount(
 export function assertTranslationTermsFitContext(
   pair: LanguagePair,
   entries: readonly TranslationTerm[],
+  includeGeneralContext: boolean,
 ): void {
   const sources = new Set<string>();
   for (const entry of entries) {
@@ -72,15 +80,21 @@ export function assertTranslationTermsFitContext(
     }
     sources.add(entry.source);
   }
-  assertSonioxContextFits(pair, entries);
+  assertSonioxContextFits(pair, entries, includeGeneralContext);
 }
 
-export function loadTranslationTerms(filePath: string | undefined): TranslationTerms {
+export function loadTranslationTerms(
+  filePath: string | undefined,
+  includeGeneralContext: boolean,
+): TranslationTerms {
   if (!filePath) {
     return { "ja-ko": [], "ja-en": [], "ko-en": [] };
   }
   try {
-    return parseTranslationTerms(readFileSync(filePath, "utf8"));
+    return parseTranslationTerms(
+      readFileSync(filePath, "utf8"),
+      includeGeneralContext,
+    );
   } catch (error) {
     const reason = error instanceof Error ? `: ${error.message}` : "";
     throw new Error(`翻訳用語ファイルを読み込めません: ${filePath}${reason}`, {

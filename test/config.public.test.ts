@@ -177,7 +177,7 @@ void test("翻訳用語JSONは対応ペア、空文字、重複、context上限�
     "ja-ko": [{ source: "VALORANT", target: "발로란트" }],
     "ja-en": [],
     "ko-en": [],
-  }))["ja-ko"], [{ source: "VALORANT", target: "발로란트" }]);
+  }), false)["ja-ko"], [{ source: "VALORANT", target: "발로란트" }]);
 
   assert.throws(
     () => parseTranslationTerms(JSON.stringify({
@@ -187,7 +187,7 @@ void test("翻訳用語JSONは対応ペア、空文字、重複、context上限�
       ],
       "ja-en": [],
       "ko-en": [],
-    })),
+    }), false),
     /ja-ko.*重複/u,
   );
   assert.throws(
@@ -195,7 +195,7 @@ void test("翻訳用語JSONは対応ペア、空文字、重複、context上限�
       "ja-ko": [{ source: "", target: "x" }],
       "ja-en": [],
       "ko-en": [],
-    })),
+    }), false),
     /source/u,
   );
   assert.throws(
@@ -203,8 +203,22 @@ void test("翻訳用語JSONは対応ペア、空文字、重複、context上限�
       "ja-ko": [{ source: "x".repeat(10_001), target: "y" }],
       "ja-en": [],
       "ko-en": [],
-    })),
+    }), false),
     /10,000/u,
+  );
+});
+
+void test("general context無効時は送信しない固定文を用語上限へ含めない", () => {
+  const json = JSON.stringify({
+    "ja-ko": [{ source: "term", target: "x".repeat(9_400) }],
+    "ja-en": [],
+    "ko-en": [],
+  });
+
+  assert.doesNotThrow(() => parseTranslationTerms(json, false));
+  assert.throws(
+    () => parseTranslationTerms(json, true),
+    /ja-ko.*10,000/u,
   );
 });
 

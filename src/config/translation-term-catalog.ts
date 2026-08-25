@@ -53,10 +53,16 @@ export type DeleteTranslationTermInput = {
 export class TranslationTermCatalog {
   readonly #staticTerms: TranslationTerms;
   readonly #store: TranslationTermStore;
+  readonly #includeGeneralContext: boolean;
 
-  public constructor(staticTerms: TranslationTerms, store: TranslationTermStore) {
+  public constructor(
+    staticTerms: TranslationTerms,
+    store: TranslationTermStore,
+    includeGeneralContext: boolean,
+  ) {
     this.#staticTerms = staticTerms;
     this.#store = store;
+    this.#includeGeneralContext = includeGeneralContext;
   }
 
   public snapshot(guildId: string, pair: LanguagePair): readonly TranslationTerm[] {
@@ -74,7 +80,11 @@ export class TranslationTermCatalog {
       ...registeredEntries.map((entry) => ({ ...entry })),
     ];
     try {
-      assertTranslationTermsFitContext(pair, merged);
+      assertTranslationTermsFitContext(
+        pair,
+        merged,
+        this.#includeGeneralContext,
+      );
     } catch (error) {
       throw new ApplicationError(
         "TRANSLATION_TERM_LIMIT_REACHED",
@@ -119,7 +129,11 @@ export class TranslationTermCatalog {
       : [...registered, { source, target }];
     const merged = [...this.#staticTerms[input.pair], ...next];
     try {
-      assertTranslationTermsFitContext(input.pair, merged);
+      assertTranslationTermsFitContext(
+        input.pair,
+        merged,
+        this.#includeGeneralContext,
+      );
     } catch (error) {
       throw new ApplicationError(
         "TRANSLATION_TERM_LIMIT_REACHED",

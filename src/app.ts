@@ -43,7 +43,10 @@ export async function startApplication(
   const latency = createTranslationLatencyRecorder((fields) => {
     logger.info("translation_latency", fields);
   });
-  const staticTerms = loadTranslationTerms(config.storage.translationTermsPath);
+  const staticTerms = loadTranslationTerms(
+    config.storage.translationTermsPath,
+    config.soniox.generalContextEnabled,
+  );
   const ledger = UsageLedger.open({
     databasePath: config.storage.sqlitePath,
     pricing: config.pricing,
@@ -60,7 +63,11 @@ export async function startApplication(
   let client: Client | undefined;
   let reconciliationTimer: NodeJS.Timeout | undefined;
   try {
-    const terms = new TranslationTermCatalog(staticTerms, ledger);
+    const terms = new TranslationTermCatalog(
+      staticTerms,
+      ledger,
+      config.soniox.generalContextEnabled,
+    );
     terms.assertGuildsValid(config.discord.allowedGuildIds);
     const recovered = ledger.recoverInterruptedWork(new Date());
     logger.info("startup_recovery_complete", {

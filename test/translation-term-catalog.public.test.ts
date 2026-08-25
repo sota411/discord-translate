@@ -48,7 +48,7 @@ const staticTerms = {
 
 void test("コマンド用語はGuild別に永続化し、登録済みsourceだけを更新する", () => {
   const store = new MemoryTermStore();
-  const catalog = new TranslationTermCatalog(staticTerms, store);
+  const catalog = new TranslationTermCatalog(staticTerms, store, false);
   const at = new Date("2026-08-21T03:00:00Z");
 
   assert.equal(catalog.register({
@@ -84,7 +84,11 @@ void test("コマンド用語はGuild別に永続化し、登録済みsourceだ�
 });
 
 void test("静的用語との衝突、空入力、Soniox context上限を登録前に拒否する", () => {
-  const catalog = new TranslationTermCatalog(staticTerms, new MemoryTermStore());
+  const catalog = new TranslationTermCatalog(
+    staticTerms,
+    new MemoryTermStore(),
+    false,
+  );
   const common = {
     guildId: "guild-1",
     pair: "ja-ko" as const,
@@ -111,7 +115,7 @@ void test("静的用語との衝突、空入力、Soniox context上限を登録�
       updatedAt: common.at,
     });
   }
-  const fullCatalog = new TranslationTermCatalog(staticTerms, fullStore);
+  const fullCatalog = new TranslationTermCatalog(staticTerms, fullStore, false);
   assert.throws(
     () => fullCatalog.register({ ...common, source: "large", target: "translation" }),
     (error: unknown) =>
@@ -130,9 +134,43 @@ void test("静的用語との衝突、空入力、Soniox context上限を登録�
   );
 });
 
+void test("用語登録はgeneral contextの有効時だけ固定文を上限へ含める", () => {
+  const nearLimitStaticTerms = {
+    "ja-ko": [{ source: "baseline", target: "x".repeat(9_400) }],
+    "ja-en": [],
+    "ko-en": [],
+  } as const;
+  const input = {
+    guildId: "guild-1",
+    pair: "ja-ko" as const,
+    source: "term",
+    target: "translation",
+    at: new Date("2026-08-21T03:00:00Z"),
+  };
+
+  const disabled = new TranslationTermCatalog(
+    nearLimitStaticTerms,
+    new MemoryTermStore(),
+    false,
+  );
+  assert.equal(disabled.register(input), "created");
+
+  const enabled = new TranslationTermCatalog(
+    nearLimitStaticTerms,
+    new MemoryTermStore(),
+    true,
+  );
+  assert.throws(
+    () => enabled.register(input),
+    (error: unknown) =>
+      error instanceof ApplicationError &&
+      error.code === "TRANSLATION_TERM_LIMIT_REACHED",
+  );
+});
+
 void test("Guild登録用語だけを全ペアまたは指定ペアで一覧化し、完全一致で削除する", () => {
   const store = new MemoryTermStore();
-  const catalog = new TranslationTermCatalog(staticTerms, store);
+  const catalog = new TranslationTermCatalog(staticTerms, store, false);
   const at = new Date("2026-08-21T03:00:00Z");
   catalog.register({
     guildId: "guild-1",
@@ -197,7 +235,7 @@ void test("起動時検査は静的用語と保存済み用語の衝突をFail F
     target: "발로란트",
     updatedAt: new Date("2026-08-21T03:00:00Z"),
   });
-  const catalog = new TranslationTermCatalog(staticTerms, store);
+  const catalog = new TranslationTermCatalog(staticTerms, store, false);
 
   assert.throws(
     () => catalog.assertGuildsValid(new Set(["guild-1"])),
@@ -217,7 +255,7 @@ void test("保存済み用語のsourceまたはtargetが100文字を超えれば
       ...term,
       updatedAt: new Date("2026-08-21T03:00:00Z"),
     });
-    const catalog = new TranslationTermCatalog(staticTerms, store);
+    const catalog = new TranslationTermCatalog(staticTerms, store, false);
 
     assert.throws(
       () => catalog.listRegisteredTerms("guild-1", "ja-en"),
