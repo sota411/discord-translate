@@ -224,7 +224,7 @@ pnpm stt:evaluate run \
 
 manifestには、48 kHz・mono・PCM s16le音声、正解文、期待する言語と分割数、固有名詞、翻訳用語を記録する。packet traceには、packetごとの送信時刻・byte数と、発話全体の欠落数を記録する。詳しいfieldは[設計書のSTT評価](./docs/design.md#stt候補は同じ音声のadで採否を決める)を参照する。
 
-`observations.json`には認識本文が含まれるため、0600でローカル保存し、公開または共有しない。`report.json`には本文と音声を含めず、入力のSHA-256、CER、固有名詞再現率、言語再現率、分割数、平均・p50・p95遅延、CPU、packet欠落だけを出力する。別の端末で採点し直す場合は、次のコマンドを使う。音声かpacket traceが変わっていれば、SHA-256の不一致で失敗する。
+`observations.json`には認識本文が含まれるため、0600でローカル保存し、公開または共有しない。`report.json`には本文と音声を含めず、入力のSHA-256、CER、固有名詞再現率、言語再現率、分割数、平均・p50・p95遅延、受理した境界の種別・確定理由・本文有無、CPU、packet欠落を出力する。別の端末で採点し直す場合は、次のコマンドを使う。音声かpacket traceが変わっていれば、SHA-256の不一致で失敗する。
 
 ```bash
 pnpm stt:evaluate score \
@@ -242,7 +242,7 @@ pnpm stt:evaluate score \
 | C | なし | Soniox上限500 ms、手動fallback 600 ms |
 | D | Bと同じ | Cと同じ |
 
-2026年8月25日に人工音声10件でA〜Dを実測した。Bは全体CERを11.1%改善したが、固有名詞再現率と日韓切り替え時の期待言語再現率が悪化した。Cは全体CERと固有名詞再現率を改善し、Soniox endpointが境界の60%を占めたが、コードスイッチCERが33.3ポイント、p95遅延が約479 ms、不自然な分割数が9件悪化した。DはコードスイッチCERが66.7ポイント、p95遅延が約483 ms悪化し、Soniox endpointも境界の33.3%に留まった。いずれも採用基準を満たさないため、通常運用の確定値と`SONIOX_GENERAL_CONTEXT_ENABLED=false`は変更していない。数値と入力SHA-256は[本文非含有レポート](./docs/evaluation/stt-artificial-2026-08-25.json)に残している。
+2026年8月25日に人工音声10件でA〜Dを実測した。Bは全体CERを11.1%改善したが、固有名詞再現率と日韓切り替え時の期待言語再現率が悪化した。Cは全体CERと固有名詞再現率を改善し、Soniox endpointが採否対象境界の68.4%を占めたが、コードスイッチCERが33.3ポイント、p95遅延が約479 ms、不自然な分割数が9件悪化した。DはコードスイッチCERが66.7ポイント、p95遅延が約483 ms悪化し、Soniox endpointも採否対象境界の10.0%に留まった。いずれも採用基準を満たさないため、通常運用の確定値と`SONIOX_GENERAL_CONTEXT_ENABLED=false`は変更していない。数値と入力SHA-256は[本文非含有レポート](./docs/evaluation/stt-artificial-2026-08-25.json)に残している。
 
 この結果は人工音声に限られる。実際のDiscord音声、複数人通話、Raspberry PiのCPUと音声詰まりは未検証であり、本番で改善した証拠にはならない。RNNoiseやDeepFilterNetも、ノイズ音声で10%以上改善し、クリーン音声を悪化させない実測がないため追加していない。標準経路は引き続き無加工PCMである。
 

@@ -213,6 +213,17 @@ type CaseScore = {
   decoded_packet_count: number;
   dropped_packet_count: number;
   dropped_packet_ratio: number;
+  finalizations: {
+    kind: "endpoint" | "finalized";
+    reason:
+      | "speaking_end"
+      | "transcript_inactivity"
+      | "max_turn_duration"
+      | "soniox_endpoint"
+      | "soniox_finalized";
+    latency_ms: number;
+    has_text: boolean;
+  }[];
 };
 
 type ProfileScore = {
@@ -228,9 +239,10 @@ type ProfileScore = {
   unnatural_split_count: number;
   latency_ms: { mean: number; p50: number; p95: number };
   finalization: {
-    boundary_count: number;
-    endpoint_count: number;
-    finalized_count: number;
+    observed_boundary_count: number;
+    adoption_boundary_count: number;
+    observed_endpoint_count: number;
+    observed_finalized_count: number;
     soniox_endpoint_count: number;
     manual_fallback_count: number;
     soniox_endpoint_ratio: number;
@@ -369,6 +381,12 @@ function scoreCase(evaluationCase: SttEvaluationCase, result: SttEvaluationResul
     dropped_packet_count: result.dropped_packet_count,
     dropped_packet_ratio: result.dropped_packet_count /
       (result.decoded_packet_count + result.dropped_packet_count),
+    finalizations: result.finalizations.map((finalization) => ({
+      kind: finalization.kind,
+      reason: finalization.reason,
+      latency_ms: finalization.latency_ms,
+      has_text: finalization.has_text,
+    })),
   };
 }
 
@@ -416,10 +434,10 @@ function scoreProfile(
     return textBoundaries.length > 0 ? textBoundaries : result.finalizations.slice(-1);
   });
   const latencies = measuredFinalizations.map((finalization) => finalization.latency_ms);
-  const finalizations = results.flatMap((result) => result.finalizations);
-  const sonioxEndpointCount = finalizations
+  const observedFinalizations = results.flatMap((result) => result.finalizations);
+  const sonioxEndpointCount = measuredFinalizations
     .filter((finalization) => finalization.reason === "soniox_endpoint").length;
-  const manualFallbackCount = finalizations.filter((finalization) => (
+  const manualFallbackCount = measuredFinalizations.filter((finalization) => (
     finalization.reason === "speaking_end" ||
     finalization.reason === "transcript_inactivity" ||
     finalization.reason === "max_turn_duration"
@@ -450,14 +468,15 @@ function scoreProfile(
       p95: percentile(latencies, 0.95),
     },
     finalization: {
-      boundary_count: finalizations.length,
-      endpoint_count: finalizations
+      observed_boundary_count: observedFinalizations.length,
+      adoption_boundary_count: measuredFinalizations.length,
+      observed_endpoint_count: observedFinalizations
         .filter((finalization) => finalization.kind === "endpoint").length,
-      finalized_count: finalizations
+      observed_finalized_count: observedFinalizations
         .filter((finalization) => finalization.kind === "finalized").length,
       soniox_endpoint_count: sonioxEndpointCount,
       manual_fallback_count: manualFallbackCount,
-      soniox_endpoint_ratio: sonioxEndpointCount / finalizations.length,
+      soniox_endpoint_ratio: sonioxEndpointCount / measuredFinalizations.length,
     },
     cpu_percent: { mean: mean(cpu), p95: percentile(cpu, 0.95) },
     packets: {

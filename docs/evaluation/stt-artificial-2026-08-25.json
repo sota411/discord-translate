@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated_at": "2026-08-25T13:51:13.309Z",
+  "generated_at": "2026-08-25T14:03:43.467Z",
   "profile_mapping": {
     "A": "baseline",
     "B": "context",
@@ -32,12 +32,13 @@
         "p95": 518.8150180000011
       },
       "finalization": {
-        "boundary_count": 18,
-        "endpoint_count": 11,
-        "finalized_count": 7,
-        "soniox_endpoint_count": 7,
-        "manual_fallback_count": 11,
-        "soniox_endpoint_ratio": 0.3888888888888889
+        "observed_boundary_count": 18,
+        "adoption_boundary_count": 10,
+        "observed_endpoint_count": 11,
+        "observed_finalized_count": 7,
+        "soniox_endpoint_count": 1,
+        "manual_fallback_count": 9,
+        "soniox_endpoint_ratio": 0.1
       },
       "cpu_percent": {
         "mean": 1.504167602417367,
@@ -65,7 +66,15 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 366,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 324.42849900000056,
+              "has_text": true
+            }
+          ]
         },
         {
           "case_id": "ko-clean-game",
@@ -83,7 +92,15 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 125,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 418.4685520000003,
+              "has_text": true
+            }
+          ]
         },
         {
           "case_id": "ja-short",
@@ -101,7 +118,21 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 36,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 462.61586499999976,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 549.8212140000014,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ko-short",
@@ -119,7 +150,21 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 40,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 408.71217699999943,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 478.7725300000002,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ja-low-volume",
@@ -137,7 +182,21 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 373,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 19.928150999996433,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 416.62984799999685,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ko-fan-noise",
@@ -155,7 +214,15 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 132,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 518.8150180000011,
+              "has_text": true
+            }
+          ]
         },
         {
           "case_id": "ja-keyboard-noise",
@@ -173,7 +240,21 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 348,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 4.750779999998485,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 371.19501599999785,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ja-clipped",
@@ -191,7 +272,15 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 370,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 368.258716999997,
+              "has_text": true
+            }
+          ]
         },
         {
           "case_id": "ja-pause-600ms",
@@ -209,7 +298,27 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 384,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 2.57678599999781,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 331.44863800000167,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 374.79968300000473,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ja-ko-code-switch",
@@ -227,7 +336,27 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 225,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 14.661604000000807,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 469.9467819999991,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 543.7297279999984,
+              "has_text": false
+            }
+          ]
         }
       ]
     },
@@ -255,12 +384,13 @@
         "p95": 494.79596099999617
       },
       "finalization": {
-        "boundary_count": 16,
-        "endpoint_count": 11,
-        "finalized_count": 5,
-        "soniox_endpoint_count": 6,
+        "observed_boundary_count": 16,
+        "adoption_boundary_count": 10,
+        "observed_endpoint_count": 11,
+        "observed_finalized_count": 5,
+        "soniox_endpoint_count": 0,
         "manual_fallback_count": 10,
-        "soniox_endpoint_ratio": 0.375
+        "soniox_endpoint_ratio": 0
       },
       "cpu_percent": {
         "mean": 1.0239098244670126,
@@ -288,7 +418,21 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 366,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 10.104707999998936,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 317.7765919999947,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ko-clean-game",
@@ -306,7 +450,15 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 125,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 389.5483300000051,
+              "has_text": true
+            }
+          ]
         },
         {
           "case_id": "ja-short",
@@ -324,7 +476,21 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 36,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 448.659433000008,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 521.4534370000038,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ko-short",
@@ -342,7 +508,21 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 40,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 380.124060999995,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 476.47629900000175,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ja-low-volume",
@@ -360,7 +540,15 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 373,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 364.91495799999393,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ko-fan-noise",
@@ -378,7 +566,15 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 132,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 494.79596099999617,
+              "has_text": true
+            }
+          ]
         },
         {
           "case_id": "ja-keyboard-noise",
@@ -396,7 +592,15 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 348,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 434.483985999992,
+              "has_text": true
+            }
+          ]
         },
         {
           "case_id": "ja-clipped",
@@ -414,7 +618,15 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 370,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 327.3701799999981,
+              "has_text": true
+            }
+          ]
         },
         {
           "case_id": "ja-pause-600ms",
@@ -432,7 +644,27 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 384,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 411.4160029999912,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 1.0569649999961257,
+              "has_text": false
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 58.323780999999144,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ja-ko-code-switch",
@@ -450,7 +682,21 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 225,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 12.933151000004727,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 414.5523930000054,
+              "has_text": false
+            }
+          ]
         }
       ]
     },
@@ -478,12 +724,13 @@
         "p95": 997.5419059999986
       },
       "finalization": {
-        "boundary_count": 25,
-        "endpoint_count": 19,
-        "finalized_count": 6,
-        "soniox_endpoint_count": 15,
-        "manual_fallback_count": 10,
-        "soniox_endpoint_ratio": 0.6
+        "observed_boundary_count": 25,
+        "adoption_boundary_count": 19,
+        "observed_endpoint_count": 19,
+        "observed_finalized_count": 6,
+        "soniox_endpoint_count": 13,
+        "manual_fallback_count": 6,
+        "soniox_endpoint_ratio": 0.6842105263157895
       },
       "cpu_percent": {
         "mean": 0.9962347548354937,
@@ -511,7 +758,27 @@
           "unnatural_split_count": 2,
           "decoded_packet_count": 366,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 15.267326000001049,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 10.85932899999898,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 870.4552050000057,
+              "has_text": true
+            }
+          ]
         },
         {
           "case_id": "ko-clean-game",
@@ -529,7 +796,15 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 125,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 922.9743889999954,
+              "has_text": true
+            }
+          ]
         },
         {
           "case_id": "ja-short",
@@ -547,7 +822,21 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 36,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 966.5900590000092,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 1032.8978370000114,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ko-short",
@@ -565,7 +854,21 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 40,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 890.5823459999956,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 960.5320099999954,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ja-low-volume",
@@ -583,7 +886,27 @@
           "unnatural_split_count": 1,
           "decoded_packet_count": 373,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 12.475153999985196,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 5.003419000015128,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 964.4628789999988,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ko-fan-noise",
@@ -601,7 +924,15 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 132,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 997.5419059999986,
+              "has_text": true
+            }
+          ]
         },
         {
           "case_id": "ja-keyboard-noise",
@@ -619,7 +950,27 @@
           "unnatural_split_count": 1,
           "decoded_packet_count": 348,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 6.336679000000004,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 9.1630470000091,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 912.5226320000074,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ja-clipped",
@@ -637,7 +988,33 @@
           "unnatural_split_count": 3,
           "decoded_packet_count": 370,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 18.225179000000935,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 5.389235999988159,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 16.27651799999876,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 857.7314100000076,
+              "has_text": true
+            }
+          ]
         },
         {
           "case_id": "ja-pause-600ms",
@@ -655,7 +1032,27 @@
           "unnatural_split_count": 1,
           "decoded_packet_count": 384,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 4.524231999996118,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 7.399555000010878,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 884.9125669999921,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ja-ko-code-switch",
@@ -673,7 +1070,27 @@
           "unnatural_split_count": 1,
           "decoded_packet_count": 225,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 4.87672499998007,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 5.169902000023285,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 909.0435260000231,
+              "has_text": false
+            }
+          ]
         }
       ]
     },
@@ -701,12 +1118,13 @@
         "p95": 1002.1229929999972
       },
       "finalization": {
-        "boundary_count": 15,
-        "endpoint_count": 10,
-        "finalized_count": 5,
-        "soniox_endpoint_count": 5,
-        "manual_fallback_count": 10,
-        "soniox_endpoint_ratio": 0.3333333333333333
+        "observed_boundary_count": 15,
+        "adoption_boundary_count": 10,
+        "observed_endpoint_count": 10,
+        "observed_finalized_count": 5,
+        "soniox_endpoint_count": 1,
+        "manual_fallback_count": 9,
+        "soniox_endpoint_ratio": 0.1
       },
       "cpu_percent": {
         "mean": 1.0566375864262467,
@@ -734,7 +1152,21 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 366,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 14.499139999999898,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 859.8861770000076,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ko-clean-game",
@@ -752,7 +1184,15 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 125,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 954.7809439999983,
+              "has_text": true
+            }
+          ]
         },
         {
           "case_id": "ja-short",
@@ -770,7 +1210,21 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 36,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 1002.1229929999972,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 1081.2337019999977,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ko-short",
@@ -788,7 +1242,21 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 40,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 948.8322069999995,
+              "has_text": true
+            },
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 1039.1577919999836,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ja-low-volume",
@@ -806,7 +1274,15 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 373,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 924.8145870000008,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ko-fan-noise",
@@ -824,7 +1300,15 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 132,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 998.7057309999946,
+              "has_text": true
+            }
+          ]
         },
         {
           "case_id": "ja-keyboard-noise",
@@ -842,7 +1326,15 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 348,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 953.8859550000052,
+              "has_text": true
+            }
+          ]
         },
         {
           "case_id": "ja-clipped",
@@ -860,7 +1352,21 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 370,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 11.162825000006706,
+              "has_text": true
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 874.6147369999962,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ja-pause-600ms",
@@ -878,7 +1384,21 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 384,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "soniox_endpoint",
+              "latency_ms": 6.317653000005521,
+              "has_text": false
+            },
+            {
+              "kind": "finalized",
+              "reason": "speaking_end",
+              "latency_ms": 897.4876529999892,
+              "has_text": false
+            }
+          ]
         },
         {
           "case_id": "ja-ko-code-switch",
@@ -896,7 +1416,15 @@
           "unnatural_split_count": 0,
           "decoded_packet_count": 225,
           "dropped_packet_count": 0,
-          "dropped_packet_ratio": 0
+          "dropped_packet_ratio": 0,
+          "finalizations": [
+            {
+              "kind": "endpoint",
+              "reason": "speaking_end",
+              "latency_ms": 979.6049530000018,
+              "has_text": true
+            }
+          ]
         }
       ]
     }

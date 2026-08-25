@@ -331,6 +331,56 @@ void test("観測結果はprofileに対応する実効設定を必須とする",
   );
 });
 
+void test("本文のないendpointでSoniox中心の採用比率を水増ししない", () => {
+  const sourceManifest = JSON.parse(manifestJson) as { cases: unknown[] };
+  const manifest = parseSttEvaluationManifest(JSON.stringify({
+    ...sourceManifest,
+    cases: sourceManifest.cases.slice(0, 1),
+  }));
+  const common = {
+    case_id: "ja-clean-term",
+    transcript: "今日は猫",
+    segments: ["今日は猫"],
+    recognized_languages: ["ja"],
+    cpu_percent: 1,
+    decoded_packet_count: 1,
+    dropped_packet_count: 0,
+  };
+  const observations = parseSttEvaluationObservations(JSON.stringify({
+    version: 1,
+    results: [
+      {
+        ...common,
+        profile: "baseline",
+        finalizations: [
+          { kind: "finalized", reason: "speaking_end", latency_ms: 100, has_text: true },
+        ],
+        configuration: sttEvaluationProfileConfigurations.baseline,
+      },
+      {
+        ...common,
+        profile: "endpoint",
+        finalizations: [
+          { kind: "finalized", reason: "speaking_end", latency_ms: 100, has_text: true },
+          { kind: "endpoint", reason: "soniox_endpoint", latency_ms: 120, has_text: false },
+          { kind: "endpoint", reason: "soniox_endpoint", latency_ms: 140, has_text: false },
+        ],
+        configuration: sttEvaluationProfileConfigurations.endpoint,
+      },
+    ],
+  }));
+
+  const report = createSttEvaluationReport(manifest, observations);
+
+  assert.equal(report.profiles.endpoint?.finalization.soniox_endpoint_ratio, 0);
+  assert.equal(report.comparisons.endpoint?.gates.semantic_endpoint, "fail");
+  assert.deepEqual(report.profiles.endpoint.cases[0]?.finalizations, [
+    { kind: "finalized", reason: "speaking_end", latency_ms: 100, has_text: true },
+    { kind: "endpoint", reason: "soniox_endpoint", latency_ms: 120, has_text: false },
+    { kind: "endpoint", reason: "soniox_endpoint", latency_ms: 140, has_text: false },
+  ]);
+});
+
 void test("追跡する人工音声レポートは本文・正解文・API keyを含まない", () => {
   const report = readFileSync("docs/evaluation/stt-artificial-2026-08-25.json", "utf8");
 
