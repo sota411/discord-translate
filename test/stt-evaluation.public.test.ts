@@ -232,6 +232,9 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
     D: "context_endpoint",
   });
   assert.equal(report.profiles.baseline?.cer, 1 / 11);
+  assert.equal(report.profiles.baseline.trial_count, 1);
+  assert.equal(report.profiles.baseline.observation_count, 3);
+  assert.ok(report.profiles.baseline.cases.every((entry) => entry.trial === 1));
   assert.equal(report.profiles.baseline.key_term_recall, 0);
   assert.equal(report.profiles.baseline.unnatural_split_count, 1);
   assert.equal(report.profiles.baseline.latency_ms.mean, 412.5);
@@ -381,12 +384,105 @@ void test("本文のないendpointでSoniox中心の採用比率を水増しし�
   ]);
 });
 
+void test("同一caseの複数試行を区別し、profileごとにまとめて集計する", () => {
+  const sourceManifest = JSON.parse(manifestJson) as { cases: unknown[] };
+  const manifest = parseSttEvaluationManifest(JSON.stringify({
+    ...sourceManifest,
+    cases: sourceManifest.cases.slice(0, 1),
+  }));
+  const result = (
+    trial: number,
+    profile: "baseline" | "context",
+    transcript: string,
+  ) => ({
+    trial,
+    case_id: "ja-clean-term",
+    profile,
+    transcript,
+    segments: [transcript],
+    recognized_languages: ["ja"],
+    finalizations: [
+      { kind: "finalized", reason: "speaking_end", latency_ms: 100 + trial, has_text: true },
+    ],
+    cpu_percent: trial,
+    decoded_packet_count: 10,
+    dropped_packet_count: 0,
+    configuration: sttEvaluationProfileConfigurations[profile],
+  });
+  const observations = parseSttEvaluationObservations(JSON.stringify({
+    version: 1,
+    results: [
+      result(1, "baseline", "今日は犬"),
+      result(1, "context", "今日は猫"),
+      result(2, "context", "今日は猫"),
+      result(2, "baseline", "今日は猫"),
+    ],
+  }));
+
+  const report = createSttEvaluationReport(manifest, observations);
+
+  assert.equal(report.profiles.baseline?.case_count, 1);
+  assert.equal(report.profiles.baseline.trial_count, 2);
+  assert.equal(report.profiles.baseline.observation_count, 2);
+  assert.deepEqual(report.profiles.baseline.cases.map((entry) => entry.trial), [1, 2]);
+  assert.equal(report.profiles.baseline.cer, 1 / 8);
+  assert.equal(report.profiles.context?.cer, 0);
+  assert.equal(report.comparisons.context?.cer_relative_improvement_percent, 100);
+  assert.throws(
+    () => createSttEvaluationReport(manifest, {
+      ...observations,
+      results: observations.results.filter((entry) => !(
+        entry.profile === "context" && entry.trial === 2
+      )),
+    }),
+    /baselineと候補profileのtrial数/u,
+  );
+});
+
 void test("追跡する人工音声レポートは本文・正解文・API keyを含まない", () => {
   const report = readFileSync("docs/evaluation/stt-artificial-2026-08-25.json", "utf8");
+  const parsed = JSON.parse(report) as {
+    profiles: Record<string, { trial_count: number; observation_count: number }>;
+  };
 
   assert.doesNotMatch(
     report,
     /"(?:transcript|reference|translation_terms|api_key|raw_audio)"/u,
   );
   assert.match(report, /"manifest_sha256": "[a-f0-9]{64}"/u);
+  assert.ok(Object.values(parsed.profiles).every((profile) => (
+    profile.trial_count === 3 && profile.observation_count === 30
+  )));
+});
+
+void test("追跡するPi runtime snapshotは識別子を含めず候補gateを未評価とする", () => {
+  const snapshot = readFileSync(
+    "docs/evaluation/pi-runtime-baseline-2026-08-25.json",
+    "utf8",
+  );
+  const parsed = JSON.parse(snapshot) as {
+    scope: { issue_9_candidate_deployed: boolean };
+    window: {
+      requested: string;
+      first_runtime_sample_at: string;
+      last_runtime_sample_at: string;
+      observed_runtime_span_hours: number;
+    };
+    decision: { candidate_pi_runtime_gate: string; audio_stall_gate: string };
+  };
+
+  assert.doesNotMatch(snapshot, /"(?:guild_id|user_id|trace_id|session_id|api_key)"/u);
+  assert.equal(parsed.scope.issue_9_candidate_deployed, false);
+  assert.equal(parsed.window.requested, "72h");
+  const observedSpanHours = (
+    Date.parse(parsed.window.last_runtime_sample_at)
+    - Date.parse(parsed.window.first_runtime_sample_at)
+  ) / 3_600_000;
+  assert.equal(
+    parsed.window.observed_runtime_span_hours,
+    Number(observedSpanHours.toFixed(2)),
+  );
+  assert.ok(parsed.window.observed_runtime_span_hours < 72);
+  assert.equal(parsed.decision.candidate_pi_runtime_gate, "not_evaluated");
+  assert.equal(parsed.decision.audio_stall_gate, "not_evaluated");
 });

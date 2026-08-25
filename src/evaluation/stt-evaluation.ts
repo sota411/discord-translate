@@ -112,6 +112,7 @@ const evaluationManifestSchema = z.object({
 });
 
 const evaluationResultSchema = z.object({
+  trial: z.number().int().positive().default(1),
   case_id: z.string().min(1),
   profile: evaluationProfileSchema,
   transcript: z.string(),
@@ -169,12 +170,12 @@ const evaluationObservationsSchema = z.object({
 }).strict().superRefine((value, context) => {
   const keys = new Set<string>();
   for (const [index, result] of value.results.entries()) {
-    const key = `${result.profile}\u0000${result.case_id}`;
+    const key = `${String(result.trial)}\u0000${result.profile}\u0000${result.case_id}`;
     if (keys.has(key)) {
       context.addIssue({
         code: "custom",
         path: ["results", index],
-        message: `profileとcase_idの組「${result.profile}/${result.case_id}」が重複しています`,
+        message: `trial、profile、case_idの組「${String(result.trial)}/${result.profile}/${result.case_id}」が重複しています`,
       });
     }
     keys.add(key);
@@ -197,6 +198,7 @@ export const sttEvaluationProfileMapping = {
 type GateResult = "pass" | "fail" | "not_evaluated";
 
 type CaseScore = {
+  trial: number;
   case_id: string;
   cer: number;
   character_edits: number;
@@ -228,6 +230,8 @@ type CaseScore = {
 
 type ProfileScore = {
   case_count: number;
+  trial_count: number;
+  observation_count: number;
   preprocessing: "none";
   configuration: SttEvaluationConfiguration;
   cer: number;
@@ -362,6 +366,7 @@ function scoreCase(evaluationCase: SttEvaluationCase, result: SttEvaluationResul
   const recalledLanguages = new Set(result.recognized_languages
     .filter((language) => expectedLanguages.has(language))).size;
   return {
+    trial: result.trial,
     case_id: evaluationCase.id,
     cer: characterEdits / reference.length,
     character_edits: characterEdits,
@@ -410,16 +415,29 @@ function scoreProfile(
   manifest: SttEvaluationManifest,
   results: readonly SttEvaluationResult[],
 ): ProfileScore {
-  const byCase = new Map(results.map((result) => [result.case_id, result]));
-  const cases = manifest.cases.map((evaluationCase) => {
-    const result = byCase.get(evaluationCase.id);
-    if (!result) throw new Error(`profile「${results[0]?.profile ?? "unknown"}」にcase「${evaluationCase.id}」がありません`);
+  const profile = results[0]?.profile ?? "unknown";
+  const trialIds = [...new Set(results.map((result) => result.trial))]
+    .sort((left, right) => left - right);
+  for (const [index, trial] of trialIds.entries()) {
+    if (trial !== index + 1) {
+      throw new Error(`profile「${profile}」のtrialは1から連続させてください`);
+    }
+  }
+  const byTrialAndCase = new Map(results.map((result) => [
+    `${String(result.trial)}\u0000${result.case_id}`,
+    result,
+  ]));
+  const cases = trialIds.flatMap((trial) => manifest.cases.map((evaluationCase) => {
+    const result = byTrialAndCase.get(`${String(trial)}\u0000${evaluationCase.id}`);
+    if (!result) {
+      throw new Error(
+        `profile「${profile}」のtrial「${String(trial)}」にcase「${evaluationCase.id}」がありません`,
+      );
+    }
     return scoreCase(evaluationCase, result);
-  });
-  if (byCase.size !== manifest.cases.length) {
-    const known = new Set(manifest.cases.map((evaluationCase) => evaluationCase.id));
-    const unknown = [...byCase.keys()].find((caseId) => !known.has(caseId));
-    throw new Error(`STT評価観測結果に未知のcase「${unknown ?? "unknown"}」があります`);
+  }));
+  if (cases.length !== results.length) {
+    throw new Error(`profile「${profile}」の試行結果件数がmanifestと一致しません`);
   }
   const cleanIds = new Set(manifest.cases
     .filter((evaluationCase) => evaluationCase.tags.includes("clean"))
@@ -450,7 +468,9 @@ function scoreProfile(
   const configuration = results[0]?.configuration;
   if (!configuration) throw new Error("STT評価profileのconfigurationがありません");
   return {
-    case_count: cases.length,
+    case_count: manifest.cases.length,
+    trial_count: trialIds.length,
+    observation_count: cases.length,
     preprocessing: "none",
     configuration,
     cer: microCer(cases),
@@ -495,6 +515,9 @@ function gate(condition: boolean): GateResult {
 }
 
 function compareProfile(baseline: ProfileScore, candidate: ProfileScore): ProfileComparison {
+  if (baseline.trial_count !== candidate.trial_count) {
+    throw new Error("baselineと候補profileのtrial数が一致しません");
+  }
   const relativeCer = baseline.cer === 0
     ? null
     : (baseline.cer - candidate.cer) / baseline.cer * 100;

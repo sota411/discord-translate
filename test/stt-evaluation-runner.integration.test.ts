@@ -134,7 +134,7 @@ async function runEvaluationCli(args: readonly string[], env: NodeJS.ProcessEnv)
   return { status, stdout, stderr };
 }
 
-void test("同じPCMとpacket traceをSDK境界へA〜Dで送り、contextだけをprofileどおり変更する", async () => {
+void test("同じPCMを複数試行し、A〜Dの開始順を交替してcontextだけをprofileどおり変更する", async () => {
   const configurations: Record<string, unknown>[] = [];
   const audioByConnection: Buffer[][] = [];
   await withServer((socket) => {
@@ -181,6 +181,7 @@ void test("同じPCMとpacket traceをSDK境界へA〜Dで送り、contextだけ
       model: "stt-rt-v5",
       sttWebSocketUrl: url,
       profiles: ["baseline", "context", "endpoint", "context_endpoint"],
+      trials: 2,
       boundaryTimeoutMs: 1_000,
       finishTimeoutMs: 1_000,
     });
@@ -190,15 +191,22 @@ void test("同じPCMとpacket traceをSDK境界へA〜Dで送り、contextだけ
       "context",
       "endpoint",
       "context_endpoint",
+      "context",
+      "endpoint",
+      "context_endpoint",
+      "baseline",
+    ]);
+    assert.deepEqual(observations.results.map((result) => result.trial), [
+      1, 1, 1, 1, 2, 2, 2, 2,
     ]);
     assert.ok(observations.results.every((result) => result.transcript === "ヴァロラント"));
     assert.deepEqual(
       observations.results.map((result) => result.configuration.manual_finalize_fallback_ms),
-      [100, 100, 600, 600],
+      [100, 100, 600, 600, 100, 600, 600, 100],
     );
     assert.deepEqual(
       observations.results.map((result) => result.configuration.soniox_max_endpoint_delay_ms),
-      [2_000, 2_000, 500, 500],
+      [2_000, 2_000, 500, 500, 2_000, 500, 500, 2_000],
     );
     for (const result of observations.results) {
       const firstFinalization = result.finalizations[0];
@@ -211,8 +219,8 @@ void test("同じPCMとpacket traceをSDK境界へA〜Dで送り、contextだけ
     assert.doesNotMatch(JSON.stringify(observations), /do-not-leak-api-key/u);
   });
 
-  assert.equal(configurations.length, 4);
-  assert.equal(audioByConnection.length, 4);
+  assert.equal(configurations.length, 8);
+  assert.equal(audioByConnection.length, 8);
   assert.ok(audioByConnection.every((chunks) => Buffer.concat(chunks).equals(Buffer.alloc(1_920))));
   for (const configuration of configurations) {
     assert.equal("endpoint_latency_adjustment_level" in configuration, false);
@@ -242,7 +250,7 @@ void test("同じPCMとpacket traceをSDK境界へA〜Dで送り、contextだけ
   assert.equal(contextEndpointConfiguration.max_endpoint_delay_ms, 500);
 });
 
-void test("run CLIはA〜Dを実行し、本文をlocal観測結果だけへ0600で保存する", async () => {
+void test("run CLIは指定試行数のA〜Dを実行し、本文をlocal観測結果だけへ0600で保存する", async () => {
   const outputDirectory = path.join(temporaryDirectory, "cli-output");
   const observationsPath = path.join(outputDirectory, "observations.json");
   const reportPath = path.join(outputDirectory, "report.json");
@@ -257,6 +265,8 @@ void test("run CLIはA〜Dを実行し、本文をlocal観測結果だけへ0600
       reportPath,
       "--stt-websocket-url",
       url,
+      "--trials",
+      "2",
     ], {
       ...process.env,
       SONIOX_API_KEY: "do-not-leak-api-key",
@@ -265,15 +275,19 @@ void test("run CLIはA〜Dを実行し、本文をlocal観測結果だけへ0600
 
     assert.equal(result.status, 0, result.stderr);
     assert.doesNotMatch(`${result.stdout}${result.stderr}`, /do-not-leak-api-key|ヴァロラント/u);
+    assert.equal((JSON.parse(result.stdout) as { trial_count: number }).trial_count, 2);
   });
 
   const observationsText = readFileSync(observationsPath, "utf8");
   const reportText = readFileSync(reportPath, "utf8");
-  const observations = JSON.parse(observationsText) as { results: unknown[] };
+  const observations = JSON.parse(observationsText) as {
+    results: { trial: number }[];
+  };
   const report = JSON.parse(reportText) as {
     profiles: { endpoint: { configuration: { soniox_max_endpoint_delay_ms: number } } };
   };
-  assert.equal(observations.results.length, 4);
+  assert.equal(observations.results.length, 8);
+  assert.deepEqual([...new Set(observations.results.map((entry) => entry.trial))], [1, 2]);
   assert.equal(report.profiles.endpoint.configuration.soniox_max_endpoint_delay_ms, 500);
   assert.match(observationsText, /ヴァロラント/u);
   assert.doesNotMatch(reportText, /ヴァロラント|do-not-leak-api-key/u);
@@ -345,4 +359,18 @@ void test("endpoint候補でmanual fallbackが勝った境界を記録し、Soni
     assert.equal(report.comparisons.endpoint?.gates.semantic_endpoint, "fail");
   });
   assert.equal(finalizeRequestCount, 2);
+});
+
+void test("試行数の範囲外はSonioxへ接続する前に拒否する", async () => {
+  const dataset = await loadSttEvaluationDataset(writeDataset());
+
+  await assert.rejects(
+    runSttEvaluationDataset(dataset, {
+      apiKey: "do-not-leak-api-key",
+      model: "stt-rt-v5",
+      sttWebSocketUrl: "ws://127.0.0.1:1",
+      trials: 11,
+    }),
+    /trial数は1〜10/u,
+  );
 });

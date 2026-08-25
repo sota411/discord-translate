@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "generated_at": "2026-08-25T14:42:49Z",
+  "scope": {
+    "host": "raspberry_pi",
+    "deployed_image": "ghcr.io/sota411/discord-translate:sha-755561f6a1e2095b51e5db8e7e84e2353d77c5c5",
+    "deployed_revision": "755561f6a1e2095b51e5db8e7e84e2353d77c5c5",
+    "container_started_at": "2026-08-22T17:49:36.903698884Z",
+    "container_restart_count": 0,
+    "issue_9_candidate_deployed": false
+  },
+  "window": {
+    "requested": "72h",
+    "first_runtime_sample_at": "2026-08-22T17:50:09.092Z",
+    "last_runtime_sample_at": "2026-08-25T14:42:40.020Z",
+    "observed_runtime_span_hours": 68.88,
+    "runtime_sample_interval_ms": 30000
+  },
+  "runtime_health": {
+    "sample_count": 8266,
+    "active_sample_count": 190,
+    "active_process_cpu_p95_pct": 10.05,
+    "active_process_cpu_max_pct": 15.06,
+    "active_event_loop_p95_of_samples_ms": 20.972,
+    "active_event_loop_max_ms": 942.146,
+    "stt_result_count": 12749
+  },
+  "event_counts": {
+    "pipeline_finished": 932,
+    "voice_packet_dropped": 5,
+    "warning": 176,
+    "error": 5,
+    "discord_rate_limited": 175,
+    "translation_runtime_warning": 4,
+    "usage_reconciliation_failed": 1
+  },
+  "decision": {
+    "deployed_baseline_cpu": "observed",
+    "candidate_pi_runtime_gate": "not_evaluated",
+    "audio_stall_gate": "not_evaluated",
+    "limitations": [
+      "このsnapshotは現行配備版だけを対象とし、Issue #9の候補版をPiへ配備した証拠ではありません。",
+      "STT結果間隔にはセッション間の無音時間が入るため、音声詰まりの指標には使用していません。",
+      "ログ件数とevent loop統計だけでは、利用者が聞いた再生停止や音声詰まりの有無を判定できません。"
+    ]
+  }
+}

@@ -24,7 +24,7 @@ import {
 } from "./evaluation/stt-evaluation.js";
 
 const usage = `使用方法:
-  pnpm stt:evaluate run --manifest <manifest.json> --observations-output <observations.json> --output <report.json> [--stt-websocket-url <wss://...>]
+  pnpm stt:evaluate run --manifest <manifest.json> --observations-output <observations.json> --output <report.json> [--stt-websocket-url <wss://...>] [--trials <1-10>]
   pnpm stt:evaluate score --manifest <manifest.json> --observations <observations.json> --output <report.json>
 
 評価音声、packet trace、観測結果、出力はGit管理外の.data/stt-eval/へ置いてください。`;
@@ -116,6 +116,7 @@ async function run(args: readonly string[]): Promise<void> {
       "observations-output": { type: "string" },
       output: { type: "string" },
       "stt-websocket-url": { type: "string" },
+      trials: { type: "string" },
     },
   });
   const manifestPath = parsed.values.manifest;
@@ -147,6 +148,7 @@ async function run(args: readonly string[]): Promise<void> {
     apiKey,
     model,
     sttWebSocketUrl: sonioxSttWebSocketUrl(parsed.values["stt-websocket-url"]),
+    trials: parsed.values.trials === undefined ? 1 : Number(parsed.values.trials),
   });
   const report = {
     ...createSttEvaluationReport(dataset.manifest, observations),
@@ -159,6 +161,7 @@ async function run(args: readonly string[]): Promise<void> {
     report: resolvedOutputPath,
     profiles: Object.keys(report.profiles),
     case_count: dataset.cases.length,
+    trial_count: report.profiles.baseline?.trial_count,
   }));
 }
 

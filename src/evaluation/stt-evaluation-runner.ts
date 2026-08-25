@@ -26,6 +26,7 @@ import { sttEvaluationProfileConfigurations } from "./stt-evaluation.js";
 const transcriptInactivityMs = 3_000;
 const maxTurnMs = 30_000;
 const trailingSilenceMs = 200;
+const maximumTrialCount = 10;
 
 type SttEvaluationRunResult = SttEvaluationObservations["results"][number] & {
   configuration: typeof sttEvaluationProfileConfigurations[SttEvaluationProfile];
@@ -41,6 +42,7 @@ export type SttEvaluationRunnerOptions = {
   model: string;
   sttWebSocketUrl: string;
   profiles?: readonly SttEvaluationProfile[];
+  trials?: number;
   boundaryTimeoutMs?: number;
   finishTimeoutMs?: number;
 };
@@ -80,6 +82,7 @@ async function runCase(
   client: SonioxNodeClient,
   dataset: LoadedSttEvaluationDataset,
   evaluationCase: LoadedSttEvaluationCase,
+  trial: number,
   profile: SttEvaluationProfile,
   model: string,
   boundaryTimeoutMs: number,
@@ -195,6 +198,7 @@ async function runCase(
       );
     }
     return {
+      trial,
       case_id: evaluationCase.definition.id,
       profile,
       transcript: segments.join(""),
@@ -229,6 +233,10 @@ export async function runSttEvaluationDataset(
   if (profiles.length === 0 || new Set(profiles).size !== profiles.length) {
     throw new Error("STT評価profileは重複なしで1件以上指定してください");
   }
+  const trials = options.trials ?? 1;
+  if (!Number.isSafeInteger(trials) || trials < 1 || trials > maximumTrialCount) {
+    throw new Error(`STT評価trial数は1〜${String(maximumTrialCount)}の整数にしてください`);
+  }
   const boundaryTimeoutMs = options.boundaryTimeoutMs ?? 10_000;
   const finishTimeoutMs = options.finishTimeoutMs ?? 10_000;
   if (boundaryTimeoutMs <= 0 || finishTimeoutMs <= 0) {
@@ -239,17 +247,23 @@ export async function runSttEvaluationDataset(
     realtime: { ws_base_url: options.sttWebSocketUrl },
   });
   const results: SttEvaluationRunResult[] = [];
-  for (const profile of profiles) {
-    for (const evaluationCase of dataset.cases) {
-      results.push(await runCase(
-        client,
-        dataset,
-        evaluationCase,
-        profile,
-        options.model,
-        boundaryTimeoutMs,
-        finishTimeoutMs,
-      ));
+  for (let trial = 1; trial <= trials; trial += 1) {
+    for (const [caseIndex, evaluationCase] of dataset.cases.entries()) {
+      const profileStartIndex = (trial - 1 + caseIndex) % profiles.length;
+      for (let offset = 0; offset < profiles.length; offset += 1) {
+        const profile = profiles[(profileStartIndex + offset) % profiles.length];
+        if (!profile) throw new Error("STT評価profileの実行順を解決できませんでした");
+        results.push(await runCase(
+          client,
+          dataset,
+          evaluationCase,
+          trial,
+          profile,
+          options.model,
+          boundaryTimeoutMs,
+          finishTimeoutMs,
+        ));
+      }
     }
   }
   return {
