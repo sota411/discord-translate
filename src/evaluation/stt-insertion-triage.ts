@@ -336,8 +336,14 @@ const resultSchema = z.object({
     });
   }
   if (historical) {
+    const manualFinalizeBoundaryCount = value.accepted_boundaries.filter((boundary) => (
+      boundary.reason === "speaking_end" ||
+      boundary.reason === "transcript_inactivity" ||
+      boundary.reason === "max_turn_duration"
+    )).length;
     if (
       value.accepted_boundaries.some((boundary) => boundary.reason === "known_file_end") ||
+      manualFinalizeBoundaryCount !== value.input_audit.finalize_call_count ||
       value.input_audit.trailing_silence_ms !==
         value.input_audit.finalize_call_count * 200 ||
       (value.input_audit.finalize_call_count === 0 &&
@@ -377,6 +383,13 @@ const observationsSchema = z.object({
     });
   }
   const evidenceByCase = new Map(value.dataset.cases.map((entry) => [entry.case_id, entry]));
+  if (evidenceByCase.size !== value.dataset.cases.length) {
+    context.addIssue({
+      code: "custom",
+      path: ["dataset", "cases"],
+      message: "datasetのcase IDは重複させないでください",
+    });
+  }
   const auditByCase = new Map(value.audio_audit.cases.map((entry) => [entry.case_id, entry]));
   if (
     auditByCase.size !== value.audio_audit.cases.length ||

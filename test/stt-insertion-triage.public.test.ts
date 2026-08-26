@@ -274,6 +274,36 @@ void test("既知終端条件はfinalized eventを1回だけ受理する", () =>
   );
 });
 
+void test("陽性対照Pのtimer確定理由はmanual finalize回数と一致させる", () => {
+  const invalid = observations();
+  const positiveControl = invalid.results[0];
+  assert.ok(positiveControl);
+  positiveControl.input_audit.finalize_call_count = 0;
+  positiveControl.input_audit.trailing_silence_ms = 0;
+  positiveControl.input_audit.send_audio_call_count = 1;
+  positiveControl.input_audit.sent_audio_bytes = 1_920;
+  positiveControl.input_audit.sent_audio_duration_ms = 20;
+
+  assert.throws(
+    () => parseSttInsertionTriageObservations(JSON.stringify(invalid)),
+    /historical baseline.*手動確定/u,
+  );
+});
+
+void test("dataset証拠のcase ID重複を拒否する", () => {
+  const invalid = observations();
+  const evidence = invalid.dataset.cases[0];
+  assert.ok(evidence);
+  invalid.dataset.cases.push({
+    ...evidence,
+  });
+
+  assert.throws(
+    () => parseSttInsertionTriageObservations(JSON.stringify(invalid)),
+    /dataset.*case ID.*重複/u,
+  );
+});
+
 void test("private observationのverified referenceをCERの正解として使う", () => {
   const heardObservations = observations();
   for (const result of heardObservations.results) {

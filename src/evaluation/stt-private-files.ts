@@ -26,7 +26,11 @@ export async function assertOwnerOnlyDirectoryChain(
   let currentPath = directoryPath;
   while (isWithinPath(privateRoot, currentPath)) {
     const status = await lstat(currentPath);
-    if (!status.isDirectory() || status.isSymbolicLink() || (status.mode & 0o077) !== 0) {
+    if (
+      !status.isDirectory() ||
+      status.isSymbolicLink() ||
+      (status.mode & 0o777) !== 0o700
+    ) {
       throw new Error(
         `STT評価のprivate directory「${currentPath}」は所有者だけが利用できる0700にしてください`,
       );
@@ -52,7 +56,7 @@ export async function assertPrivateSttEvaluationFiles(
     if (
       !requestedStatus.isFile() ||
       requestedStatus.isSymbolicLink() ||
-      (requestedStatus.mode & 0o077) !== 0
+      (requestedStatus.mode & 0o777) !== 0o600
     ) {
       throw new Error(
         `${file.label}「${requestedPath}」は所有者だけが読み書きできる通常fileの0600にしてください`,

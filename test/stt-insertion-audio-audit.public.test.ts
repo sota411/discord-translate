@@ -157,3 +157,31 @@ void test("監査JSONとWAVの親directoryがowner-onlyでなければ拒否す�
     /private directory.*0700/u,
   );
 });
+
+void test("監査JSONと親directoryは0600・0700の完全一致を要求する", async () => {
+  const { dataset, auditPath, auditDirectory, bundle } = await prepareAuditFixture();
+  const audit = structuredClone(bundle.audit);
+  const first = audit.cases[0];
+  assert.ok(first);
+  first.reference_status = "verified";
+  first.heard_reference = "実際に聞こえた文";
+  first.audit_note = "確認済み";
+  writeFileSync(auditPath, `${JSON.stringify(audit, null, 2)}\n`, { mode: 0o600 });
+
+  chmodSync(auditPath, 0o400);
+  await assert.rejects(
+    loadVerifiedSttInsertionAudioAudit(dataset, auditPath, ["problem-case"]),
+    /0600/u,
+  );
+
+  chmodSync(auditPath, 0o600);
+  chmodSync(auditDirectory, 0o500);
+  try {
+    await assert.rejects(
+      loadVerifiedSttInsertionAudioAudit(dataset, auditPath, ["problem-case"]),
+      /0700/u,
+    );
+  } finally {
+    chmodSync(auditDirectory, 0o700);
+  }
+});
