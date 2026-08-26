@@ -174,8 +174,24 @@ void test("監査JSONと親directoryは0600・0700の完全一致を要求する
     /0600/u,
   );
 
+  chmodSync(auditPath, 0o4600);
+  await assert.rejects(
+    loadVerifiedSttInsertionAudioAudit(dataset, auditPath, ["problem-case"]),
+    /0600/u,
+  );
+
   chmodSync(auditPath, 0o600);
   chmodSync(auditDirectory, 0o500);
+  try {
+    await assert.rejects(
+      loadVerifiedSttInsertionAudioAudit(dataset, auditPath, ["problem-case"]),
+      /0700/u,
+    );
+  } finally {
+    chmodSync(auditDirectory, 0o700);
+  }
+
+  chmodSync(auditDirectory, 0o1700);
   try {
     await assert.rejects(
       loadVerifiedSttInsertionAudioAudit(dataset, auditPath, ["problem-case"]),
