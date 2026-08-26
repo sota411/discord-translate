@@ -84,6 +84,39 @@ void test("STT評価manifestは同一音声A〜Dに必要な正解・区間・�
   );
 });
 
+void test("通常の評価reportもheard_referenceをCERの正解として優先する", () => {
+  const sourceManifest = JSON.parse(manifestJson) as { cases: Record<string, unknown>[] };
+  const manifest = parseSttEvaluationManifest(JSON.stringify({
+    ...sourceManifest,
+    cases: [{
+      ...sourceManifest.cases[0],
+      reference: "TTSへ入力した文",
+      heard_reference: "実際に聞こえた文",
+    }],
+  }));
+  const observations = parseSttEvaluationObservations(JSON.stringify({
+    version: 1,
+    results: [{
+      case_id: "ja-clean-term",
+      profile: "baseline",
+      transcript: "実際に聞こえた文",
+      segments: ["実際に聞こえた文"],
+      recognized_languages: ["ja"],
+      finalizations: [
+        { kind: "finalized", reason: "speaking_end", latency_ms: 100, has_text: true },
+      ],
+      cpu_percent: 1,
+      decoded_packet_count: 1,
+      dropped_packet_count: 0,
+      configuration: sttEvaluationProfileConfigurations.baseline,
+    }],
+  }));
+
+  const report = createSttEvaluationReport(manifest, observations);
+
+  assert.equal(report.profiles.baseline?.micro_cer, 0);
+});
+
 void test("同一音声の結果からCER・固有名詞再現率・分割数・p50/p95を比較する", () => {
   const manifest = parseSttEvaluationManifest(manifestJson);
   const observations = parseSttEvaluationObservations(JSON.stringify({

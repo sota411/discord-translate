@@ -23,7 +23,7 @@ const temporaryDirectory = mkdtempSync(path.join(tmpdir(), "discord-stt-eval-tes
 after(() => rmSync(temporaryDirectory, { recursive: true, force: true }));
 let datasetSequence = 0;
 
-void test("評価CLIはSonioxとAmazonの同一音声比較コマンドを案内する", () => {
+void test("評価CLIはprovider比較と大量挿入triageのコマンドを案内する", () => {
   const result = spawnSync(process.execPath, [
     "--import",
     "tsx",
@@ -37,6 +37,8 @@ void test("評価CLIはSonioxとAmazonの同一音声比較コマンドを案内
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /compare-provider/u);
   assert.match(result.stdout, /aws-region/u);
+  assert.match(result.stdout, /triage-insertions/u);
+  assert.match(result.stdout, /--cases/u);
 });
 
 function writeDataset(traceByteLength = 8): {

@@ -1,0 +1,187 @@
+{
+  "version": 1,
+  "generated_at": "2026-08-26T12:50:20.927Z",
+  "experiment": "stt_insertion_input_preflight",
+  "environment": {
+    "receiver": "local_fake_websocket",
+    "live_soniox": false,
+    "discord": false,
+    "raspberry_pi": false
+  },
+  "dataset": {
+    "manifest_sha256": "6d350a14157addc4415a4f8374ea66b0bca2d32e2d170deb5cf3e1e284c4dee2",
+    "independent_case_count": 3,
+    "trial_count": 1,
+    "condition_count": 4,
+    "observation_count": 12
+  },
+  "conditions": {
+    "pcm_stt_only": {
+      "input_route": "pcm_direct",
+      "translation_enabled": false,
+      "translation_terms_enabled": false,
+      "endpoint_detection_enabled": false,
+      "finalization_mode": "known_file_end"
+    },
+    "pcm_translation": {
+      "input_route": "pcm_direct",
+      "translation_enabled": true,
+      "translation_terms_enabled": false,
+      "endpoint_detection_enabled": false,
+      "finalization_mode": "known_file_end"
+    },
+    "opus_stt_only": {
+      "input_route": "discord_opus_roundtrip",
+      "translation_enabled": false,
+      "translation_terms_enabled": false,
+      "endpoint_detection_enabled": false,
+      "finalization_mode": "known_file_end"
+    },
+    "opus_translation": {
+      "input_route": "discord_opus_roundtrip",
+      "translation_enabled": true,
+      "translation_terms_enabled": false,
+      "endpoint_detection_enabled": false,
+      "finalization_mode": "known_file_end"
+    }
+  },
+  "cases": [
+    {
+      "case_id": "ja-clean-game",
+      "audio_sha256": "312cac0eacc7c406e4ee9d3f4a2fd4d76c9125af4397ce4146aae80f63b42f6b",
+      "packet_trace_sha256": "f900506314f6167e7dd7a8d71daae9c31775fc2734929693c06374b8bdb43898",
+      "source_sample_count": 350494,
+      "source_duration_ms": 7301.958333333333,
+      "source_packet_count": 366,
+      "pcm_direct": {
+        "source_packet_send_count": 366,
+        "duplicate_source_packet_index_count": 0,
+        "missing_source_packet_count": 0,
+        "send_audio_call_count": 367,
+        "sent_audio_bytes": 720188,
+        "receiver_binary_message_count": 367,
+        "receiver_binary_bytes": 720188,
+        "sent_audio_duration_ms": 7501.958333333334,
+        "finalize_call_count": 1,
+        "endpoint_event_count": 0,
+        "finalized_event_count": 1
+      },
+      "discord_opus_roundtrip": {
+        "source_packet_send_count": 366,
+        "duplicate_source_packet_index_count": 0,
+        "missing_source_packet_count": 0,
+        "opus_packet_count": 366,
+        "codec_padding_sample_count": 26,
+        "codec_padding_ms": 0.541666666667,
+        "send_audio_call_count": 367,
+        "sent_audio_bytes": 720240,
+        "receiver_binary_message_count": 367,
+        "receiver_binary_bytes": 720240,
+        "sent_audio_duration_ms": 7502.5,
+        "finalize_call_count": 1,
+        "endpoint_event_count": 0,
+        "finalized_event_count": 1
+      }
+    },
+    {
+      "case_id": "ja-clipped",
+      "audio_sha256": "b507460ba635198f4ce56bb345bf68a189a2345024041889990653f1fec80696",
+      "packet_trace_sha256": "d4f10ccdda50c44acf425dc19dc289b7a53ccf4e1d4396b6da1f6dd0cd79044a",
+      "source_sample_count": 354846,
+      "source_duration_ms": 7392.625,
+      "source_packet_count": 370,
+      "pcm_direct": {
+        "source_packet_send_count": 370,
+        "duplicate_source_packet_index_count": 0,
+        "missing_source_packet_count": 0,
+        "send_audio_call_count": 371,
+        "sent_audio_bytes": 728892,
+        "receiver_binary_message_count": 371,
+        "receiver_binary_bytes": 728892,
+        "sent_audio_duration_ms": 7592.625,
+        "finalize_call_count": 1,
+        "endpoint_event_count": 0,
+        "finalized_event_count": 1
+      },
+      "discord_opus_roundtrip": {
+        "source_packet_send_count": 370,
+        "duplicate_source_packet_index_count": 0,
+        "missing_source_packet_count": 0,
+        "opus_packet_count": 370,
+        "codec_padding_sample_count": 354,
+        "codec_padding_ms": 7.375,
+        "send_audio_call_count": 371,
+        "sent_audio_bytes": 729600,
+        "receiver_binary_message_count": 371,
+        "receiver_binary_bytes": 729600,
+        "sent_audio_duration_ms": 7600,
+        "finalize_call_count": 1,
+        "endpoint_event_count": 0,
+        "finalized_event_count": 1
+      }
+    },
+    {
+      "case_id": "ja-ko-code-switch",
+      "audio_sha256": "3ee279b842f7fc19beab19dd6ea7183e63a3d99e983358baab0daf020c37ef7b",
+      "packet_trace_sha256": "15fe3202324a72c5e3af63fb28c536b0e17e7830e98ce2dc48af28b62b6d2768",
+      "source_sample_count": 214693,
+      "source_duration_ms": 4472.770833333334,
+      "source_packet_count": 225,
+      "pcm_direct": {
+        "source_packet_send_count": 225,
+        "duplicate_source_packet_index_count": 0,
+        "missing_source_packet_count": 0,
+        "send_audio_call_count": 226,
+        "sent_audio_bytes": 448586,
+        "receiver_binary_message_count": 226,
+        "receiver_binary_bytes": 448586,
+        "sent_audio_duration_ms": 4672.770833333334,
+        "finalize_call_count": 1,
+        "endpoint_event_count": 0,
+        "finalized_event_count": 1
+      },
+      "discord_opus_roundtrip": {
+        "source_packet_send_count": 225,
+        "duplicate_source_packet_index_count": 0,
+        "missing_source_packet_count": 0,
+        "opus_packet_count": 225,
+        "codec_padding_sample_count": 347,
+        "codec_padding_ms": 7.229166666667,
+        "send_audio_call_count": 226,
+        "sent_audio_bytes": 449280,
+        "receiver_binary_message_count": 226,
+        "receiver_binary_bytes": 449280,
+        "sent_audio_duration_ms": 4680,
+        "finalize_call_count": 1,
+        "endpoint_event_count": 0,
+        "finalized_event_count": 1
+      }
+    }
+  ],
+  "input_integrity": {
+    "all_source_audio_hashes_match_dataset": true,
+    "all_source_packets_sent_once": true,
+    "all_opus_packets_accounted_for": true,
+    "all_send_audio_calls_accounted_for": true,
+    "all_receiver_binary_messages_match_send_calls": true,
+    "all_receiver_binary_bytes_match_sent_audio_bytes": true,
+    "all_sent_audio_durations_accounted_for": true,
+    "all_finalize_once": true,
+    "all_endpoint_events_zero": true,
+    "all_finalized_once": true,
+    "maximum_codec_padding_ms": 7.375
+  },
+  "source_channel_check": {
+    "status": "not_applicable_source_mono",
+    "source_wav_count": 4,
+    "sample_rate_hz": 22050,
+    "channel_count": 1,
+    "reason": "3ケースの元WAVはすべてmonoのため、左右音量差・stereo相関・downmix位相差を測定できません"
+  },
+  "decision": "ready_for_live_triage",
+  "limitations": [
+    "ローカルfake受信器による新runnerの入力経路監査であり、過去runnerの送信履歴は証明しません",
+    "Soniox実サービスの認識結果、双方向翻訳の認識への影響、実Discord音声、Raspberry Piは未評価です",
+    "音声の人によるheard reference監査と挿入原因分類は未実施です"
+  ]
+}

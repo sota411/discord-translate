@@ -98,6 +98,37 @@ void test("3言語ペアをSonioxの双方向翻訳設定へ正しく変換す�
   }
 });
 
+void test("評価用セッションだけは翻訳とendpoint検出を無効化でき、通常既定は維持する", () => {
+  const received: Record<string, unknown>[] = [];
+  const client = {
+    realtime: {
+      stt: (input: Record<string, unknown>) => {
+        received.push(input);
+        return {};
+      },
+    },
+  } as never;
+
+  new SonioxSttFactory(client, "stt-rt-v5").create("ja-ko", "normal", []);
+  new SonioxSttFactory(client, "stt-rt-v5", false, {
+    translationEnabled: false,
+    endpointDetectionEnabled: false,
+  }).create("ja-ko", "evaluation", []);
+
+  const normal = received[0];
+  const evaluation = received[1];
+  assert.ok(normal);
+  assert.ok(evaluation);
+  assert.deepEqual(normal.translation, {
+    type: "two_way",
+    language_a: "ja",
+    language_b: "ko",
+  });
+  assert.equal(normal.enable_endpoint_detection, true);
+  assert.equal("translation" in evaluation, false);
+  assert.equal(evaluation.enable_endpoint_detection, false);
+});
+
 void test("セッション開始時に固定した翻訳用語だけをSTT contextへ渡す", () => {
   const received: Record<string, unknown>[] = [];
   const factory = new SonioxSttFactory(

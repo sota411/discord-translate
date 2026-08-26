@@ -208,6 +208,8 @@ export class SonioxSttFactory {
   readonly #maxEndpointDelayMs: number | undefined;
   readonly #endpointLatencyAdjustmentLevel: number | undefined;
   readonly #endpointSensitivity: number | undefined;
+  readonly #translationEnabled: boolean;
+  readonly #endpointDetectionEnabled: boolean;
 
   public constructor(
     client: SonioxNodeClient,
@@ -219,6 +221,8 @@ export class SonioxSttFactory {
       maxEndpointDelayMs?: number;
       endpointLatencyAdjustmentLevel?: number;
       endpointSensitivity?: number;
+      translationEnabled?: boolean;
+      endpointDetectionEnabled?: boolean;
     } = {},
   ) {
     this.#client = client;
@@ -229,6 +233,8 @@ export class SonioxSttFactory {
     this.#maxEndpointDelayMs = options.maxEndpointDelayMs;
     this.#endpointLatencyAdjustmentLevel = options.endpointLatencyAdjustmentLevel;
     this.#endpointSensitivity = options.endpointSensitivity;
+    this.#translationEnabled = options.translationEnabled ?? true;
+    this.#endpointDetectionEnabled = options.endpointDetectionEnabled ?? true;
   }
 
   public create(
@@ -256,21 +262,25 @@ export class SonioxSttFactory {
       num_channels: 1,
       language_hints: [languageA, languageB],
       enable_language_identification: true,
-      enable_endpoint_detection: true,
-      ...(this.#maxEndpointDelayMs === undefined
-        ? {}
-        : { max_endpoint_delay_ms: this.#maxEndpointDelayMs }),
-      ...(this.#endpointLatencyAdjustmentLevel === undefined
-        ? {}
-        : { endpoint_latency_adjustment_level: this.#endpointLatencyAdjustmentLevel }),
-      ...(this.#endpointSensitivity === undefined
-        ? {}
-        : { endpoint_sensitivity: this.#endpointSensitivity }),
-      translation: {
-        type: "two_way",
-        language_a: languageA,
-        language_b: languageB,
-      },
+      enable_endpoint_detection: this.#endpointDetectionEnabled,
+      ...(this.#endpointDetectionEnabled && this.#maxEndpointDelayMs !== undefined
+        ? { max_endpoint_delay_ms: this.#maxEndpointDelayMs }
+        : {}),
+      ...(this.#endpointDetectionEnabled && this.#endpointLatencyAdjustmentLevel !== undefined
+        ? { endpoint_latency_adjustment_level: this.#endpointLatencyAdjustmentLevel }
+        : {}),
+      ...(this.#endpointDetectionEnabled && this.#endpointSensitivity !== undefined
+        ? { endpoint_sensitivity: this.#endpointSensitivity }
+        : {}),
+      ...(this.#translationEnabled
+        ? {
+          translation: {
+            type: "two_way" as const,
+            language_a: languageA,
+            language_b: languageB,
+          },
+        }
+        : {}),
       client_reference_id: requestRef,
       ...(builtContext.context ? { context: builtContext.context } : {}),
     });

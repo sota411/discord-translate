@@ -24,6 +24,8 @@ import {
   runSttEvaluationDataset,
   runSttProviderComparisonDataset,
 } from "./evaluation/stt-evaluation-runner.js";
+import { runSttInsertionTriageDataset } from "./evaluation/stt-insertion-triage-runner.js";
+import { createSttInsertionTriageReport } from "./evaluation/stt-insertion-triage.js";
 import {
   createSttEvaluationReport,
   parseSttEvaluationExperiment,
@@ -37,6 +39,7 @@ const usage = `使用方法:
   pnpm stt:evaluate run --manifest <manifest.json> --observations-output <observations.json> --output <report.json> [--experiment <context_endpoint|endpoint_timing|context_endpoint_400|endpoint_latency_level|recognition_catalog_level1|recognition_catalog_factorial|recognition_terms|recognition_source_terms>] [--profiles <comma-separated>] [--stt-websocket-url <wss://...>] [--trials <1-10>]
   pnpm stt:evaluate compare-provider --manifest <manifest.json> --observations-output <observations.json> --output <report.json> --aws-region <region> [--stt-websocket-url <wss://...>] [--trials <1-10>] [--amazon-timeout-ms <milliseconds>]
   pnpm stt:evaluate probe-endpoint-only --manifest <manifest.json> --required-case <case-id> --output <summary.json> [--stt-websocket-url <wss://...>] [--trials 3] [--boundary-timeout-ms <milliseconds>]
+  pnpm stt:evaluate triage-insertions --manifest <manifest.json> --cases <comma-separated-case-ids> --observations-output <observations.json> --output <report.json> [--stt-websocket-url <wss://...>] [--trials 5]
   pnpm stt:evaluate score --manifest <manifest.json> --observations <observations.json> --output <report.json>
 
 評価音声、packet trace、本文入り観測結果はGit管理外の.data/stt-eval/、または所有者だけが利用できるリポジトリ外directoryへ置いてください。`;
@@ -463,6 +466,72 @@ async function probeEndpointOnly(
   };
 }
 
+function parseCaseIds(value: string): string[] {
+  const caseIds = value.split(",").map((caseId) => caseId.trim());
+  if (
+    caseIds.length === 0 ||
+    caseIds.some((caseId) => caseId.length === 0) ||
+    new Set(caseIds).size !== caseIds.length
+  ) {
+    throw new Error("大量挿入triageのcase IDはcomma区切りで重複なしにしてください");
+  }
+  return caseIds;
+}
+
+async function triageInsertions(
+  args: readonly string[],
+  environment: NodeJS.ProcessEnv,
+): Promise<Record<string, unknown>> {
+  const parsed = parseArgs({
+    args,
+    strict: true,
+    options: {
+      manifest: { type: "string" },
+      cases: { type: "string" },
+      "observations-output": { type: "string" },
+      output: { type: "string" },
+      "stt-websocket-url": { type: "string" },
+      trials: { type: "string" },
+    },
+  });
+  const manifestPath = parsed.values.manifest;
+  const caseSelection = parsed.values.cases;
+  const observationsOutput = parsed.values["observations-output"];
+  const outputPath = parsed.values.output;
+  if (!manifestPath || !caseSelection || !observationsOutput || !outputPath) {
+    throw new Error(usage);
+  }
+  const apiKey = environment.SONIOX_API_KEY?.trim();
+  const model = environment.SONIOX_STT_MODEL?.trim();
+  if (!apiKey) throw new Error("SONIOX_API_KEYが設定されていません");
+  if (!model) throw new Error("SONIOX_STT_MODELが設定されていません");
+  const { dataset, resolvedObservationsOutput, resolvedOutputPath } =
+    await prepareLiveEvaluationRun(manifestPath, observationsOutput, outputPath);
+  const caseIds = parseCaseIds(caseSelection);
+  const observations = await runSttInsertionTriageDataset(dataset, {
+    apiKey,
+    model,
+    sttWebSocketUrl: sonioxSttWebSocketUrl(
+      parsed.values["stt-websocket-url"],
+      environment,
+    ),
+    caseIds,
+    trials: parsed.values.trials === undefined ? 5 : Number(parsed.values.trials),
+  });
+  const report = createSttInsertionTriageReport(dataset.manifest, observations);
+  await writePrivateJson(resolvedObservationsOutput, observations);
+  await writePrivateJson(resolvedOutputPath, report);
+  return {
+    observations_written: true,
+    report_written: true,
+    experiment: report.experiment,
+    case_count: report.scope.independent_case_count,
+    trial_count: report.scope.trial_count,
+    observation_count: report.scope.observation_count,
+    decision: report.decision,
+  };
+}
+
 async function score(args: readonly string[]): Promise<Record<string, unknown>> {
   const parsed = parseArgs({
     args,
@@ -528,6 +597,9 @@ export async function runSttEvaluationCli(
   }
   if (command === "probe-endpoint-only") {
     return await probeEndpointOnly(args, dependencies.environment);
+  }
+  if (command === "triage-insertions") {
+    return await triageInsertions(args, dependencies.environment);
   }
   if (command === "score") {
     return await score(args);

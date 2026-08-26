@@ -244,6 +244,7 @@ const evaluationCaseSchema = z.object({
   id: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/u),
   audio: z.string().trim().min(1),
   reference: z.string().refine((value) => value.trim().length > 0),
+  heard_reference: z.string().refine((value) => value.trim().length > 0).optional(),
   language: evaluationLanguageSchema,
   tags: z.array(z.string().trim().min(1)),
   key_terms: z.array(z.string().trim().min(1)),
@@ -492,6 +493,10 @@ type SttEvaluationCase = SttEvaluationManifest["cases"][number];
 type SttEvaluationResult = SttEvaluationObservations["results"][number];
 type SttEvaluationAudioMetrics = z.infer<typeof evaluationAudioMetricsSchema>;
 
+export function sttEvaluationScoringReference(evaluationCase: SttEvaluationCase): string {
+  return evaluationCase.heard_reference ?? evaluationCase.reference;
+}
+
 export const sttEvaluationExperimentProfileMappings = {
   context_endpoint: {
     A: "baseline",
@@ -557,7 +562,7 @@ export function parseSttEvaluationExperiment(value: string): SttEvaluationExperi
 
 type GateResult = "pass" | "fail" | "not_evaluated";
 
-type EditCounts = {
+export type EditCounts = {
   substitutions: number;
   deletions: number;
   insertions: number;
@@ -567,6 +572,14 @@ type EditCounts = {
 type CharacterCounts = {
   reference_characters: number;
   hypothesis_characters: number;
+};
+
+export type SttCharacterErrorScore = {
+  cer: number;
+  character_edits: number;
+  reference_characters: number;
+  hypothesis_characters: number;
+  edit_counts: EditCounts;
 };
 
 type CaseDiagnosticScore = {
@@ -921,6 +934,23 @@ function editCounts(reference: readonly string[], hypothesis: readonly string[])
   return result;
 }
 
+export function scoreSttCharacterError(
+  referenceText: string,
+  hypothesisText: string,
+): SttCharacterErrorScore {
+  const reference = Array.from(normalizeForComparison(referenceText));
+  if (reference.length === 0) throw new Error("CERの正解文字数は1文字以上にしてください");
+  const hypothesis = Array.from(normalizeForComparison(hypothesisText));
+  const counts = editCounts(reference, hypothesis);
+  return {
+    cer: counts.total / reference.length,
+    character_edits: counts.total,
+    reference_characters: reference.length,
+    hypothesis_characters: hypothesis.length,
+    edit_counts: counts,
+  };
+}
+
 function percentile(values: readonly number[], quantile: number): number {
   if (values.length === 0) throw new Error("percentileには1件以上の値が必要です");
   const sorted = [...values].sort((left, right) => left - right);
@@ -936,11 +966,10 @@ function mean(values: readonly number[]): number {
 }
 
 function scoreCase(evaluationCase: SttEvaluationCase, result: SttEvaluationResult): CaseScore {
-  const reference = Array.from(normalizeForComparison(evaluationCase.reference));
-  const hypothesis = Array.from(normalizeForComparison(result.transcript));
-  const counts = editCounts(reference, hypothesis);
+  const scoringReference = sttEvaluationScoringReference(evaluationCase);
+  const primaryScore = scoreSttCharacterError(scoringReference, result.transcript);
   const punctuationAndSymbolInsensitiveReference = Array.from(
-    normalizeForPunctuationInsensitiveComparison(evaluationCase.reference),
+    normalizeForPunctuationInsensitiveComparison(scoringReference),
   );
   const punctuationAndSymbolInsensitiveHypothesis = Array.from(
     normalizeForPunctuationInsensitiveComparison(result.transcript),
@@ -963,11 +992,11 @@ function scoreCase(evaluationCase: SttEvaluationCase, result: SttEvaluationResul
   return {
     trial: result.trial,
     case_id: evaluationCase.id,
-    cer: counts.total / reference.length,
-    character_edits: counts.total,
-    reference_characters: reference.length,
-    hypothesis_characters: hypothesis.length,
-    edit_counts: counts,
+    cer: primaryScore.cer,
+    character_edits: primaryScore.character_edits,
+    reference_characters: primaryScore.reference_characters,
+    hypothesis_characters: primaryScore.hypothesis_characters,
+    edit_counts: primaryScore.edit_counts,
     punctuation_and_symbol_insensitive_score: {
       cer: punctuationAndSymbolInsensitiveCounts.total / punctuationAndSymbolInsensitiveReference.length,
       character_edits: punctuationAndSymbolInsensitiveCounts.total,
