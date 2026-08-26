@@ -257,7 +257,7 @@ pnpm stt:evaluate prepare-insertion-audit \
   --output-directory .data/stt-eval/artificial/insertion-audio-audit
 ```
 
-`audit.json`の各caseで、`heard_reference`、`reference_status`、`audit_note`を記録する。`reference_status`は`verified`、`ambiguous`、`invalid`のいずれかである。選択した全caseが`verified`であり、監査WAV、manifest、PCMのSHA-256が一致するまで、live triageは接続前に失敗する。
+`audit.json`の各caseで、`heard_reference`、`reference_status`、`audit_note`を記録する。`reference_status`は未確認の`pending`から、`verified`、`ambiguous`、`invalid`のいずれかへ変更する。選択した全caseが`verified`であり、監査JSONとWAVの親directoryがowner-onlyで、監査WAV、manifest、PCMのSHA-256が一致するまで、live triageは接続前に失敗する。監査WAVは送信PCM sampleを連結して聞くための音声であり、packetの到着間隔を無音へ置き換えたものではない。到着時刻はpacket traceのままlive replayで再現する。
 
 監査後は、以前の現行Aを再現する陽性対照Pと、PCM/Opus経路×翻訳有無のA〜Dを各5試行する。Pは元PCM、双方向翻訳、case別の翻訳用語、endpoint検出、従来の100 ms＋100 ms手動fallbackを使う。A〜Dは翻訳用語と認識contextを送らず、endpoint検出も無効にして、既知のファイル終端で200 msの無音と`finalize()`を一度だけ送る。条件順はcase・trialごとに回し、3 case×5条件×5試行で75観測になる。
 
@@ -271,7 +271,7 @@ pnpm stt:evaluate triage-insertions \
   --trials 5
 ```
 
-private observationsには、実際に送ったspeechのSHA-256と時間、末尾無音、確定原文tokenの受信時刻、受理した境界、編集内訳、CER、1秒当たりの認識文字数を保存する。PはSoniox endpointが先に成立すれば`finalize()`が0回、手動fallbackが先なら1回になる。A〜Dは1回である。本文、監査注記、token列は公開reportへ含めない。
+private observationsには、実際に送ったspeechのSHA-256と時間、末尾無音、確定原文tokenの受信時刻と重複数、受理した全境界、編集内訳、CER、1秒当たりの認識文字数を保存する。Pは旧runnerと同様に、Soniox endpointが先なら手動`finalize()`を送らず、複数の発話境界があれば手動`finalize()`も複数回記録できる。A〜Dは既知終端で1回に固定する。本文、監査注記、token列は公開reportへ含めない。
 
 Sonioxの現行条件とAmazon Transcribe Streamingを比べる場合は、AWSの標準認証チェーンを用意し、実測リージョンを明示する。比較は同じcase内で開始先を交替し、Amazonには語彙を追加せず、日韓の多言語自動識別を指定する。音声は同一packet traceを使うが、発話後の終了手順は各providerの公式protocolに従う。本文入りobservationsの扱いはSoniox内の比較と同じである。
 
@@ -323,7 +323,7 @@ level 1で残った固有名詞gateを検証するため、同じ10件の`key_te
 
 同じ保存済み観測をレポートversion 2で再採点した。独立した発話内容は10件であり、3 profileを各3試行したため観測数は90件である。現行Aのmicro CERは437編集/273正解文字=1.601、macro CERは1.433だった。編集内訳は置換51、削除101、挿入285であり、CERが1を超えた主因は挿入だった。句読点・記号を除いても370/273=1.355であり、余計な内容と置換・削除の問題は残る。挿入は`ja-clean-game`、`ja-clipped`、`ja-ko-code-switch`の3 caseへ276/285文字、96.8%が集中した。level 1だけのBは238/273=0.872、カタログを組み合わせたCは307/273=1.125である。詳しい分母、内訳、挿入順の観測・caseは[本文非含有のCER監査レポート](./docs/evaluation/stt-recognition-catalog-scoring-audit-2026-08-26.json)に残している。
 
-評価runnerは、確定した原文tokenだけを本文へ採用し、途中結果、翻訳token、制御tokenを除外する。同じ時刻、本文、言語の確定原文tokenが再送された場合は、黙って重複除去せずに失敗させる。新しい観測には、受信順の`original_final_tokens`として開始・終了時刻、本文、言語、confidenceも0600のprivate fileへ保存する。保存済みの90観測にはこの列がないため、確定tokenの再送がなかったことや、無音区間で余計なtokenが発生したことまでは遡って証明できない。挿入原因の分類は`not_evaluated`とし、認識文の差分、token時刻列、人工音声を聞いて作る`heard reference`が揃うまで自動分類しない。
+評価runnerは、確定した原文tokenだけを本文へ採用し、途中結果、翻訳token、制御tokenを除外する。同じ時刻、本文、言語の確定原文tokenが再送された場合、A〜Dは重複を隠さずに失敗させる。Pだけは旧baselineの集計挙動を再現するため本文へ追加し、重複数を診断値として記録する。新しい観測には、受信順の`original_final_tokens`として開始・終了時刻、本文、言語、confidenceも0600のprivate fileへ保存する。保存済みの90観測にはこの列がないため、確定tokenの再送がなかったことや、無音区間で余計なtokenが発生したことまでは遡って証明できない。挿入原因の分類は`not_evaluated`とし、認識文の差分、token時刻列、人工音声を聞いて作る`heard reference`が揃うまで自動分類しない。
 
 最初のA〜D切り分けrunnerについては、挿入の96.8%が集中した3 caseをローカルのfake WebSocket受信器へ1試行ずつ送り、4条件、合計12観測の入力経路だけを事前監査した。すべての観測で、入力SHA-256がdatasetと一致し、source packetの重複と欠落がなく、Opus packet数、`sendAudio()`回数、送信時間、`finalize()` 1回、endpoint event 0回を説明できた。fake受信器が実際に受け取ったbinary message数とbyte数も、送信側の回数とbyte数に一致した。Opusの末尾frameを有効な長さへ合わせる無音paddingは最大7.375 msだった。この履歴は[本文非含有の入力preflight](./docs/evaluation/stt-insertion-input-preflight-2026-08-26.json)に残している。陽性対照Pを含む現行runnerでは、local fakeにより、手動fallback時はPも`finalize()` 1回、Soniox endpoint相当の境界が先なら0回になることを確認した。
 

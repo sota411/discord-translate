@@ -140,3 +140,20 @@ void test("verified監査は音声artifactとdatasetの一致を検証して読�
     /WAV.*一致しません/u,
   );
 });
+
+void test("監査JSONとWAVの親directoryがowner-onlyでなければ拒否する", async () => {
+  const { dataset, auditPath, auditDirectory, bundle } = await prepareAuditFixture();
+  const audit = structuredClone(bundle.audit);
+  const first = audit.cases[0];
+  assert.ok(first);
+  first.reference_status = "verified";
+  first.heard_reference = "実際に聞こえた文";
+  first.audit_note = "確認済み";
+  writeFileSync(auditPath, `${JSON.stringify(audit, null, 2)}\n`, { mode: 0o600 });
+  chmodSync(auditDirectory, 0o777);
+
+  await assert.rejects(
+    loadVerifiedSttInsertionAudioAudit(dataset, auditPath, ["problem-case"]),
+    /private directory.*0700/u,
+  );
+});

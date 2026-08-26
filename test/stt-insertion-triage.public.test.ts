@@ -109,14 +109,15 @@ function observations(): SttInsertionTriageObservations {
         original_final_tokens: [{
           start_ms: 0,
           end_ms: 20,
-          text: "private-token-text",
+          text: transcript,
           language: "ja",
           confidence: 0.9,
           received_at_ms: 25,
         }],
-        accepted_boundary: configuration.finalization_mode === "historical_baseline"
+        duplicate_final_original_token_count: 0,
+        accepted_boundaries: [configuration.finalization_mode === "historical_baseline"
           ? { kind: "finalized" as const, reason: "speaking_end" as const, received_at_ms: 220 }
-          : { kind: "finalized" as const, reason: "known_file_end" as const, received_at_ms: 220 },
+          : { kind: "finalized" as const, reason: "known_file_end" as const, received_at_ms: 220 }],
         character_error: characterError,
         transcript_characters_per_second: characterError.hypothesis_characters / 0.02,
         input_audit: inputAudit(configuration.input_route),
@@ -187,12 +188,32 @@ void test("公開triage reportは本文を含めず、条件別CERと入力完�
     report.conditions.opus_stt_only.input_integrity.all_source_audio_hashes_match_dataset,
     true,
   );
-  assert.equal(report.conditions.opus_stt_only.input_integrity.all_finalize_at_most_once, true);
+  assert.equal(
+    report.conditions.opus_stt_only.input_integrity.all_finalize_calls_accounted_for,
+    true,
+  );
   assert.equal(report.conditions.opus_stt_only.input_integrity.all_endpoint_events_match_mode, true);
   assert.equal(report.conditions.opus_stt_only.cases[0]?.characters_per_second_mean, 300);
   assert.doesNotMatch(
     serialized,
-    /正解文|private-token-text|"transcript":|"original_final_tokens":/u,
+    /正解文|"transcript":|"original_final_tokens":/u,
+  );
+});
+
+void test("受理した境界はprovider event数と一致しなければならない", () => {
+  const invalid = observations();
+  const first = invalid.results[0];
+  assert.ok(first);
+  first.accepted_boundaries = [{
+    kind: "endpoint",
+    reason: "soniox_endpoint",
+    received_at_ms: 100,
+  }];
+  first.input_audit.endpoint_event_count = 0;
+
+  assert.throws(
+    () => parseSttInsertionTriageObservations(JSON.stringify(invalid)),
+    /受理した境界数/u,
   );
 });
 
@@ -200,6 +221,9 @@ void test("private observationのverified referenceをCERの正解として使�
   const heardObservations = observations();
   for (const result of heardObservations.results) {
     result.transcript = result.reference_text;
+    const firstToken = result.original_final_tokens[0];
+    assert.ok(firstToken);
+    firstToken.text = result.reference_text;
     result.character_error = scoreSttCharacterError(result.reference_text, result.transcript);
     result.transcript_characters_per_second =
       result.character_error.hypothesis_characters / 0.02;

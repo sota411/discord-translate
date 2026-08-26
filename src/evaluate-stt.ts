@@ -21,8 +21,13 @@ import {
 } from "./evaluation/stt-evaluation-files.js";
 import {
   createPendingSttInsertionAudioAudit,
-  loadVerifiedSttInsertionAudioAudit,
 } from "./evaluation/stt-insertion-audio-audit.js";
+import {
+  assertOwnerOnlyDirectoryChain,
+  assertPrivateSttEvaluationFiles,
+  isWithinPath,
+  sttEvaluationRepositoryRoot,
+} from "./evaluation/stt-private-files.js";
 import {
   runSttEndpointOnlyProbe,
   runSttEvaluationDataset,
@@ -48,7 +53,7 @@ const usage = `使用方法:
   pnpm stt:evaluate score --manifest <manifest.json> --observations <observations.json> --output <report.json>
 
 評価音声、packet trace、本文入り観測結果はGit管理外の.data/stt-eval/、または所有者だけが利用できるリポジトリ外directoryへ置いてください。`;
-const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repositoryRoot = sttEvaluationRepositoryRoot;
 
 export type SttEvaluationCliDependencies = {
   environment: NodeJS.ProcessEnv;
@@ -142,59 +147,10 @@ async function resolveSafeOutputPaths(
   return canonicalOutputPaths;
 }
 
-function isWithinPath(parentPath: string, candidatePath: string): boolean {
-  const relativePath = path.relative(parentPath, candidatePath);
-  return relativePath === "" || (
-    relativePath !== ".." &&
-    !relativePath.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relativePath)
-  );
-}
-
-async function assertOwnerOnlyDirectoryChain(
-  privateRoot: string,
-  directoryPath: string,
-): Promise<void> {
-  let currentPath = directoryPath;
-  while (isWithinPath(privateRoot, currentPath)) {
-    const status = await lstat(currentPath);
-    if (!status.isDirectory() || (status.mode & 0o077) !== 0) {
-      throw new Error(
-        `STT評価のprivate directory「${currentPath}」は所有者だけが利用できる0700にしてください`,
-      );
-    }
-    if (currentPath === privateRoot) return;
-    currentPath = path.dirname(currentPath);
-  }
-}
-
 async function assertPrivateRepositoryFiles(
   files: readonly { filePath: string; label: string }[],
 ): Promise<void> {
-  const canonicalRepositoryRoot = await realpath(repositoryRoot);
-  const privateRoot = path.join(canonicalRepositoryRoot, ".data", "stt-eval");
-  for (const file of files) {
-    const canonicalFilePath = await realpath(file.filePath);
-    const isRepositoryFile = isWithinPath(canonicalRepositoryRoot, canonicalFilePath);
-    if (isRepositoryFile && !isWithinPath(privateRoot, canonicalFilePath)) {
-      throw new Error(
-        `${file.label}はリポジトリ外または.data/stt-eval/配下へ置いてください`,
-      );
-    }
-    const privateDirectoryRoot = isRepositoryFile
-      ? privateRoot
-      : path.dirname(canonicalFilePath);
-    await assertOwnerOnlyDirectoryChain(
-      privateDirectoryRoot,
-      path.dirname(canonicalFilePath),
-    );
-    const status = await lstat(canonicalFilePath);
-    if (!status.isFile() || (status.mode & 0o077) !== 0) {
-      throw new Error(
-        `${file.label}「${canonicalFilePath}」は所有者だけが読み書きできる0600にしてください`,
-      );
-    }
-  }
+  await assertPrivateSttEvaluationFiles(files);
 }
 
 async function assertPrivateDatasetPaths(dataset: LoadedSttEvaluationDataset): Promise<void> {
@@ -611,11 +567,6 @@ async function triageInsertions(
       [path.resolve(audioAuditPath)],
     );
   const caseIds = parseCaseIds(caseSelection);
-  const audioAudit = await loadVerifiedSttInsertionAudioAudit(
-    dataset,
-    audioAuditPath,
-    caseIds,
-  );
   const observations = await runSttInsertionTriageDataset(dataset, {
     apiKey,
     model,
@@ -624,7 +575,7 @@ async function triageInsertions(
       environment,
     ),
     caseIds,
-    audioAudit,
+    audioAuditPath,
     trials: parsed.values.trials === undefined ? 5 : Number(parsed.values.trials),
   });
   const report = createSttInsertionTriageReport(dataset.manifest, observations);

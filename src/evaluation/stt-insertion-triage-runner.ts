@@ -9,7 +9,10 @@ import {
   type SttBoundaryKind,
 } from "../audio/stt-turn-finalizer.js";
 import { SonioxSttFactory } from "../soniox/control.js";
-import type { VerifiedSttInsertionAudioAudit } from "./stt-insertion-audio-audit.js";
+import {
+  loadVerifiedSttInsertionAudioAudit,
+  type VerifiedSttInsertionAudioAudit,
+} from "./stt-insertion-audio-audit.js";
 import {
   sha256,
   SttInsertionDiscordOpusRoundTrip,
@@ -38,7 +41,7 @@ const defaultBoundaryTimeoutMs = 10_000;
 const defaultFinishTimeoutMs = 10_000;
 
 type TriageResult = SttInsertionTriageObservations["results"][number];
-type AcceptedBoundary = TriageResult["accepted_boundary"];
+type AcceptedBoundary = TriageResult["accepted_boundaries"][number];
 type VerifiedAuditCase = VerifiedSttInsertionAudioAudit["cases"][number];
 
 export type SttInsertionTriageRunnerOptions = {
@@ -46,7 +49,7 @@ export type SttInsertionTriageRunnerOptions = {
   model: string;
   sttWebSocketUrl: string;
   caseIds: readonly string[];
-  audioAudit: VerifiedSttInsertionAudioAudit;
+  audioAuditPath: string;
   trials?: number;
   boundaryTimeoutMs?: number;
   finishTimeoutMs?: number;
@@ -119,6 +122,8 @@ async function runCase(
   const recognizedLanguages = new Set<"ja" | "ko">();
   const originalFinalTokens: TriageResult["original_final_tokens"] = [];
   const finalTokenIdentities = new Set<string>();
+  const acceptedBoundaries: AcceptedBoundary[] = [];
+  let duplicateFinalOriginalTokenCount = 0;
   let transcript = "";
   let endpointEventCount = 0;
   let finalizedEventCount = 0;
@@ -134,7 +139,7 @@ async function runCase(
   let lastSourcePacketSent = false;
   let replayStartedAt: number | undefined;
   let speakingEndTimer: NodeJS.Timeout | undefined;
-  let acceptedBoundaryValue: AcceptedBoundary | undefined;
+  let terminalBoundaryAccepted = false;
   const sentSourcePacketIndexes = new Set<number>();
   const sentSpeechChunks: Buffer[] = [];
   const codec = configuration.input_route === "discord_opus_roundtrip"
@@ -162,7 +167,7 @@ async function runCase(
   };
   const finalize = (options?: { trailing_silence_ms?: number }): void => {
     finalizeCallCount += 1;
-    if (finalizeCallCount > 1) {
+    if (!historical && finalizeCallCount > 1) {
       terminalBoundary.reject(new Error("finalize()が複数回呼ばれました"));
       return;
     }
@@ -187,7 +192,7 @@ async function runCase(
     return Math.max(0, performance.now() - replayStartedAt);
   };
   const acceptHistoricalBoundary = (kind: SttBoundaryKind): void => {
-    if (acceptedBoundaryValue || !finalizer.boundaryReceived(kind)) return;
+    if (!finalizer.boundaryReceived(kind)) return;
     const reason = finalizer.takeAcceptedFinalizeReason();
     if (!reason) {
       terminalBoundary.reject(new Error("historical baselineの確定理由を取得できませんでした"));
@@ -198,8 +203,9 @@ async function runCase(
       reason: acceptedReason(reason),
       received_at_ms: boundaryReceivedAt(),
     };
-    if (!lastSourcePacketSent) return;
-    acceptedBoundaryValue = accepted;
+    acceptedBoundaries.push(accepted);
+    if (!lastSourcePacketSent || terminalBoundaryAccepted) return;
+    terminalBoundaryAccepted = true;
     terminalBoundary.resolve(accepted);
   };
 
@@ -225,8 +231,11 @@ async function runCase(
           token.language ?? null,
         ]);
         if (finalTokenIdentities.has(identity)) {
-          terminalBoundary.reject(new Error("同じ時刻のfinal原文tokenが重複しています"));
-          return;
+          duplicateFinalOriginalTokenCount += 1;
+          if (!historical) {
+            terminalBoundary.reject(new Error("同じ時刻のfinal原文tokenが重複しています"));
+            return;
+          }
         }
         finalTokenIdentities.add(identity);
       }
@@ -253,13 +262,15 @@ async function runCase(
       acceptHistoricalBoundary("finalized");
       return;
     }
-    if (acceptedBoundaryValue) return;
-    acceptedBoundaryValue = {
+    if (terminalBoundaryAccepted) return;
+    const accepted: AcceptedBoundary = {
       kind: "finalized",
       reason: "known_file_end",
       received_at_ms: boundaryReceivedAt(),
     };
-    terminalBoundary.resolve(acceptedBoundaryValue);
+    acceptedBoundaries.push(accepted);
+    terminalBoundaryAccepted = true;
+    terminalBoundary.resolve(accepted);
   });
   session.on("error", terminalBoundary.reject);
 
@@ -293,7 +304,6 @@ async function runCase(
           speakingEndTimer = undefined;
           finalizer.speakingEnded();
         }, speakingEndDelayMs);
-        speakingEndTimer.unref();
       }
     }
     if (!historical) {
@@ -301,7 +311,7 @@ async function runCase(
       finalize({ trailing_silence_ms: trailingSilenceMs });
     }
 
-    const acceptedBoundary = await withTimeout(
+    await withTimeout(
       terminalBoundary.promise,
       boundaryTimeoutMs,
       `trial「${String(trial)}」case「${evaluationCase.definition.id}」condition「${condition}」のSTT境界がtimeoutしました`,
@@ -320,9 +330,6 @@ async function runCase(
     if (!historical && finalizeCallCount !== 1) {
       throw new Error("既知終端のfinalize回数が1回ではありません");
     }
-    if (historical && finalizeCallCount > 1) {
-      throw new Error("historical baselineのfinalize回数が1回を超えました");
-    }
     const sourceSampleCount = evaluationCase.packets.reduce(
       (sum, packet) => sum + packet.audio.length / sttInsertionPcmBytesPerSample,
       0,
@@ -340,7 +347,8 @@ async function runCase(
       transcript,
       recognized_languages: [...recognizedLanguages],
       original_final_tokens: originalFinalTokens,
-      accepted_boundary: acceptedBoundary,
+      duplicate_final_original_token_count: duplicateFinalOriginalTokenCount,
+      accepted_boundaries: acceptedBoundaries,
       character_error: characterError,
       transcript_characters_per_second: characterError.hypothesis_characters /
         (sentSpeechDurationMs / 1_000),
@@ -390,14 +398,16 @@ export async function runSttInsertionTriageDataset(
   if (options.caseIds.length === 0 || new Set(options.caseIds).size !== options.caseIds.length) {
     throw new Error("大量挿入triageのcase IDは重複なしで1件以上指定してください");
   }
-  if (options.audioAudit.manifest_sha256 !== dataset.manifestSha256) {
-    throw new Error("verified音声監査のmanifest SHA-256がdatasetと一致しません");
-  }
+  const audioAudit = await loadVerifiedSttInsertionAudioAudit(
+    dataset,
+    options.audioAuditPath,
+    options.caseIds,
+  );
   const casesById = new Map(dataset.cases.map((evaluationCase) => [
     evaluationCase.definition.id,
     evaluationCase,
   ]));
-  const auditById = new Map(options.audioAudit.cases.map((auditCase) => [
+  const auditById = new Map(audioAudit.cases.map((auditCase) => [
     auditCase.case_id,
     auditCase,
   ]));
@@ -464,8 +474,8 @@ export async function runSttInsertionTriageDataset(
     selected_case_ids: [...options.caseIds],
     dataset: createSttEvaluationDatasetEvidence(dataset),
     audio_audit: {
-      audit_sha256: options.audioAudit.audit_sha256,
-      manifest_sha256: options.audioAudit.manifest_sha256,
+      audit_sha256: audioAudit.audit_sha256,
+      manifest_sha256: audioAudit.manifest_sha256,
       cases: selectedAuditCases,
     },
     results,

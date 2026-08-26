@@ -142,8 +142,8 @@ const inputAuditSchema = z.object({
   send_audio_call_count: z.number().int().positive(),
   sent_audio_bytes: z.number().int().positive(),
   sent_audio_duration_ms: z.number().positive(),
-  trailing_silence_ms: z.number().int().min(0).max(200),
-  finalize_call_count: z.number().int().min(0).max(1),
+  trailing_silence_ms: z.number().int().nonnegative(),
+  finalize_call_count: z.number().int().nonnegative(),
   endpoint_event_count: z.number().int().nonnegative(),
   finalized_event_count: z.number().int().nonnegative(),
 }).strict();
@@ -199,7 +199,8 @@ const resultSchema = z.object({
   transcript: z.string(),
   recognized_languages: z.array(z.enum(["ja", "ko"])),
   original_final_tokens: z.array(originalFinalTokenSchema),
-  accepted_boundary: acceptedBoundarySchema,
+  duplicate_final_original_token_count: z.number().int().nonnegative(),
+  accepted_boundaries: z.array(acceptedBoundarySchema).min(1),
   character_error: characterErrorSchema,
   transcript_characters_per_second: z.number().nonnegative(),
   input_audit: inputAuditSchema,
@@ -229,6 +230,33 @@ const resultSchema = z.object({
       message: "referenceとtranscriptから再計算したCER内訳と一致しません",
     });
   }
+  if (value.original_final_tokens.map((token) => token.text).join("") !== value.transcript) {
+    context.addIssue({
+      code: "custom",
+      path: ["transcript"],
+      message: "確定原文token列から再構成した本文と一致しません",
+    });
+  }
+  const tokenIdentities = new Set<string>();
+  let duplicateFinalOriginalTokenCount = 0;
+  for (const token of value.original_final_tokens) {
+    if (token.start_ms === null || token.end_ms === null) continue;
+    const identity = JSON.stringify([
+      token.start_ms,
+      token.end_ms,
+      token.text,
+      token.language,
+    ]);
+    if (tokenIdentities.has(identity)) duplicateFinalOriginalTokenCount += 1;
+    tokenIdentities.add(identity);
+  }
+  if (duplicateFinalOriginalTokenCount !== value.duplicate_final_original_token_count) {
+    context.addIssue({
+      code: "custom",
+      path: ["duplicate_final_original_token_count"],
+      message: "確定原文token列から再計算した重複数と一致しません",
+    });
+  }
   const expectedCharactersPerSecond = expectedScore.hypothesis_characters /
     (value.input_audit.sent_speech_duration_ms / 1_000);
   if (
@@ -241,25 +269,60 @@ const resultSchema = z.object({
     });
   }
   const historical = value.configuration.finalization_mode === "historical_baseline";
+  const terminalBoundary = value.accepted_boundaries.at(-1);
+  if (!terminalBoundary) {
+    context.addIssue({
+      code: "custom",
+      path: ["accepted_boundaries"],
+      message: "終端までに受理したSTT境界が必要です",
+    });
+    return;
+  }
+  const acceptedEndpointCount = value.accepted_boundaries.filter(
+    (boundary) => boundary.kind === "endpoint",
+  ).length;
+  const acceptedFinalizedCount = value.accepted_boundaries.length - acceptedEndpointCount;
+  if (value.accepted_boundaries.some((boundary, index, boundaries) => (
+    index > 0 && boundary.received_at_ms < (boundaries[index - 1]?.received_at_ms ?? 0)
+  ))) {
+    context.addIssue({
+      code: "custom",
+      path: ["accepted_boundaries"],
+      message: "受理した境界は受信時刻順に並べてください",
+    });
+  }
+  if (
+    acceptedEndpointCount > value.input_audit.endpoint_event_count ||
+    acceptedFinalizedCount > value.input_audit.finalized_event_count
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["accepted_boundaries"],
+      message: "受理した境界数がproviderから受信したevent数を超えています",
+    });
+  }
   if (!historical && (
     value.input_audit.finalize_call_count !== 1 ||
     value.input_audit.trailing_silence_ms !== 200 ||
     value.input_audit.endpoint_event_count !== 0 ||
     value.input_audit.finalized_event_count < 1 ||
-    value.accepted_boundary.kind !== "finalized" ||
-    value.accepted_boundary.reason !== "known_file_end"
+    value.duplicate_final_original_token_count !== 0 ||
+    value.accepted_boundaries.length !== 1 ||
+    terminalBoundary.kind !== "finalized" ||
+    terminalBoundary.reason !== "known_file_end"
   )) {
     context.addIssue({
       code: "custom",
-      path: ["accepted_boundary"],
+      path: ["accepted_boundaries"],
       message: "known file end条件の確定観測と一致しません",
     });
   }
   if (historical) {
-    const manuallyFinalized = value.input_audit.finalize_call_count === 1;
     if (
-      value.input_audit.trailing_silence_ms !== (manuallyFinalized ? 200 : 0) ||
-      (!manuallyFinalized && value.input_audit.endpoint_event_count === 0 &&
+      value.input_audit.trailing_silence_ms !==
+        value.input_audit.finalize_call_count * 200 ||
+      (value.input_audit.finalize_call_count === 0 &&
+        value.input_audit.endpoint_event_count === 0 &&
         value.input_audit.finalized_event_count === 0)
     ) {
       context.addIssue({
@@ -423,7 +486,7 @@ const observationsSchema = z.object({
       });
     }
     const expectedSendAudioCallCount = result.input_audit.source_packet_send_count +
-      (result.input_audit.trailing_silence_ms > 0 ? 1 : 0);
+      result.input_audit.finalize_call_count;
     if (result.input_audit.send_audio_call_count !== expectedSendAudioCallCount) {
       context.addIssue({
         code: "custom",
@@ -533,7 +596,8 @@ type ScoredObservation = {
   dataset_audio_sha256: string;
   input_audit: SttInsertionTriageInputAudit;
   configuration: SttInsertionTriageConfiguration;
-  accepted_boundary: z.infer<typeof acceptedBoundarySchema>;
+  accepted_boundaries: z.infer<typeof acceptedBoundarySchema>[];
+  duplicate_final_original_token_count: number;
 };
 
 function sumEditCounts(scores: readonly ScoredObservation[]): EditCounts {
@@ -568,7 +632,7 @@ function inputIntegrity(scores: readonly ScoredObservation[]) {
     )),
     all_send_audio_calls_accounted_for: scores.every((score) => (
       score.input_audit.send_audio_call_count === score.input_audit.source_packet_send_count +
-        (score.input_audit.trailing_silence_ms > 0 ? 1 : 0)
+        score.input_audit.finalize_call_count
     )),
     all_decoded_samples_accounted_for: scores.every((score) => (
       score.input_audit.decoded_sample_count ===
@@ -580,16 +644,18 @@ function inputIntegrity(scores: readonly ScoredObservation[]) {
         score.input_audit.trailing_silence_ms;
       return Math.abs(score.input_audit.sent_audio_duration_ms - expected) <= durationToleranceMs;
     }),
-    all_finalize_at_most_once: scores.every(
-      (score) => score.input_audit.finalize_call_count <= 1,
+    all_finalize_calls_accounted_for: scores.every(
+      (score) => score.input_audit.trailing_silence_ms ===
+        score.input_audit.finalize_call_count * 200,
     ),
     all_finalization_matches_mode: scores.every((score) => (
       score.configuration.finalization_mode === "historical_baseline"
-        ? score.input_audit.finalize_call_count <= 1
+        ? score.input_audit.trailing_silence_ms === score.input_audit.finalize_call_count * 200
         : (
           score.input_audit.finalize_call_count === 1 &&
-          score.accepted_boundary.kind === "finalized" &&
-          score.accepted_boundary.reason === "known_file_end"
+          score.accepted_boundaries.length === 1 &&
+          score.accepted_boundaries[0]?.kind === "finalized" &&
+          score.accepted_boundaries[0].reason === "known_file_end"
         )
     )),
     all_endpoint_events_match_mode: scores.every((score) => (
@@ -599,6 +665,18 @@ function inputIntegrity(scores: readonly ScoredObservation[]) {
     all_terminal_boundaries_observed: scores.every((score) => (
       score.input_audit.endpoint_event_count + score.input_audit.finalized_event_count >= 1
     )),
+    all_accepted_boundaries_match_events: scores.every((score) => {
+      const endpointCount = score.accepted_boundaries.filter(
+        (boundary) => boundary.kind === "endpoint",
+      ).length;
+      const finalizedCount = score.accepted_boundaries.length - endpointCount;
+      return endpointCount <= score.input_audit.endpoint_event_count &&
+        finalizedCount <= score.input_audit.finalized_event_count;
+    }),
+    duplicate_final_original_token_count: scores.reduce(
+      (sum, score) => sum + score.duplicate_final_original_token_count,
+      0,
+    ),
   };
 }
 
@@ -671,7 +749,8 @@ export function createSttInsertionTriageReport(
       dataset_audio_sha256: evidence.audio_sha256,
       input_audit: result.input_audit,
       configuration: result.configuration,
-      accepted_boundary: result.accepted_boundary,
+      accepted_boundaries: result.accepted_boundaries,
+      duplicate_final_original_token_count: result.duplicate_final_original_token_count,
     };
   });
   const conditions = Object.fromEntries(conditionSchema.options.map((condition) => [

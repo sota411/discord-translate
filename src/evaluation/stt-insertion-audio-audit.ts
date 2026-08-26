@@ -1,4 +1,4 @@
-import { lstat, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { z } from "zod";
@@ -11,6 +11,7 @@ import {
   sttInsertionPcmBytesPerSample,
   sttInsertionPcmSampleRate,
 } from "./stt-insertion-audio.js";
+import { assertPrivateSttEvaluationFiles } from "./stt-private-files.js";
 
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
 const audioFileNameSchema = z.string().regex(/^[a-z0-9][a-z0-9_.-]*\.wav$/u);
@@ -208,13 +209,6 @@ export function createPendingSttInsertionAudioAudit(
   };
 }
 
-async function assertOwnerOnlyRegularFile(filePath: string, label: string): Promise<void> {
-  const status = await lstat(filePath);
-  if (!status.isFile() || status.isSymbolicLink() || (status.mode & 0o077) !== 0) {
-    throw new Error(`${label}「${filePath}」は通常fileかつ0600にしてください`);
-  }
-}
-
 export async function loadVerifiedSttInsertionAudioAudit(
   dataset: LoadedSttEvaluationDataset,
   auditFilePath: string,
@@ -222,7 +216,10 @@ export async function loadVerifiedSttInsertionAudioAudit(
 ): Promise<VerifiedSttInsertionAudioAudit> {
   const selectedCases = selectCases(dataset, caseIds);
   const auditPath = path.resolve(auditFilePath);
-  await assertOwnerOnlyRegularFile(auditPath, "STT音声監査JSON");
+  await assertPrivateSttEvaluationFiles([{
+    filePath: auditPath,
+    label: "STT音声監査JSON",
+  }]);
   const auditBytes = await readFile(auditPath);
   const audit = parseSttInsertionAudioAudit(auditBytes.toString("utf8"));
   if (audit.manifest_sha256 !== dataset.manifestSha256) {
@@ -261,7 +258,10 @@ export async function loadVerifiedSttInsertionAudioAudit(
       const expectedFile = expectedFiles.get(fileName);
       if (!expectedFile) throw new Error(`case「${caseId}」の監査WAVを解決できません`);
       const filePath = path.join(path.dirname(auditPath), fileName);
-      await assertOwnerOnlyRegularFile(filePath, `case「${caseId}」の監査WAV`);
+      await assertPrivateSttEvaluationFiles([{
+        filePath,
+        label: `case「${caseId}」の監査WAV`,
+      }]);
       const actualBytes = await readFile(filePath);
       if (!actualBytes.equals(expectedFile.bytes)) {
         throw new Error(`case「${caseId}」の監査WAVがdatasetから生成した音声と一致しません`);

@@ -741,7 +741,7 @@ Aでは、`ja-clean-game`の3試行だけで42正解文字に147文字の挿入�
 
 主CERは句読点も数えるため、同じ保存本文を句読点・記号なしでも再採点した。Aは370/273=1.355で、内訳は置換44、削除108、挿入218だった。主CERとの差はあるが、句読点だけを除いてもCER 1を超える。したがって、285挿入のすべてを句読点の違いでは説明できない。二つの採点は文字列の対応付け自体が変わるため、437と370の差をそのまま「句読点誤り67文字」とは分類しない。
 
-[Sonioxのリアルタイム文字起こし仕様](https://soniox.com/docs/stt/rt/real-time-transcription)では、途中tokenは変更または反復される一方、確定tokenは再送されない。runnerは`is_final=true`かつ`translation_status=original`のtokenだけを本文へ加える。途中結果、翻訳token、`<end>`や`<fin>`などの制御tokenは採点本文へ入れない。同じ開始時刻、終了時刻、本文、言語を持つ確定原文tokenが再送された場合はprotocol違反としてFail Fastで停止する。正しい同語反復は時刻が異なるため、この検査では拒否しない。
+[Sonioxのリアルタイム文字起こし仕様](https://soniox.com/docs/stt/rt/real-time-transcription)では、途中tokenは変更または反復される一方、確定tokenは再送されない。runnerは`is_final=true`かつ`translation_status=original`のtokenだけを本文へ加える。途中結果、翻訳token、`<end>`や`<fin>`などの制御tokenは採点本文へ入れない。同じ開始時刻、終了時刻、本文、言語を持つ確定原文tokenが再送された場合、A〜Dはprotocol違反としてFail Fastで停止する。陽性対照Pだけは旧runnerと同じ本文を再現し、重複数を別の診断値へ残す。正しい同語反復は時刻が異なるため、重複として扱わない。
 
 保存済みobservationsには、受信イベント単位のtoken列と時刻が残っていない。したがって、今回の90観測に確定tokenの再送がなかったこと、無音中にtokenが生成されたこと、言語判定が短時間で反転したことは遡って証明できない。新しいSoniox観測では、受信順の`original_final_tokens`へ開始・終了時刻、本文、言語、confidenceを保存する。本文を含むため、従来のobservationsと同じく0600のprivate fileだけに置き、公開レポートへは写さない。
 
@@ -765,7 +765,7 @@ Pは元のPCM packet列を送り、双方向翻訳、case別`translation_terms`�
 
 実行順はcase indexとtrialから決める巡回順である。3 caseを5試行すると、各caseで5条件が先頭位置へ一度ずつ現れ、合計75観測になる。STT model、48 kHz・mono、言語hint、音声送信時刻、セッション生成方法、API regionは共通にする。
 
-live実行前に、`prepare-insertion-audit`で元PCMとOpus往復PCMを48 kHz・16 bit・monoのWAVへ格納する。監査JSONは、TTSへ入力した`intended_reference`、人が聞いた`heard_reference`、`pending`、`verified`、`ambiguous`、`invalid`の監査状態、注記、音声とWAVのSHA-256を保持する。選択caseがすべて`verified`であり、WAV、manifest、PCMの証跡が一致しなければ、`triage-insertions`はSoniox clientを作る前に失敗する。2026年8月27日に3 case×2種類の6 WAVをprivate領域へ作成した。人の確認は`pending`なので、live評価は未実施である。
+live実行前に、`prepare-insertion-audit`で元PCMとOpus往復PCMを48 kHz・16 bit・monoのWAVへ格納する。監査JSONは、TTSへ入力した`intended_reference`、人が聞いた`heard_reference`、`pending`、`verified`、`ambiguous`、`invalid`の監査状態、注記、音声とWAVのSHA-256を保持する。監査WAVは送信PCM sampleを連結した聴取用音声であり、packet到着間隔を無音へ変換しない。packet timingは別のpacket traceをlive replayへ使う。選択caseがすべて`verified`で、監査JSONとWAVの親directoryがowner-onlyであり、WAV、manifest、PCMの証跡が一致しなければ、直接runnerを呼んだ場合もSoniox clientを作る前に失敗する。2026年8月27日に3 case×2種類の6 WAVをprivate領域へ作成した。人の確認は`pending`なので、live評価は未実施である。
 
 ```bash
 pnpm stt:evaluate prepare-insertion-audit \
@@ -782,7 +782,7 @@ pnpm stt:evaluate triage-insertions \
   --trials 5
 ```
 
-private observationsは、sourceと実送信speechのSHA-256・sample数・時間、末尾無音、source packetの送信回数・重複・欠落、Opus packet数、復号sample数、codec padding、`sendAudio()`回数・byte数・時間、`finalize()`回数、endpoint・finalized event数を保存する。確定原文tokenには本文、言語、confidence、音声replay開始からの受信時刻を残す。受理した境界、heard reference、編集内訳、CER、送信speech 1秒当たりの認識文字数も保存する。公開reportには本文、監査注記、token列を含めない。
+private observationsは、sourceと実送信speechのSHA-256・sample数・時間、末尾無音、source packetの送信回数・重複・欠落、Opus packet数、復号sample数、codec padding、`sendAudio()`回数・byte数・時間、`finalize()`回数、endpoint・finalized event数を保存する。確定原文tokenには本文、言語、confidence、音声replay開始からの受信時刻を残す。受理した全境界、確定原文tokenの重複数、heard reference、編集内訳、CER、送信speech 1秒当たりの認識文字数も保存する。Pでは旧runnerが複数の発話境界を処理できた挙動を維持し、`finalize()`と境界を複数回観測しても打ち切らない。公開reportには本文、監査注記、token列を含めない。
 
 最初の4条件runnerについては、同じprivate PCMとpacket traceをローカルfake WebSocketへ1試行ずつ送り、3 case×4条件の12観測を監査した。入力SHA-256、source packetの重複0・欠落0、Opus packet数、`sendAudio()`回数・byte数、`finalize()` 1回を説明できた。詳細は[入力preflight](./evaluation/stt-insertion-input-preflight-2026-08-26.json)に残している。P追加後のlocal fakeでは、手動fallback時のPが200 msの無音と`finalize()`を一度だけ送り、endpoint相当の境界が先ならどちらも送らないことを確認した。
 
