@@ -220,6 +220,7 @@ async function runCase(
   const segments: string[] = [];
   const finalizations: SttEvaluationRunResult["finalizations"] = [];
   const originalConfidences: number[] = [];
+  const originalFinalTokens: NonNullable<SttEvaluationRunResult["original_final_tokens"]> = [];
   const finalizedOriginalTokenIdentities = new Set<string>();
   let pendingText = "";
   let lastAudioAt: number | undefined;
@@ -292,6 +293,13 @@ async function runCase(
         }
         finalizedOriginalTokenIdentities.add(identity);
       }
+      originalFinalTokens.push({
+        start_ms: token.start_ms ?? null,
+        end_ms: token.end_ms ?? null,
+        text: token.text,
+        language: token.language ?? null,
+        confidence: token.confidence,
+      });
       pendingText += token.text;
       if (isEvaluationLanguage(token.language)) recognizedLanguages.add(token.language);
       originalConfidences.push(token.confidence);
@@ -392,6 +400,7 @@ async function runCase(
         original_confidence_mean: originalConfidence?.mean ?? null,
         original_confidence_min: originalConfidence?.min ?? null,
       },
+      original_final_tokens: originalFinalTokens,
       configuration,
     };
   } finally {

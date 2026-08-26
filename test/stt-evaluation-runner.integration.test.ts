@@ -261,7 +261,19 @@ void test("同じPCMを複数試行し、A〜Dの開始順を交替してcontext
       assert.equal(result.audio_metrics.original_token_count, 1);
       assert.equal(result.audio_metrics.original_confidence_mean, 0.95);
       assert.equal(result.audio_metrics.original_confidence_min, 0.95);
+      assert.deepEqual(result.original_final_tokens, [{
+        start_ms: 0,
+        end_ms: 20,
+        text: "ヴァロラント",
+        language: "ja",
+        confidence: 0.95,
+      }]);
     }
+    const reparsed = parseSttEvaluationObservations(JSON.stringify(observations));
+    assert.deepEqual(
+      reparsed.results[0]?.original_final_tokens,
+      observations.results[0]?.original_final_tokens,
+    );
     assert.deepEqual(
       observations.results.map((result) => result.configuration.manual_finalize_fallback_ms),
       [100, 100, 600, 600, 100, 600, 600, 100],

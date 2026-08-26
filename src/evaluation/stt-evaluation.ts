@@ -327,6 +327,29 @@ const evaluationAudioMetricsSchema = z.object({
   }
 });
 
+const originalFinalTokenSchema = z.object({
+  start_ms: z.number().nonnegative().nullable(),
+  end_ms: z.number().nonnegative().nullable(),
+  text: z.string(),
+  language: z.string().min(1).nullable(),
+  confidence: z.number().min(0).max(1),
+}).strict().superRefine((value, context) => {
+  if ((value.start_ms === null) !== (value.end_ms === null)) {
+    context.addIssue({
+      code: "custom",
+      path: ["start_ms"],
+      message: "start_msとend_msは両方nullまたは両方数値にしてください",
+    });
+  }
+  if (value.start_ms !== null && value.end_ms !== null && value.start_ms > value.end_ms) {
+    context.addIssue({
+      code: "custom",
+      path: ["end_ms"],
+      message: "end_msはstart_ms以上にしてください",
+    });
+  }
+});
+
 const evaluationResultSchema = z.object({
   trial: z.number().int().positive().default(1),
   case_id: z.string().min(1),
@@ -351,6 +374,7 @@ const evaluationResultSchema = z.object({
   decoded_packet_count: z.number().int().positive(),
   dropped_packet_count: z.number().int().nonnegative(),
   audio_metrics: evaluationAudioMetricsSchema.optional(),
+  original_final_tokens: z.array(originalFinalTokenSchema).optional(),
   configuration: sttEvaluationConfigurationSchema,
 }).strict().superRefine((value, context) => {
   if (new Set(value.recognized_languages).size !== value.recognized_languages.length) {
@@ -545,6 +569,21 @@ type CharacterCounts = {
   hypothesis_characters: number;
 };
 
+type CaseDiagnosticScore = {
+  cer: number;
+  character_edits: number;
+  reference_characters: number;
+  hypothesis_characters: number;
+  edit_counts: EditCounts;
+};
+
+type ProfileDiagnosticScore = {
+  micro_cer: number;
+  macro_cer: number;
+  edit_counts: EditCounts;
+  character_counts: CharacterCounts;
+};
+
 type RecallCounts = {
   recalled: number;
   expected: number;
@@ -558,6 +597,7 @@ type CaseScore = {
   reference_characters: number;
   hypothesis_characters: number;
   edit_counts: EditCounts;
+  punctuation_and_symbol_insensitive_score: CaseDiagnosticScore;
   key_term_recall: number | null;
   key_terms_recalled: number;
   key_terms_expected: number;
@@ -585,6 +625,44 @@ type CaseScore = {
   }[];
 };
 
+type InsertionAnalysis = {
+  insertion_share_of_edits: number;
+  insertions_per_reference_character: number;
+  non_insertion_edits_per_reference_character: number;
+  observations_by_insertion: {
+    trial: number;
+    case_id: string;
+    reference_characters: number;
+    hypothesis_characters: number;
+    edit_counts: EditCounts;
+    micro_cer_contribution: number;
+    insertion_cer_contribution: number;
+  }[];
+  cases_by_insertion: {
+    case_id: string;
+    observation_count: number;
+    reference_characters: number;
+    hypothesis_characters: number;
+    edit_counts: EditCounts;
+    micro_cer_contribution: number;
+    insertion_cer_contribution: number;
+    insertion_share_of_profile: number;
+    cumulative_insertion_share: number;
+  }[];
+  classification: {
+    status: "not_evaluated";
+    categories: readonly [
+      "repetition",
+      "cross-boundary",
+      "language-duplication",
+      "reference-mismatch",
+      "silence-hallucination",
+      "other",
+    ];
+    reason: string;
+  };
+};
+
 type ProfileScore = {
   case_count: number;
   trial_count: number;
@@ -596,6 +674,8 @@ type ProfileScore = {
   macro_cer: number;
   edit_counts: EditCounts;
   character_counts: CharacterCounts;
+  punctuation_and_symbol_insensitive_score: ProfileDiagnosticScore;
+  insertion_analysis: InsertionAnalysis;
   clean_cer: number | null;
   key_term_recall: number | null;
   key_term_counts: RecallCounts;
@@ -679,7 +759,40 @@ type QualityAnalysis = {
     original_confidence_mean_vs_cer: QualityCorrelation;
     original_confidence_min_vs_cer: QualityCorrelation;
   };
+  confidence_triage: ConfidenceTriageAnalysis;
   tag_slices: Readonly<Record<string, QualityTagSlice>>;
+  limitations: readonly string[];
+};
+
+type ConfidenceTriageMetric = {
+  flagged_observation_count: number;
+  flagged_ratio_of_confidence_available: number | null;
+  eligible_error_recall: number | null;
+  eligible_false_positive_rate: number | null;
+  flagged_error_precision: number | null;
+  missed_error_observation_count: number;
+  flagged_or_missing_observation_count: number;
+  flagged_or_missing_ratio_of_all_observations: number;
+  all_error_recall_if_missing_flagged: number | null;
+  all_false_positive_rate_if_missing_flagged: number | null;
+};
+
+type ConfidenceTriageAnalysis = {
+  status: "evaluated" | "partial" | "not_evaluated";
+  source_profile: "baseline";
+  error_definition: "punctuation_and_symbol_insensitive_cer_greater_than_zero";
+  confidence_available_observation_count: number;
+  missing_confidence_observation_count: number;
+  error_observation_count: number;
+  error_with_confidence_observation_count: number;
+  error_without_confidence_observation_count: number;
+  correct_with_confidence_observation_count: number;
+  thresholds: {
+    threshold: number;
+    comparison: "below";
+    mean: ConfidenceTriageMetric;
+    minimum: ConfidenceTriageMetric;
+  }[];
   limitations: readonly string[];
 };
 
@@ -691,6 +804,13 @@ export type SttEvaluationReport = {
     unicode_normalization: "NFKC";
     whitespace: "removed";
     edit_tie_break_order: readonly ["substitution", "deletion", "insertion"];
+    diagnostic_cer: {
+      punctuation_and_symbol_insensitive: {
+        unicode_normalization: "NFKC";
+        whitespace: "removed";
+        punctuation_and_symbols: "removed";
+      };
+    };
   };
   generated_at: string;
   experiment: SttEvaluationExperiment;
@@ -738,6 +858,10 @@ export function parseSttEvaluationObservations(json: string): SttEvaluationObser
 
 function normalizeForComparison(value: string): string {
   return value.normalize("NFKC").replace(/\p{White_Space}+/gu, "");
+}
+
+function normalizeForPunctuationInsensitiveComparison(value: string): string {
+  return normalizeForComparison(value).replace(/[\p{P}\p{S}]+/gu, "");
 }
 
 function normalizeTerm(value: string): string {
@@ -815,6 +939,21 @@ function scoreCase(evaluationCase: SttEvaluationCase, result: SttEvaluationResul
   const reference = Array.from(normalizeForComparison(evaluationCase.reference));
   const hypothesis = Array.from(normalizeForComparison(result.transcript));
   const counts = editCounts(reference, hypothesis);
+  const punctuationAndSymbolInsensitiveReference = Array.from(
+    normalizeForPunctuationInsensitiveComparison(evaluationCase.reference),
+  );
+  const punctuationAndSymbolInsensitiveHypothesis = Array.from(
+    normalizeForPunctuationInsensitiveComparison(result.transcript),
+  );
+  if (punctuationAndSymbolInsensitiveReference.length === 0) {
+    throw new Error(
+      `case「${evaluationCase.id}」は句読点・記号を除くCERの正解文字を1文字以上にしてください`,
+    );
+  }
+  const punctuationAndSymbolInsensitiveCounts = editCounts(
+    punctuationAndSymbolInsensitiveReference,
+    punctuationAndSymbolInsensitiveHypothesis,
+  );
   const normalizedTranscript = normalizeTerm(result.transcript);
   const recalledTerms = evaluationCase.key_terms
     .filter((term) => normalizedTranscript.includes(normalizeTerm(term))).length;
@@ -829,6 +968,13 @@ function scoreCase(evaluationCase: SttEvaluationCase, result: SttEvaluationResul
     reference_characters: reference.length,
     hypothesis_characters: hypothesis.length,
     edit_counts: counts,
+    punctuation_and_symbol_insensitive_score: {
+      cer: punctuationAndSymbolInsensitiveCounts.total / punctuationAndSymbolInsensitiveReference.length,
+      character_edits: punctuationAndSymbolInsensitiveCounts.total,
+      reference_characters: punctuationAndSymbolInsensitiveReference.length,
+      hypothesis_characters: punctuationAndSymbolInsensitiveHypothesis.length,
+      edit_counts: punctuationAndSymbolInsensitiveCounts,
+    },
     key_term_recall: evaluationCase.key_terms.length === 0
       ? null
       : recalledTerms / evaluationCase.key_terms.length,
@@ -883,6 +1029,136 @@ function totalCharacterCounts(scores: readonly CaseScore[]): CharacterCounts {
     reference_characters: total.reference_characters + score.reference_characters,
     hypothesis_characters: total.hypothesis_characters + score.hypothesis_characters,
   }), { reference_characters: 0, hypothesis_characters: 0 });
+}
+
+function punctuationAndSymbolInsensitiveProfileScore(
+  scores: readonly CaseScore[],
+): ProfileDiagnosticScore {
+  const referenceCharacters = scores.reduce(
+    (sum, score) => sum + score.punctuation_and_symbol_insensitive_score.reference_characters,
+    0,
+  );
+  if (referenceCharacters === 0) {
+    throw new Error("句読点・記号を除くCERの正解文字数が0です");
+  }
+  const editCounts = scores.reduce<EditCounts>((total, score) => ({
+    substitutions: total.substitutions +
+      score.punctuation_and_symbol_insensitive_score.edit_counts.substitutions,
+    deletions: total.deletions + score.punctuation_and_symbol_insensitive_score.edit_counts.deletions,
+    insertions: total.insertions + score.punctuation_and_symbol_insensitive_score.edit_counts.insertions,
+    total: total.total + score.punctuation_and_symbol_insensitive_score.edit_counts.total,
+  }), {
+    substitutions: 0,
+    deletions: 0,
+    insertions: 0,
+    total: 0,
+  });
+  return {
+    micro_cer: editCounts.total / referenceCharacters,
+    macro_cer: mean(scores.map((score) => score.punctuation_and_symbol_insensitive_score.cer)),
+    edit_counts: editCounts,
+    character_counts: {
+      reference_characters: referenceCharacters,
+      hypothesis_characters: scores.reduce(
+        (sum, score) => sum + score.punctuation_and_symbol_insensitive_score.hypothesis_characters,
+        0,
+      ),
+    },
+  };
+}
+
+function addEditCounts(left: EditCounts, right: EditCounts): EditCounts {
+  return {
+    substitutions: left.substitutions + right.substitutions,
+    deletions: left.deletions + right.deletions,
+    insertions: left.insertions + right.insertions,
+    total: left.total + right.total,
+  };
+}
+
+function compareInsertionEntries(
+  left: { case_id: string; trial?: number; edit_counts: EditCounts },
+  right: { case_id: string; trial?: number; edit_counts: EditCounts },
+): number {
+  const insertionDifference = right.edit_counts.insertions - left.edit_counts.insertions;
+  if (insertionDifference !== 0) return insertionDifference;
+  const caseDifference = left.case_id.localeCompare(right.case_id, "en");
+  if (caseDifference !== 0) return caseDifference;
+  return (left.trial ?? 0) - (right.trial ?? 0);
+}
+
+function createInsertionAnalysis(scores: readonly CaseScore[]): InsertionAnalysis {
+  const profileEditCounts = totalEditCounts(scores);
+  const profileCharacterCounts = totalCharacterCounts(scores);
+  const referenceCharacters = profileCharacterCounts.reference_characters;
+  const observationsByInsertion = scores.map((score) => ({
+    trial: score.trial,
+    case_id: score.case_id,
+    reference_characters: score.reference_characters,
+    hypothesis_characters: score.hypothesis_characters,
+    edit_counts: score.edit_counts,
+    micro_cer_contribution: score.character_edits / referenceCharacters,
+    insertion_cer_contribution: score.edit_counts.insertions / referenceCharacters,
+  })).sort(compareInsertionEntries);
+  const byCase = new Map<string, {
+    observation_count: number;
+    reference_characters: number;
+    hypothesis_characters: number;
+    edit_counts: EditCounts;
+  }>();
+  for (const score of scores) {
+    const current = byCase.get(score.case_id) ?? {
+      observation_count: 0,
+      reference_characters: 0,
+      hypothesis_characters: 0,
+      edit_counts: { substitutions: 0, deletions: 0, insertions: 0, total: 0 },
+    };
+    byCase.set(score.case_id, {
+      observation_count: current.observation_count + 1,
+      reference_characters: current.reference_characters + score.reference_characters,
+      hypothesis_characters: current.hypothesis_characters + score.hypothesis_characters,
+      edit_counts: addEditCounts(current.edit_counts, score.edit_counts),
+    });
+  }
+  const sortedCases = [...byCase].map(([caseId, score]) => ({
+    case_id: caseId,
+    ...score,
+    micro_cer_contribution: score.edit_counts.total / referenceCharacters,
+    insertion_cer_contribution: score.edit_counts.insertions / referenceCharacters,
+    insertion_share_of_profile: profileEditCounts.insertions === 0
+      ? 0
+      : score.edit_counts.insertions / profileEditCounts.insertions,
+  })).sort(compareInsertionEntries);
+  let cumulativeInsertionShare = 0;
+  const casesByInsertion = sortedCases.map((score) => {
+    cumulativeInsertionShare += score.insertion_share_of_profile;
+    return {
+      ...score,
+      cumulative_insertion_share: cumulativeInsertionShare,
+    };
+  });
+  return {
+    insertion_share_of_edits: profileEditCounts.total === 0
+      ? 0
+      : profileEditCounts.insertions / profileEditCounts.total,
+    insertions_per_reference_character: profileEditCounts.insertions / referenceCharacters,
+    non_insertion_edits_per_reference_character:
+      (profileEditCounts.substitutions + profileEditCounts.deletions) / referenceCharacters,
+    observations_by_insertion: observationsByInsertion,
+    cases_by_insertion: casesByInsertion,
+    classification: {
+      status: "not_evaluated",
+      categories: [
+        "repetition",
+        "cross-boundary",
+        "language-duplication",
+        "reference-mismatch",
+        "silence-hallucination",
+        "other",
+      ],
+      reason: "分類には認識本文の差分、確定原文token列、境界時系列、heard referenceの人手監査が必要です。保存済み観測だけから原因を推測して分類しません。",
+    },
+  };
 }
 
 function totalRecallCounts(
@@ -997,6 +1273,112 @@ function correlation(
   };
 }
 
+const confidenceTriageThresholds = [0.7, 0.8, 0.9] as const;
+
+function ratioOrNull(numerator: number, denominator: number): number | null {
+  return denominator === 0 ? null : numerator / denominator;
+}
+
+function confidenceTriageMetric(
+  scores: readonly CaseScore[],
+  threshold: number,
+  confidence: (score: CaseScore) => number | null,
+): ConfidenceTriageMetric {
+  const entries = scores.map((score) => ({
+    confidence: confidence(score),
+    hasError: score.punctuation_and_symbol_insensitive_score.character_edits > 0,
+  }));
+  const available = entries.filter((entry) => entry.confidence !== null);
+  const missing = entries.filter((entry) => entry.confidence === null);
+  const flagged = available.filter((entry) => (
+    entry.confidence !== null && entry.confidence < threshold
+  ));
+  const eligibleErrors = available.filter((entry) => entry.hasError);
+  const eligibleCorrect = available.filter((entry) => !entry.hasError);
+  const flaggedErrors = flagged.filter((entry) => entry.hasError);
+  const flaggedCorrect = flagged.filter((entry) => !entry.hasError);
+  const allErrors = entries.filter((entry) => entry.hasError);
+  const allCorrect = entries.filter((entry) => !entry.hasError);
+  const missingErrors = missing.filter((entry) => entry.hasError);
+  const missingCorrect = missing.filter((entry) => !entry.hasError);
+  const flaggedOrMissingCount = flagged.length + missing.length;
+  return {
+    flagged_observation_count: flagged.length,
+    flagged_ratio_of_confidence_available: ratioOrNull(flagged.length, available.length),
+    eligible_error_recall: ratioOrNull(flaggedErrors.length, eligibleErrors.length),
+    eligible_false_positive_rate: ratioOrNull(flaggedCorrect.length, eligibleCorrect.length),
+    flagged_error_precision: ratioOrNull(flaggedErrors.length, flagged.length),
+    missed_error_observation_count: eligibleErrors.length - flaggedErrors.length,
+    flagged_or_missing_observation_count: flaggedOrMissingCount,
+    flagged_or_missing_ratio_of_all_observations: flaggedOrMissingCount / entries.length,
+    all_error_recall_if_missing_flagged: ratioOrNull(
+      flaggedErrors.length + missingErrors.length,
+      allErrors.length,
+    ),
+    all_false_positive_rate_if_missing_flagged: ratioOrNull(
+      flaggedCorrect.length + missingCorrect.length,
+      allCorrect.length,
+    ),
+  };
+}
+
+function createConfidenceTriageAnalysis(
+  scores: readonly CaseScore[],
+): ConfidenceTriageAnalysis {
+  const confidenceAvailable = scores.filter((score) => (
+    score.audio_metrics?.original_confidence_mean !== null &&
+    score.audio_metrics?.original_confidence_mean !== undefined
+  ));
+  const missingConfidence = scores.length - confidenceAvailable.length;
+  const errors = scores.filter((score) => (
+    score.punctuation_and_symbol_insensitive_score.character_edits > 0
+  ));
+  const errorsWithConfidence = confidenceAvailable.filter((score) => (
+    score.punctuation_and_symbol_insensitive_score.character_edits > 0
+  ));
+  const correctWithConfidence = confidenceAvailable.length - errorsWithConfidence.length;
+  const status = confidenceAvailable.length === 0
+    ? "not_evaluated"
+    : missingConfidence > 0 || errorsWithConfidence.length === 0 || correctWithConfidence === 0
+      ? "partial"
+      : "evaluated";
+  return {
+    status,
+    source_profile: "baseline",
+    error_definition: "punctuation_and_symbol_insensitive_cer_greater_than_zero",
+    confidence_available_observation_count: confidenceAvailable.length,
+    missing_confidence_observation_count: missingConfidence,
+    error_observation_count: errors.length,
+    error_with_confidence_observation_count: errorsWithConfidence.length,
+    error_without_confidence_observation_count: errors.length - errorsWithConfidence.length,
+    correct_with_confidence_observation_count: correctWithConfidence,
+    thresholds: confidenceTriageThresholds.map((threshold) => ({
+      threshold,
+      comparison: "below",
+      mean: confidenceTriageMetric(
+        scores,
+        threshold,
+        (score) => score.audio_metrics?.original_confidence_mean ?? null,
+      ),
+      minimum: confidenceTriageMetric(
+        scores,
+        threshold,
+        (score) => score.audio_metrics?.original_confidence_min ?? null,
+      ),
+    })),
+    limitations: [
+      "閾値0.7、0.8、0.9は探索用であり、採用済みの振り分け条件ではありません。",
+      "句読点と記号だけの差を誤認識から除くため、punctuation-and-symbol-insensitive CERが0より大きい観測をerrorとしています。",
+      "文字列が一致しても言語labelが誤る観測は、このerror定義では検出しません。",
+      "同一人工音声の複数試行を含むため、実Discord音声への一般化は未検証です。",
+      "heard referenceの人手監査は未実施であり、manifestのreferenceを正解として評価しています。",
+      ...(missingConfidence > 0
+        ? ["原文tokenがない観測にはconfidenceがありません。missingを再認識へ回す仮定も別に集計しています。"]
+        : []),
+    ],
+  };
+}
+
 function createQualityAnalysis(
   manifest: SttEvaluationManifest,
   baseline: ProfileScore,
@@ -1060,6 +1442,7 @@ function createQualityAnalysis(
         (entry) => entry.original_confidence_min,
       ),
     },
+    confidence_triage: createConfidenceTriageAnalysis(baseline.cases),
     tag_slices: tagSlices,
     limitations: [
       "同一人工音声の複数試行は独立標本とみなさず、相関係数はcase単位へ集約しています。",
@@ -1202,6 +1585,8 @@ function scoreProfile(
     macro_cer: macroCer(cases),
     edit_counts: totalEditCounts(cases),
     character_counts: totalCharacterCounts(cases),
+    punctuation_and_symbol_insensitive_score: punctuationAndSymbolInsensitiveProfileScore(cases),
+    insertion_analysis: createInsertionAnalysis(cases),
     clean_cer: cleanCases.length === 0 ? null : microCer(cleanCases),
     key_term_recall: aggregateRatio(cases, "key_terms_recalled", "key_terms_expected"),
     key_term_counts: keyTermCounts,
@@ -1368,6 +1753,13 @@ export function createSttEvaluationReport(
       unicode_normalization: "NFKC",
       whitespace: "removed",
       edit_tie_break_order: ["substitution", "deletion", "insertion"],
+      diagnostic_cer: {
+        punctuation_and_symbol_insensitive: {
+          unicode_normalization: "NFKC",
+          whitespace: "removed",
+          punctuation_and_symbols: "removed",
+        },
+      },
     },
     generated_at: generatedAt.toISOString(),
     experiment: observations.experiment,

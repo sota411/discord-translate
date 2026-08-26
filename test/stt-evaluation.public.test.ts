@@ -259,6 +259,13 @@ void test("同一音声の結果からCER・固有名詞再現率・分割数・
     unicode_normalization: "NFKC",
     whitespace: "removed",
     edit_tie_break_order: ["substitution", "deletion", "insertion"],
+    diagnostic_cer: {
+      punctuation_and_symbol_insensitive: {
+        unicode_normalization: "NFKC",
+        whitespace: "removed",
+        punctuation_and_symbols: "removed",
+      },
+    },
   });
   assert.deepEqual(report.profile_mapping, {
     A: "baseline",
@@ -410,6 +417,131 @@ void test("CER監査情報は置換・削除・挿入を分けてmacroとmicro�
       { substitutions: 0, deletions: 0, insertions: 1, total: 1 },
     ],
   );
+  assert.equal(baseline.insertion_analysis.insertion_share_of_edits, 1 / 3);
+  assert.equal(baseline.insertion_analysis.insertions_per_reference_character, 1 / 11);
+  assert.equal(
+    baseline.insertion_analysis.non_insertion_edits_per_reference_character,
+    2 / 11,
+  );
+  assert.deepEqual(
+    baseline.insertion_analysis.observations_by_insertion.map((entry) => [
+      entry.case_id,
+      entry.trial,
+      entry.edit_counts.insertions,
+    ]),
+    [
+      ["code-switch", 1, 1],
+      ["ja-clean-term", 1, 0],
+      ["ko-noise", 1, 0],
+    ],
+  );
+  assert.equal(
+    baseline.insertion_analysis.observations_by_insertion
+      .reduce((sum, entry) => sum + entry.micro_cer_contribution, 0),
+    baseline.micro_cer,
+  );
+  assert.equal(
+    baseline.insertion_analysis.cases_by_insertion[0]?.cumulative_insertion_share,
+    1,
+  );
+  assert.equal(baseline.insertion_analysis.classification.status, "not_evaluated");
+  assert.deepEqual(baseline.insertion_analysis.classification.categories, [
+    "repetition",
+    "cross-boundary",
+    "language-duplication",
+    "reference-mismatch",
+    "silence-hallucination",
+    "other",
+  ]);
+});
+
+void test("句読点・記号を除く診断CERでconfidence閾値の再認識候補を評価する", () => {
+  const manifest = parseSttEvaluationManifest(manifestJson);
+  const result = (
+    caseId: string,
+    transcript: string,
+    language: "ja" | "ko",
+    confidence: number | null,
+  ) => ({
+    case_id: caseId,
+    profile: "baseline" as const,
+    transcript,
+    segments: transcript.length === 0 ? [] : [transcript],
+    recognized_languages: [language],
+    finalizations: [
+      {
+        kind: "finalized" as const,
+        reason: "speaking_end" as const,
+        latency_ms: 100,
+        has_text: transcript.length > 0,
+      },
+    ],
+    cpu_percent: 1,
+    decoded_packet_count: 1,
+    dropped_packet_count: 0,
+    audio_metrics: {
+      rms_dbfs: -20,
+      peak_dbfs: -1,
+      clipped_sample_ratio: 0,
+      near_silence_ratio: 0,
+      original_token_count: confidence === null ? 0 : 1,
+      original_confidence_mean: confidence,
+      original_confidence_min: confidence,
+    },
+    configuration: sttEvaluationProfileConfigurations.baseline,
+  });
+  const observations = parseSttEvaluationObservations(JSON.stringify({
+    version: 1,
+    results: [
+      result("ja-clean-term", "今日は猫。", "ja", 0.95),
+      result("ko-noise", "실패", "ko", 0.85),
+      result("code-switch", "", "ja", null),
+    ],
+  }));
+
+  const report = createSttEvaluationReport(manifest, observations);
+  const baseline = report.profiles.baseline;
+  assert.ok(baseline);
+  assert.equal(baseline.edit_counts.total, 8);
+  assert.deepEqual(baseline.punctuation_and_symbol_insensitive_score, {
+    micro_cer: 7 / 11,
+    macro_cer: 2 / 3,
+    edit_counts: {
+      substitutions: 2,
+      deletions: 5,
+      insertions: 0,
+      total: 7,
+    },
+    character_counts: {
+      reference_characters: 11,
+      hypothesis_characters: 6,
+    },
+  });
+  assert.equal(baseline.cases[0]?.punctuation_and_symbol_insensitive_score.cer, 0);
+
+  const triage = report.quality_analysis.confidence_triage;
+  assert.equal(triage.status, "partial");
+  assert.equal(triage.error_definition, "punctuation_and_symbol_insensitive_cer_greater_than_zero");
+  assert.equal(triage.confidence_available_observation_count, 2);
+  assert.equal(triage.missing_confidence_observation_count, 1);
+  assert.equal(triage.error_observation_count, 2);
+  assert.equal(triage.error_with_confidence_observation_count, 1);
+  assert.equal(triage.correct_with_confidence_observation_count, 1);
+  const threshold08 = triage.thresholds.find((entry) => entry.threshold === 0.8);
+  assert.ok(threshold08);
+  assert.equal(threshold08.mean.flagged_observation_count, 0);
+  assert.equal(threshold08.mean.eligible_error_recall, 0);
+  assert.equal(threshold08.mean.missed_error_observation_count, 1);
+  assert.equal(threshold08.mean.flagged_or_missing_observation_count, 1);
+  assert.equal(threshold08.mean.all_error_recall_if_missing_flagged, 0.5);
+  const threshold09 = triage.thresholds.find((entry) => entry.threshold === 0.9);
+  assert.ok(threshold09);
+  assert.equal(threshold09.mean.flagged_observation_count, 1);
+  assert.equal(threshold09.mean.eligible_error_recall, 1);
+  assert.equal(threshold09.mean.eligible_false_positive_rate, 0);
+  assert.equal(threshold09.mean.flagged_or_missing_observation_count, 2);
+  assert.equal(threshold09.mean.flagged_or_missing_ratio_of_all_observations, 2 / 3);
+  assert.equal(threshold09.mean.all_error_recall_if_missing_flagged, 1);
 });
 
 void test("観測結果は未知case・重複profile・本文以外の余分なfieldをFail Fastで拒否する", () => {
@@ -893,6 +1025,37 @@ void test("追跡するCER監査レポートはmicroとmacro、編集内訳、�
       reference_characters: number;
       hypothesis_characters: number;
     };
+    punctuation_and_symbol_insensitive_score: {
+      micro_cer: number;
+      macro_cer: number;
+      edit_counts: {
+        substitutions: number;
+        deletions: number;
+        insertions: number;
+        total: number;
+      };
+      character_counts: {
+        reference_characters: number;
+        hypothesis_characters: number;
+      };
+    };
+    insertion_analysis: {
+      insertion_share_of_edits: number;
+      insertions_per_reference_character: number;
+      non_insertion_edits_per_reference_character: number;
+      observations_by_insertion: {
+        trial: number;
+        case_id: string;
+        edit_counts: { insertions: number };
+        micro_cer_contribution: number;
+      }[];
+      cases_by_insertion: {
+        case_id: string;
+        edit_counts: { insertions: number };
+        insertion_share_of_profile: number;
+        cumulative_insertion_share: number;
+      }[];
+    };
     key_term_counts: { recalled: number; expected: number };
     language_switch_counts: { recalled: number; expected: number } | null;
   };
@@ -902,6 +1065,37 @@ void test("追跡するCER監査レポートはmicroとmacro、編集内訳、�
     dataset: { manifest_sha256: string; cases: unknown[] };
     profiles: Record<string, AuditProfile>;
     comparisons: Record<string, { gates: Record<string, string> }>;
+    quality_analysis: {
+      confidence_triage: {
+        status: string;
+        confidence_available_observation_count: number;
+        missing_confidence_observation_count: number;
+        error_observation_count: number;
+        error_with_confidence_observation_count: number;
+        correct_with_confidence_observation_count: number;
+        thresholds: {
+          threshold: number;
+          mean: {
+            flagged_observation_count: number;
+            eligible_error_recall: number | null;
+            eligible_false_positive_rate: number | null;
+            missed_error_observation_count: number;
+            flagged_or_missing_observation_count: number;
+            flagged_or_missing_ratio_of_all_observations: number;
+            all_error_recall_if_missing_flagged: number | null;
+          };
+          minimum: {
+            flagged_observation_count: number;
+            eligible_error_recall: number | null;
+            eligible_false_positive_rate: number | null;
+            missed_error_observation_count: number;
+            flagged_or_missing_observation_count: number;
+            flagged_or_missing_ratio_of_all_observations: number;
+            all_error_recall_if_missing_flagged: number | null;
+          };
+        }[];
+      };
+    };
   };
   assert.equal(report.version, 2);
   assert.deepEqual(report.scoring, {
@@ -910,6 +1104,13 @@ void test("追跡するCER監査レポートはmicroとmacro、編集内訳、�
     unicode_normalization: "NFKC",
     whitespace: "removed",
     edit_tie_break_order: ["substitution", "deletion", "insertion"],
+    diagnostic_cer: {
+      punctuation_and_symbol_insensitive: {
+        unicode_normalization: "NFKC",
+        whitespace: "removed",
+        punctuation_and_symbols: "removed",
+      },
+    },
   });
   const original = JSON.parse(readFileSync(
     "docs/evaluation/stt-recognition-catalog-level1-2026-08-26.json",
@@ -931,6 +1132,20 @@ void test("追跡するCER監査レポートはmicroとmacro、編集内訳、�
       profile.micro_cer,
       profile.edit_counts.total / profile.character_counts.reference_characters,
     );
+    assert.equal(
+      profile.punctuation_and_symbol_insensitive_score.micro_cer,
+      profile.punctuation_and_symbol_insensitive_score.edit_counts.total /
+        profile.punctuation_and_symbol_insensitive_score.character_counts
+          .reference_characters,
+    );
+    assert.equal(profile.insertion_analysis.observations_by_insertion.length, 30);
+    assert.equal(profile.insertion_analysis.cases_by_insertion.length, 10);
+    assert.ok(Math.abs(
+      profile.insertion_analysis.observations_by_insertion.reduce(
+        (sum, entry) => sum + entry.micro_cer_contribution,
+        0,
+      ) - profile.micro_cer,
+    ) < 1e-12);
   }
 
   const baseline = report.profiles.baseline;
@@ -950,6 +1165,41 @@ void test("追跡するCER監査レポートはmicroとmacro、編集内訳、�
     hypothesis_characters: 457,
   });
   assert.equal(baseline.macro_cer, 1.433044733044733);
+  assert.deepEqual(baseline.punctuation_and_symbol_insensitive_score, {
+    micro_cer: 370 / 273,
+    macro_cer: 1.1406204906204906,
+    edit_counts: {
+      substitutions: 44,
+      deletions: 108,
+      insertions: 218,
+      total: 370,
+    },
+    character_counts: {
+      reference_characters: 273,
+      hypothesis_characters: 383,
+    },
+  });
+  assert.equal(baseline.insertion_analysis.insertion_share_of_edits, 285 / 437);
+  assert.equal(baseline.insertion_analysis.insertions_per_reference_character, 285 / 273);
+  assert.equal(
+    baseline.insertion_analysis.non_insertion_edits_per_reference_character,
+    152 / 273,
+  );
+  assert.deepEqual(
+    baseline.insertion_analysis.cases_by_insertion.slice(0, 3).map((entry) => [
+      entry.case_id,
+      entry.edit_counts.insertions,
+    ]),
+    [
+      ["ja-clean-game", 147],
+      ["ja-clipped", 78],
+      ["ja-ko-code-switch", 51],
+    ],
+  );
+  assert.equal(
+    baseline.insertion_analysis.cases_by_insertion[2]?.cumulative_insertion_share,
+    276 / 285,
+  );
   assert.deepEqual(baseline.key_term_counts, { recalled: 9, expected: 12 });
   assert.deepEqual(baseline.language_switch_counts, { recalled: 3, expected: 6 });
   assert.deepEqual(level1.edit_counts, {
@@ -971,6 +1221,38 @@ void test("追跡するCER監査レポートはmicroとmacro、編集内訳、�
       ?.gates.semantic_endpoint,
     "not_evaluated",
   );
+  const triage = report.quality_analysis.confidence_triage;
+  assert.equal(triage.status, "partial");
+  assert.equal(triage.confidence_available_observation_count, 24);
+  assert.equal(triage.missing_confidence_observation_count, 6);
+  assert.equal(triage.error_observation_count, 21);
+  assert.equal(triage.error_with_confidence_observation_count, 15);
+  assert.equal(triage.correct_with_confidence_observation_count, 9);
+  const threshold08 = triage.thresholds.find((entry) => entry.threshold === 0.8);
+  assert.ok(threshold08);
+  assert.equal(threshold08.mean.flagged_observation_count, 6);
+  assert.equal(threshold08.mean.eligible_error_recall, 6 / 15);
+  assert.equal(threshold08.mean.eligible_false_positive_rate, 0);
+  assert.equal(threshold08.mean.missed_error_observation_count, 9);
+  assert.equal(threshold08.mean.flagged_or_missing_observation_count, 12);
+  assert.equal(threshold08.mean.flagged_or_missing_ratio_of_all_observations, 12 / 30);
+  assert.equal(threshold08.mean.all_error_recall_if_missing_flagged, 12 / 21);
+  assert.equal(threshold08.minimum.flagged_observation_count, 21);
+  assert.equal(threshold08.minimum.eligible_error_recall, 1);
+  assert.equal(threshold08.minimum.eligible_false_positive_rate, 6 / 9);
+  assert.equal(threshold08.minimum.missed_error_observation_count, 0);
+  assert.equal(threshold08.minimum.flagged_or_missing_observation_count, 27);
+  assert.equal(threshold08.minimum.flagged_or_missing_ratio_of_all_observations, 27 / 30);
+  assert.equal(threshold08.minimum.all_error_recall_if_missing_flagged, 1);
+  const threshold09 = triage.thresholds.find((entry) => entry.threshold === 0.9);
+  assert.ok(threshold09);
+  assert.equal(threshold09.mean.flagged_observation_count, 16);
+  assert.equal(threshold09.mean.eligible_error_recall, 1);
+  assert.equal(threshold09.mean.eligible_false_positive_rate, 1 / 9);
+  assert.equal(threshold09.mean.missed_error_observation_count, 0);
+  assert.equal(threshold09.mean.flagged_or_missing_observation_count, 22);
+  assert.equal(threshold09.mean.flagged_or_missing_ratio_of_all_observations, 22 / 30);
+  assert.equal(threshold09.mean.all_error_recall_if_missing_flagged, 1);
 });
 
 void test("追跡する音質相関レポートは本文なしで前処理の不採用根拠を保持する", () => {

@@ -9,9 +9,16 @@
       "substitution",
       "deletion",
       "insertion"
-    ]
+    ],
+    "diagnostic_cer": {
+      "punctuation_and_symbol_insensitive": {
+        "unicode_normalization": "NFKC",
+        "whitespace": "removed",
+        "punctuation_and_symbols": "removed"
+      }
+    }
   },
-  "generated_at": "2026-08-25T23:13:59.338Z",
+  "generated_at": "2026-08-26T09:21:10.811Z",
   "experiment": "recognition_catalog_level1",
   "profile_mapping": {
     "A": "baseline",
@@ -47,6 +54,621 @@
       "character_counts": {
         "reference_characters": 273,
         "hypothesis_characters": 457
+      },
+      "punctuation_and_symbol_insensitive_score": {
+        "micro_cer": 1.3553113553113554,
+        "macro_cer": 1.1406204906204906,
+        "edit_counts": {
+          "substitutions": 44,
+          "deletions": 108,
+          "insertions": 218,
+          "total": 370
+        },
+        "character_counts": {
+          "reference_characters": 273,
+          "hypothesis_characters": 383
+        }
+      },
+      "insertion_analysis": {
+        "insertion_share_of_edits": 0.6521739130434783,
+        "insertions_per_reference_character": 1.043956043956044,
+        "non_insertion_edits_per_reference_character": 0.5567765567765568,
+        "observations_by_insertion": [
+          {
+            "trial": 1,
+            "case_id": "ja-clean-game",
+            "reference_characters": 14,
+            "hypothesis_characters": 63,
+            "edit_counts": {
+              "substitutions": 3,
+              "deletions": 0,
+              "insertions": 49,
+              "total": 52
+            },
+            "micro_cer_contribution": 0.19047619047619047,
+            "insertion_cer_contribution": 0.1794871794871795
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-clean-game",
+            "reference_characters": 14,
+            "hypothesis_characters": 63,
+            "edit_counts": {
+              "substitutions": 3,
+              "deletions": 0,
+              "insertions": 49,
+              "total": 52
+            },
+            "micro_cer_contribution": 0.19047619047619047,
+            "insertion_cer_contribution": 0.1794871794871795
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-clean-game",
+            "reference_characters": 14,
+            "hypothesis_characters": 63,
+            "edit_counts": {
+              "substitutions": 3,
+              "deletions": 0,
+              "insertions": 49,
+              "total": 52
+            },
+            "micro_cer_contribution": 0.19047619047619047,
+            "insertion_cer_contribution": 0.1794871794871795
+          },
+          {
+            "trial": 1,
+            "case_id": "ja-clipped",
+            "reference_characters": 11,
+            "hypothesis_characters": 50,
+            "edit_counts": {
+              "substitutions": 6,
+              "deletions": 0,
+              "insertions": 39,
+              "total": 45
+            },
+            "micro_cer_contribution": 0.16483516483516483,
+            "insertion_cer_contribution": 0.14285714285714285
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-clipped",
+            "reference_characters": 11,
+            "hypothesis_characters": 50,
+            "edit_counts": {
+              "substitutions": 6,
+              "deletions": 0,
+              "insertions": 39,
+              "total": 45
+            },
+            "micro_cer_contribution": 0.16483516483516483,
+            "insertion_cer_contribution": 0.14285714285714285
+          },
+          {
+            "trial": 1,
+            "case_id": "ja-ko-code-switch",
+            "reference_characters": 9,
+            "hypothesis_characters": 26,
+            "edit_counts": {
+              "substitutions": 5,
+              "deletions": 0,
+              "insertions": 17,
+              "total": 22
+            },
+            "micro_cer_contribution": 0.08058608058608059,
+            "insertion_cer_contribution": 0.06227106227106227
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-ko-code-switch",
+            "reference_characters": 9,
+            "hypothesis_characters": 26,
+            "edit_counts": {
+              "substitutions": 5,
+              "deletions": 0,
+              "insertions": 17,
+              "total": 22
+            },
+            "micro_cer_contribution": 0.08058608058608059,
+            "insertion_cer_contribution": 0.06227106227106227
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-ko-code-switch",
+            "reference_characters": 9,
+            "hypothesis_characters": 26,
+            "edit_counts": {
+              "substitutions": 5,
+              "deletions": 0,
+              "insertions": 17,
+              "total": 22
+            },
+            "micro_cer_contribution": 0.08058608058608059,
+            "insertion_cer_contribution": 0.06227106227106227
+          },
+          {
+            "trial": 1,
+            "case_id": "ko-clean-game",
+            "reference_characters": 9,
+            "hypothesis_characters": 10,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 2,
+            "case_id": "ko-clean-game",
+            "reference_characters": 9,
+            "hypothesis_characters": 10,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 3,
+            "case_id": "ko-clean-game",
+            "reference_characters": 9,
+            "hypothesis_characters": 10,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 1,
+            "case_id": "ko-fan-noise",
+            "reference_characters": 11,
+            "hypothesis_characters": 12,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 2,
+            "case_id": "ko-fan-noise",
+            "reference_characters": 11,
+            "hypothesis_characters": 12,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 3,
+            "case_id": "ko-fan-noise",
+            "reference_characters": 11,
+            "hypothesis_characters": 12,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 1,
+            "case_id": "ko-short",
+            "reference_characters": 1,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 2,
+            "case_id": "ko-short",
+            "reference_characters": 1,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 3,
+            "case_id": "ko-short",
+            "reference_characters": 1,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-clipped",
+            "reference_characters": 11,
+            "hypothesis_characters": 3,
+            "edit_counts": {
+              "substitutions": 3,
+              "deletions": 8,
+              "insertions": 0,
+              "total": 11
+            },
+            "micro_cer_contribution": 0.040293040293040296,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 1,
+            "case_id": "ja-keyboard-noise",
+            "reference_characters": 11,
+            "hypothesis_characters": 3,
+            "edit_counts": {
+              "substitutions": 2,
+              "deletions": 8,
+              "insertions": 0,
+              "total": 10
+            },
+            "micro_cer_contribution": 0.03663003663003663,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-keyboard-noise",
+            "reference_characters": 11,
+            "hypothesis_characters": 3,
+            "edit_counts": {
+              "substitutions": 2,
+              "deletions": 8,
+              "insertions": 0,
+              "total": 10
+            },
+            "micro_cer_contribution": 0.03663003663003663,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-keyboard-noise",
+            "reference_characters": 11,
+            "hypothesis_characters": 3,
+            "edit_counts": {
+              "substitutions": 2,
+              "deletions": 8,
+              "insertions": 0,
+              "total": 10
+            },
+            "micro_cer_contribution": 0.03663003663003663,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 1,
+            "case_id": "ja-low-volume",
+            "reference_characters": 10,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            },
+            "micro_cer_contribution": 0.03663003663003663,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-low-volume",
+            "reference_characters": 10,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            },
+            "micro_cer_contribution": 0.03663003663003663,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-low-volume",
+            "reference_characters": 10,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            },
+            "micro_cer_contribution": 0.03663003663003663,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 1,
+            "case_id": "ja-pause-600ms",
+            "reference_characters": 13,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 13,
+              "insertions": 0,
+              "total": 13
+            },
+            "micro_cer_contribution": 0.047619047619047616,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-pause-600ms",
+            "reference_characters": 13,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 13,
+              "insertions": 0,
+              "total": 13
+            },
+            "micro_cer_contribution": 0.047619047619047616,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-pause-600ms",
+            "reference_characters": 13,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 13,
+              "insertions": 0,
+              "total": 13
+            },
+            "micro_cer_contribution": 0.047619047619047616,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 1,
+            "case_id": "ja-short",
+            "reference_characters": 2,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 2,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 2
+            },
+            "micro_cer_contribution": 0.007326007326007326,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-short",
+            "reference_characters": 2,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 2,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 2
+            },
+            "micro_cer_contribution": 0.007326007326007326,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-short",
+            "reference_characters": 2,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 2,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 2
+            },
+            "micro_cer_contribution": 0.007326007326007326,
+            "insertion_cer_contribution": 0
+          }
+        ],
+        "cases_by_insertion": [
+          {
+            "case_id": "ja-clean-game",
+            "observation_count": 3,
+            "reference_characters": 42,
+            "hypothesis_characters": 189,
+            "edit_counts": {
+              "substitutions": 9,
+              "deletions": 0,
+              "insertions": 147,
+              "total": 156
+            },
+            "micro_cer_contribution": 0.5714285714285714,
+            "insertion_cer_contribution": 0.5384615384615384,
+            "insertion_share_of_profile": 0.5157894736842106,
+            "cumulative_insertion_share": 0.5157894736842106
+          },
+          {
+            "case_id": "ja-clipped",
+            "observation_count": 3,
+            "reference_characters": 33,
+            "hypothesis_characters": 103,
+            "edit_counts": {
+              "substitutions": 15,
+              "deletions": 8,
+              "insertions": 78,
+              "total": 101
+            },
+            "micro_cer_contribution": 0.36996336996337,
+            "insertion_cer_contribution": 0.2857142857142857,
+            "insertion_share_of_profile": 0.2736842105263158,
+            "cumulative_insertion_share": 0.7894736842105263
+          },
+          {
+            "case_id": "ja-ko-code-switch",
+            "observation_count": 3,
+            "reference_characters": 27,
+            "hypothesis_characters": 78,
+            "edit_counts": {
+              "substitutions": 15,
+              "deletions": 0,
+              "insertions": 51,
+              "total": 66
+            },
+            "micro_cer_contribution": 0.24175824175824176,
+            "insertion_cer_contribution": 0.18681318681318682,
+            "insertion_share_of_profile": 0.17894736842105263,
+            "cumulative_insertion_share": 0.968421052631579
+          },
+          {
+            "case_id": "ko-clean-game",
+            "observation_count": 3,
+            "reference_characters": 27,
+            "hypothesis_characters": 30,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 3,
+              "total": 3
+            },
+            "micro_cer_contribution": 0.01098901098901099,
+            "insertion_cer_contribution": 0.01098901098901099,
+            "insertion_share_of_profile": 0.010526315789473684,
+            "cumulative_insertion_share": 0.9789473684210527
+          },
+          {
+            "case_id": "ko-fan-noise",
+            "observation_count": 3,
+            "reference_characters": 33,
+            "hypothesis_characters": 36,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 3,
+              "total": 3
+            },
+            "micro_cer_contribution": 0.01098901098901099,
+            "insertion_cer_contribution": 0.01098901098901099,
+            "insertion_share_of_profile": 0.010526315789473684,
+            "cumulative_insertion_share": 0.9894736842105264
+          },
+          {
+            "case_id": "ko-short",
+            "observation_count": 3,
+            "reference_characters": 3,
+            "hypothesis_characters": 6,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 3,
+              "total": 3
+            },
+            "micro_cer_contribution": 0.01098901098901099,
+            "insertion_cer_contribution": 0.01098901098901099,
+            "insertion_share_of_profile": 0.010526315789473684,
+            "cumulative_insertion_share": 1
+          },
+          {
+            "case_id": "ja-keyboard-noise",
+            "observation_count": 3,
+            "reference_characters": 33,
+            "hypothesis_characters": 9,
+            "edit_counts": {
+              "substitutions": 6,
+              "deletions": 24,
+              "insertions": 0,
+              "total": 30
+            },
+            "micro_cer_contribution": 0.10989010989010989,
+            "insertion_cer_contribution": 0,
+            "insertion_share_of_profile": 0,
+            "cumulative_insertion_share": 1
+          },
+          {
+            "case_id": "ja-low-volume",
+            "observation_count": 3,
+            "reference_characters": 30,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 30,
+              "insertions": 0,
+              "total": 30
+            },
+            "micro_cer_contribution": 0.10989010989010989,
+            "insertion_cer_contribution": 0,
+            "insertion_share_of_profile": 0,
+            "cumulative_insertion_share": 1
+          },
+          {
+            "case_id": "ja-pause-600ms",
+            "observation_count": 3,
+            "reference_characters": 39,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 39,
+              "insertions": 0,
+              "total": 39
+            },
+            "micro_cer_contribution": 0.14285714285714285,
+            "insertion_cer_contribution": 0,
+            "insertion_share_of_profile": 0,
+            "cumulative_insertion_share": 1
+          },
+          {
+            "case_id": "ja-short",
+            "observation_count": 3,
+            "reference_characters": 6,
+            "hypothesis_characters": 6,
+            "edit_counts": {
+              "substitutions": 6,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 6
+            },
+            "micro_cer_contribution": 0.02197802197802198,
+            "insertion_cer_contribution": 0,
+            "insertion_share_of_profile": 0,
+            "cumulative_insertion_share": 1
+          }
+        ],
+        "classification": {
+          "status": "not_evaluated",
+          "categories": [
+            "repetition",
+            "cross-boundary",
+            "language-duplication",
+            "reference-mismatch",
+            "silence-hallucination",
+            "other"
+          ],
+          "reason": "分類には認識本文の差分、確定原文token列、境界時系列、heard referenceの人手監査が必要です。保存済み観測だけから原因を推測して分類しません。"
+        }
       },
       "clean_cer": 1.8958333333333333,
       "key_term_recall": 0.75,
@@ -103,6 +725,18 @@
             "insertions": 49,
             "total": 52
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 3.2142857142857144,
+            "character_edits": 45,
+            "reference_characters": 14,
+            "hypothesis_characters": 56,
+            "edit_counts": {
+              "substitutions": 3,
+              "deletions": 0,
+              "insertions": 42,
+              "total": 45
+            }
+          },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
           "key_terms_expected": 1,
@@ -146,6 +780,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 9,
+            "hypothesis_characters": 9,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
           "key_terms_expected": 1,
@@ -188,6 +834,18 @@
             "deletions": 0,
             "insertions": 0,
             "total": 2
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 2,
+            "reference_characters": 2,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 1,
+              "deletions": 1,
+              "insertions": 0,
+              "total": 2
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -238,6 +896,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 1,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": null,
           "key_terms_recalled": 0,
           "key_terms_expected": 0,
@@ -286,6 +956,18 @@
             "deletions": 10,
             "insertions": 0,
             "total": 10
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 10,
+            "reference_characters": 10,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -336,6 +1018,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 11,
+            "hypothesis_characters": 11,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": null,
           "key_terms_recalled": 0,
           "key_terms_expected": 0,
@@ -378,6 +1072,18 @@
             "deletions": 8,
             "insertions": 0,
             "total": 10
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0.9090909090909091,
+            "character_edits": 10,
+            "reference_characters": 11,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 1,
+              "deletions": 9,
+              "insertions": 0,
+              "total": 10
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -428,6 +1134,18 @@
             "insertions": 39,
             "total": 45
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 3.090909090909091,
+            "character_edits": 34,
+            "reference_characters": 11,
+            "hypothesis_characters": 39,
+            "edit_counts": {
+              "substitutions": 6,
+              "deletions": 0,
+              "insertions": 28,
+              "total": 34
+            }
+          },
           "key_term_recall": 0,
           "key_terms_recalled": 0,
           "key_terms_expected": 1,
@@ -470,6 +1188,18 @@
             "deletions": 13,
             "insertions": 0,
             "total": 13
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 13,
+            "reference_characters": 13,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 13,
+              "insertions": 0,
+              "total": 13
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -526,6 +1256,18 @@
             "insertions": 17,
             "total": 22
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1.8888888888888888,
+            "character_edits": 17,
+            "reference_characters": 9,
+            "hypothesis_characters": 21,
+            "edit_counts": {
+              "substitutions": 5,
+              "deletions": 0,
+              "insertions": 12,
+              "total": 17
+            }
+          },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
           "key_terms_expected": 1,
@@ -575,6 +1317,18 @@
             "insertions": 49,
             "total": 52
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 3.2142857142857144,
+            "character_edits": 45,
+            "reference_characters": 14,
+            "hypothesis_characters": 56,
+            "edit_counts": {
+              "substitutions": 3,
+              "deletions": 0,
+              "insertions": 42,
+              "total": 45
+            }
+          },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
           "key_terms_expected": 1,
@@ -618,6 +1372,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 9,
+            "hypothesis_characters": 9,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
           "key_terms_expected": 1,
@@ -660,6 +1426,18 @@
             "deletions": 0,
             "insertions": 0,
             "total": 2
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 2,
+            "reference_characters": 2,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 1,
+              "deletions": 1,
+              "insertions": 0,
+              "total": 2
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -710,6 +1488,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 1,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": null,
           "key_terms_recalled": 0,
           "key_terms_expected": 0,
@@ -758,6 +1548,18 @@
             "deletions": 10,
             "insertions": 0,
             "total": 10
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 10,
+            "reference_characters": 10,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -808,6 +1610,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 11,
+            "hypothesis_characters": 11,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": null,
           "key_terms_recalled": 0,
           "key_terms_expected": 0,
@@ -850,6 +1664,18 @@
             "deletions": 8,
             "insertions": 0,
             "total": 10
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0.9090909090909091,
+            "character_edits": 10,
+            "reference_characters": 11,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 1,
+              "deletions": 9,
+              "insertions": 0,
+              "total": 10
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -900,6 +1726,18 @@
             "insertions": 39,
             "total": 45
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 3.090909090909091,
+            "character_edits": 34,
+            "reference_characters": 11,
+            "hypothesis_characters": 39,
+            "edit_counts": {
+              "substitutions": 6,
+              "deletions": 0,
+              "insertions": 28,
+              "total": 34
+            }
+          },
           "key_term_recall": 0,
           "key_terms_recalled": 0,
           "key_terms_expected": 1,
@@ -942,6 +1780,18 @@
             "deletions": 13,
             "insertions": 0,
             "total": 13
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 13,
+            "reference_characters": 13,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 13,
+              "insertions": 0,
+              "total": 13
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -998,6 +1848,18 @@
             "insertions": 17,
             "total": 22
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1.8888888888888888,
+            "character_edits": 17,
+            "reference_characters": 9,
+            "hypothesis_characters": 21,
+            "edit_counts": {
+              "substitutions": 5,
+              "deletions": 0,
+              "insertions": 12,
+              "total": 17
+            }
+          },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
           "key_terms_expected": 1,
@@ -1040,6 +1902,18 @@
             "deletions": 0,
             "insertions": 49,
             "total": 52
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 3.2142857142857144,
+            "character_edits": 45,
+            "reference_characters": 14,
+            "hypothesis_characters": 56,
+            "edit_counts": {
+              "substitutions": 3,
+              "deletions": 0,
+              "insertions": 42,
+              "total": 45
+            }
           },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
@@ -1084,6 +1958,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 9,
+            "hypothesis_characters": 9,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
           "key_terms_expected": 1,
@@ -1126,6 +2012,18 @@
             "deletions": 0,
             "insertions": 0,
             "total": 2
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 2,
+            "reference_characters": 2,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 1,
+              "deletions": 1,
+              "insertions": 0,
+              "total": 2
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -1176,6 +2074,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 1,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": null,
           "key_terms_recalled": 0,
           "key_terms_expected": 0,
@@ -1224,6 +2134,18 @@
             "deletions": 10,
             "insertions": 0,
             "total": 10
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 10,
+            "reference_characters": 10,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -1274,6 +2196,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 11,
+            "hypothesis_characters": 11,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": null,
           "key_terms_recalled": 0,
           "key_terms_expected": 0,
@@ -1316,6 +2250,18 @@
             "deletions": 8,
             "insertions": 0,
             "total": 10
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0.9090909090909091,
+            "character_edits": 10,
+            "reference_characters": 11,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 1,
+              "deletions": 9,
+              "insertions": 0,
+              "total": 10
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -1366,6 +2312,18 @@
             "insertions": 0,
             "total": 11
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 11,
+            "reference_characters": 11,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 2,
+              "deletions": 9,
+              "insertions": 0,
+              "total": 11
+            }
+          },
           "key_term_recall": 0,
           "key_terms_recalled": 0,
           "key_terms_expected": 1,
@@ -1414,6 +2372,18 @@
             "deletions": 13,
             "insertions": 0,
             "total": 13
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 13,
+            "reference_characters": 13,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 13,
+              "insertions": 0,
+              "total": 13
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -1469,6 +2439,18 @@
             "deletions": 0,
             "insertions": 17,
             "total": 22
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1.8888888888888888,
+            "character_edits": 17,
+            "reference_characters": 9,
+            "hypothesis_characters": 21,
+            "edit_counts": {
+              "substitutions": 5,
+              "deletions": 0,
+              "insertions": 12,
+              "total": 17
+            }
           },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
@@ -1531,6 +2513,621 @@
         "reference_characters": 273,
         "hypothesis_characters": 218
       },
+      "punctuation_and_symbol_insensitive_score": {
+        "micro_cer": 0.7655677655677655,
+        "macro_cer": 0.7305916305916307,
+        "edit_counts": {
+          "substitutions": 43,
+          "deletions": 130,
+          "insertions": 36,
+          "total": 209
+        },
+        "character_counts": {
+          "reference_characters": 273,
+          "hypothesis_characters": 179
+        }
+      },
+      "insertion_analysis": {
+        "insertion_share_of_edits": 0.27310924369747897,
+        "insertions_per_reference_character": 0.23809523809523808,
+        "non_insertion_edits_per_reference_character": 0.6336996336996337,
+        "observations_by_insertion": [
+          {
+            "trial": 1,
+            "case_id": "ja-ko-code-switch",
+            "reference_characters": 9,
+            "hypothesis_characters": 25,
+            "edit_counts": {
+              "substitutions": 4,
+              "deletions": 0,
+              "insertions": 16,
+              "total": 20
+            },
+            "micro_cer_contribution": 0.07326007326007326,
+            "insertion_cer_contribution": 0.05860805860805861
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-ko-code-switch",
+            "reference_characters": 9,
+            "hypothesis_characters": 25,
+            "edit_counts": {
+              "substitutions": 4,
+              "deletions": 0,
+              "insertions": 16,
+              "total": 20
+            },
+            "micro_cer_contribution": 0.07326007326007326,
+            "insertion_cer_contribution": 0.05860805860805861
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-ko-code-switch",
+            "reference_characters": 9,
+            "hypothesis_characters": 25,
+            "edit_counts": {
+              "substitutions": 4,
+              "deletions": 0,
+              "insertions": 16,
+              "total": 20
+            },
+            "micro_cer_contribution": 0.07326007326007326,
+            "insertion_cer_contribution": 0.05860805860805861
+          },
+          {
+            "trial": 1,
+            "case_id": "ja-clean-game",
+            "reference_characters": 14,
+            "hypothesis_characters": 17,
+            "edit_counts": {
+              "substitutions": 4,
+              "deletions": 0,
+              "insertions": 3,
+              "total": 7
+            },
+            "micro_cer_contribution": 0.02564102564102564,
+            "insertion_cer_contribution": 0.01098901098901099
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-clean-game",
+            "reference_characters": 14,
+            "hypothesis_characters": 17,
+            "edit_counts": {
+              "substitutions": 4,
+              "deletions": 0,
+              "insertions": 3,
+              "total": 7
+            },
+            "micro_cer_contribution": 0.02564102564102564,
+            "insertion_cer_contribution": 0.01098901098901099
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-clean-game",
+            "reference_characters": 14,
+            "hypothesis_characters": 17,
+            "edit_counts": {
+              "substitutions": 4,
+              "deletions": 0,
+              "insertions": 3,
+              "total": 7
+            },
+            "micro_cer_contribution": 0.02564102564102564,
+            "insertion_cer_contribution": 0.01098901098901099
+          },
+          {
+            "trial": 1,
+            "case_id": "ko-clean-game",
+            "reference_characters": 9,
+            "hypothesis_characters": 10,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 2,
+            "case_id": "ko-clean-game",
+            "reference_characters": 9,
+            "hypothesis_characters": 10,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 3,
+            "case_id": "ko-clean-game",
+            "reference_characters": 9,
+            "hypothesis_characters": 10,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 1,
+            "case_id": "ko-fan-noise",
+            "reference_characters": 11,
+            "hypothesis_characters": 12,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 2,
+            "case_id": "ko-fan-noise",
+            "reference_characters": 11,
+            "hypothesis_characters": 12,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 1,
+            "case_id": "ko-short",
+            "reference_characters": 1,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 2,
+            "case_id": "ko-short",
+            "reference_characters": 1,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 3,
+            "case_id": "ko-short",
+            "reference_characters": 1,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 1,
+            "case_id": "ja-clipped",
+            "reference_characters": 11,
+            "hypothesis_characters": 3,
+            "edit_counts": {
+              "substitutions": 3,
+              "deletions": 8,
+              "insertions": 0,
+              "total": 11
+            },
+            "micro_cer_contribution": 0.040293040293040296,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-clipped",
+            "reference_characters": 11,
+            "hypothesis_characters": 3,
+            "edit_counts": {
+              "substitutions": 3,
+              "deletions": 8,
+              "insertions": 0,
+              "total": 11
+            },
+            "micro_cer_contribution": 0.040293040293040296,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-clipped",
+            "reference_characters": 11,
+            "hypothesis_characters": 3,
+            "edit_counts": {
+              "substitutions": 3,
+              "deletions": 8,
+              "insertions": 0,
+              "total": 11
+            },
+            "micro_cer_contribution": 0.040293040293040296,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 1,
+            "case_id": "ja-keyboard-noise",
+            "reference_characters": 11,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 1,
+              "deletions": 9,
+              "insertions": 0,
+              "total": 10
+            },
+            "micro_cer_contribution": 0.03663003663003663,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-keyboard-noise",
+            "reference_characters": 11,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 1,
+              "deletions": 9,
+              "insertions": 0,
+              "total": 10
+            },
+            "micro_cer_contribution": 0.03663003663003663,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-keyboard-noise",
+            "reference_characters": 11,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 1,
+              "deletions": 9,
+              "insertions": 0,
+              "total": 10
+            },
+            "micro_cer_contribution": 0.03663003663003663,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 1,
+            "case_id": "ja-low-volume",
+            "reference_characters": 10,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            },
+            "micro_cer_contribution": 0.03663003663003663,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-low-volume",
+            "reference_characters": 10,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            },
+            "micro_cer_contribution": 0.03663003663003663,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-low-volume",
+            "reference_characters": 10,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            },
+            "micro_cer_contribution": 0.03663003663003663,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 1,
+            "case_id": "ja-pause-600ms",
+            "reference_characters": 13,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 13,
+              "insertions": 0,
+              "total": 13
+            },
+            "micro_cer_contribution": 0.047619047619047616,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-pause-600ms",
+            "reference_characters": 13,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 13,
+              "insertions": 0,
+              "total": 13
+            },
+            "micro_cer_contribution": 0.047619047619047616,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-pause-600ms",
+            "reference_characters": 13,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 13,
+              "insertions": 0,
+              "total": 13
+            },
+            "micro_cer_contribution": 0.047619047619047616,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 1,
+            "case_id": "ja-short",
+            "reference_characters": 2,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 2,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 2
+            },
+            "micro_cer_contribution": 0.007326007326007326,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-short",
+            "reference_characters": 2,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 2,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 2
+            },
+            "micro_cer_contribution": 0.007326007326007326,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-short",
+            "reference_characters": 2,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 2,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 2
+            },
+            "micro_cer_contribution": 0.007326007326007326,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 3,
+            "case_id": "ko-fan-noise",
+            "reference_characters": 11,
+            "hypothesis_characters": 11,
+            "edit_counts": {
+              "substitutions": 11,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 11
+            },
+            "micro_cer_contribution": 0.040293040293040296,
+            "insertion_cer_contribution": 0
+          }
+        ],
+        "cases_by_insertion": [
+          {
+            "case_id": "ja-ko-code-switch",
+            "observation_count": 3,
+            "reference_characters": 27,
+            "hypothesis_characters": 75,
+            "edit_counts": {
+              "substitutions": 12,
+              "deletions": 0,
+              "insertions": 48,
+              "total": 60
+            },
+            "micro_cer_contribution": 0.21978021978021978,
+            "insertion_cer_contribution": 0.17582417582417584,
+            "insertion_share_of_profile": 0.7384615384615385,
+            "cumulative_insertion_share": 0.7384615384615385
+          },
+          {
+            "case_id": "ja-clean-game",
+            "observation_count": 3,
+            "reference_characters": 42,
+            "hypothesis_characters": 51,
+            "edit_counts": {
+              "substitutions": 12,
+              "deletions": 0,
+              "insertions": 9,
+              "total": 21
+            },
+            "micro_cer_contribution": 0.07692307692307693,
+            "insertion_cer_contribution": 0.03296703296703297,
+            "insertion_share_of_profile": 0.13846153846153847,
+            "cumulative_insertion_share": 0.8769230769230769
+          },
+          {
+            "case_id": "ko-clean-game",
+            "observation_count": 3,
+            "reference_characters": 27,
+            "hypothesis_characters": 30,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 3,
+              "total": 3
+            },
+            "micro_cer_contribution": 0.01098901098901099,
+            "insertion_cer_contribution": 0.01098901098901099,
+            "insertion_share_of_profile": 0.046153846153846156,
+            "cumulative_insertion_share": 0.9230769230769231
+          },
+          {
+            "case_id": "ko-short",
+            "observation_count": 3,
+            "reference_characters": 3,
+            "hypothesis_characters": 6,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 3,
+              "total": 3
+            },
+            "micro_cer_contribution": 0.01098901098901099,
+            "insertion_cer_contribution": 0.01098901098901099,
+            "insertion_share_of_profile": 0.046153846153846156,
+            "cumulative_insertion_share": 0.9692307692307693
+          },
+          {
+            "case_id": "ko-fan-noise",
+            "observation_count": 3,
+            "reference_characters": 33,
+            "hypothesis_characters": 35,
+            "edit_counts": {
+              "substitutions": 11,
+              "deletions": 0,
+              "insertions": 2,
+              "total": 13
+            },
+            "micro_cer_contribution": 0.047619047619047616,
+            "insertion_cer_contribution": 0.007326007326007326,
+            "insertion_share_of_profile": 0.03076923076923077,
+            "cumulative_insertion_share": 1
+          },
+          {
+            "case_id": "ja-clipped",
+            "observation_count": 3,
+            "reference_characters": 33,
+            "hypothesis_characters": 9,
+            "edit_counts": {
+              "substitutions": 9,
+              "deletions": 24,
+              "insertions": 0,
+              "total": 33
+            },
+            "micro_cer_contribution": 0.12087912087912088,
+            "insertion_cer_contribution": 0,
+            "insertion_share_of_profile": 0,
+            "cumulative_insertion_share": 1
+          },
+          {
+            "case_id": "ja-keyboard-noise",
+            "observation_count": 3,
+            "reference_characters": 33,
+            "hypothesis_characters": 6,
+            "edit_counts": {
+              "substitutions": 3,
+              "deletions": 27,
+              "insertions": 0,
+              "total": 30
+            },
+            "micro_cer_contribution": 0.10989010989010989,
+            "insertion_cer_contribution": 0,
+            "insertion_share_of_profile": 0,
+            "cumulative_insertion_share": 1
+          },
+          {
+            "case_id": "ja-low-volume",
+            "observation_count": 3,
+            "reference_characters": 30,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 30,
+              "insertions": 0,
+              "total": 30
+            },
+            "micro_cer_contribution": 0.10989010989010989,
+            "insertion_cer_contribution": 0,
+            "insertion_share_of_profile": 0,
+            "cumulative_insertion_share": 1
+          },
+          {
+            "case_id": "ja-pause-600ms",
+            "observation_count": 3,
+            "reference_characters": 39,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 39,
+              "insertions": 0,
+              "total": 39
+            },
+            "micro_cer_contribution": 0.14285714285714285,
+            "insertion_cer_contribution": 0,
+            "insertion_share_of_profile": 0,
+            "cumulative_insertion_share": 1
+          },
+          {
+            "case_id": "ja-short",
+            "observation_count": 3,
+            "reference_characters": 6,
+            "hypothesis_characters": 6,
+            "edit_counts": {
+              "substitutions": 6,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 6
+            },
+            "micro_cer_contribution": 0.02197802197802198,
+            "insertion_cer_contribution": 0,
+            "insertion_share_of_profile": 0,
+            "cumulative_insertion_share": 1
+          }
+        ],
+        "classification": {
+          "status": "not_evaluated",
+          "categories": [
+            "repetition",
+            "cross-boundary",
+            "language-duplication",
+            "reference-mismatch",
+            "silence-hallucination",
+            "other"
+          ],
+          "reason": "分類には認識本文の差分、確定原文token列、境界時系列、heard referenceの人手監査が必要です。保存済み観測だけから原因を推測して分類しません。"
+        }
+      },
       "clean_cer": 0.9166666666666666,
       "key_term_recall": 0.75,
       "key_term_counts": {
@@ -1585,6 +3182,18 @@
             "deletions": 0,
             "insertions": 3,
             "total": 7
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0.2857142857142857,
+            "character_edits": 4,
+            "reference_characters": 14,
+            "hypothesis_characters": 14,
+            "edit_counts": {
+              "substitutions": 4,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 4
+            }
           },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
@@ -1641,6 +3250,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 9,
+            "hypothesis_characters": 9,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
           "key_terms_expected": 1,
@@ -1683,6 +3304,18 @@
             "deletions": 0,
             "insertions": 0,
             "total": 2
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 2,
+            "reference_characters": 2,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 1,
+              "deletions": 1,
+              "insertions": 0,
+              "total": 2
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -1733,6 +3366,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 1,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": null,
           "key_terms_recalled": 0,
           "key_terms_expected": 0,
@@ -1775,6 +3420,18 @@
             "deletions": 10,
             "insertions": 0,
             "total": 10
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 10,
+            "reference_characters": 10,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -1825,6 +3482,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 11,
+            "hypothesis_characters": 11,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": null,
           "key_terms_recalled": 0,
           "key_terms_expected": 0,
@@ -1867,6 +3536,18 @@
             "deletions": 9,
             "insertions": 0,
             "total": 10
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0.9090909090909091,
+            "character_edits": 10,
+            "reference_characters": 11,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -1917,6 +3598,18 @@
             "insertions": 0,
             "total": 11
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 11,
+            "reference_characters": 11,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 2,
+              "deletions": 9,
+              "insertions": 0,
+              "total": 11
+            }
+          },
           "key_term_recall": 0,
           "key_terms_recalled": 0,
           "key_terms_expected": 1,
@@ -1965,6 +3658,18 @@
             "deletions": 13,
             "insertions": 0,
             "total": 13
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 13,
+            "reference_characters": 13,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 13,
+              "insertions": 0,
+              "total": 13
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -2021,6 +3726,18 @@
             "insertions": 16,
             "total": 20
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1.7777777777777777,
+            "character_edits": 16,
+            "reference_characters": 9,
+            "hypothesis_characters": 21,
+            "edit_counts": {
+              "substitutions": 4,
+              "deletions": 0,
+              "insertions": 12,
+              "total": 16
+            }
+          },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
           "key_terms_expected": 1,
@@ -2069,6 +3786,18 @@
             "deletions": 0,
             "insertions": 3,
             "total": 7
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0.2857142857142857,
+            "character_edits": 4,
+            "reference_characters": 14,
+            "hypothesis_characters": 14,
+            "edit_counts": {
+              "substitutions": 4,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 4
+            }
           },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
@@ -2125,6 +3854,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 9,
+            "hypothesis_characters": 9,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
           "key_terms_expected": 1,
@@ -2167,6 +3908,18 @@
             "deletions": 0,
             "insertions": 0,
             "total": 2
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 2,
+            "reference_characters": 2,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 1,
+              "deletions": 1,
+              "insertions": 0,
+              "total": 2
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -2217,6 +3970,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 1,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": null,
           "key_terms_recalled": 0,
           "key_terms_expected": 0,
@@ -2259,6 +4024,18 @@
             "deletions": 10,
             "insertions": 0,
             "total": 10
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 10,
+            "reference_characters": 10,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -2309,6 +4086,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 11,
+            "hypothesis_characters": 11,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": null,
           "key_terms_recalled": 0,
           "key_terms_expected": 0,
@@ -2351,6 +4140,18 @@
             "deletions": 9,
             "insertions": 0,
             "total": 10
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0.9090909090909091,
+            "character_edits": 10,
+            "reference_characters": 11,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -2401,6 +4202,18 @@
             "insertions": 0,
             "total": 11
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 11,
+            "reference_characters": 11,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 2,
+              "deletions": 9,
+              "insertions": 0,
+              "total": 11
+            }
+          },
           "key_term_recall": 0,
           "key_terms_recalled": 0,
           "key_terms_expected": 1,
@@ -2449,6 +4262,18 @@
             "deletions": 13,
             "insertions": 0,
             "total": 13
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 13,
+            "reference_characters": 13,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 13,
+              "insertions": 0,
+              "total": 13
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -2505,6 +4330,18 @@
             "insertions": 16,
             "total": 20
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1.7777777777777777,
+            "character_edits": 16,
+            "reference_characters": 9,
+            "hypothesis_characters": 21,
+            "edit_counts": {
+              "substitutions": 4,
+              "deletions": 0,
+              "insertions": 12,
+              "total": 16
+            }
+          },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
           "key_terms_expected": 1,
@@ -2553,6 +4390,18 @@
             "deletions": 0,
             "insertions": 3,
             "total": 7
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0.2857142857142857,
+            "character_edits": 4,
+            "reference_characters": 14,
+            "hypothesis_characters": 14,
+            "edit_counts": {
+              "substitutions": 4,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 4
+            }
           },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
@@ -2609,6 +4458,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 9,
+            "hypothesis_characters": 9,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
           "key_terms_expected": 1,
@@ -2651,6 +4512,18 @@
             "deletions": 0,
             "insertions": 0,
             "total": 2
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 2,
+            "reference_characters": 2,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 1,
+              "deletions": 1,
+              "insertions": 0,
+              "total": 2
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -2701,6 +4574,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 1,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": null,
           "key_terms_recalled": 0,
           "key_terms_expected": 0,
@@ -2743,6 +4628,18 @@
             "deletions": 10,
             "insertions": 0,
             "total": 10
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 10,
+            "reference_characters": 10,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -2793,6 +4690,18 @@
             "insertions": 0,
             "total": 11
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 11,
+            "reference_characters": 11,
+            "hypothesis_characters": 10,
+            "edit_counts": {
+              "substitutions": 10,
+              "deletions": 1,
+              "insertions": 0,
+              "total": 11
+            }
+          },
           "key_term_recall": null,
           "key_terms_recalled": 0,
           "key_terms_expected": 0,
@@ -2835,6 +4744,18 @@
             "deletions": 9,
             "insertions": 0,
             "total": 10
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0.9090909090909091,
+            "character_edits": 10,
+            "reference_characters": 11,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -2885,6 +4806,18 @@
             "insertions": 0,
             "total": 11
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 11,
+            "reference_characters": 11,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 2,
+              "deletions": 9,
+              "insertions": 0,
+              "total": 11
+            }
+          },
           "key_term_recall": 0,
           "key_terms_recalled": 0,
           "key_terms_expected": 1,
@@ -2933,6 +4866,18 @@
             "deletions": 13,
             "insertions": 0,
             "total": 13
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 13,
+            "reference_characters": 13,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 13,
+              "insertions": 0,
+              "total": 13
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -2988,6 +4933,18 @@
             "deletions": 0,
             "insertions": 16,
             "total": 20
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1.7777777777777777,
+            "character_edits": 16,
+            "reference_characters": 9,
+            "hypothesis_characters": 21,
+            "edit_counts": {
+              "substitutions": 4,
+              "deletions": 0,
+              "insertions": 12,
+              "total": 16
+            }
           },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
@@ -3057,6 +5014,621 @@
         "reference_characters": 273,
         "hypothesis_characters": 263
       },
+      "punctuation_and_symbol_insensitive_score": {
+        "micro_cer": 1.0073260073260073,
+        "macro_cer": 0.8753006253006252,
+        "edit_counts": {
+          "substitutions": 41,
+          "deletions": 144,
+          "insertions": 90,
+          "total": 275
+        },
+        "character_counts": {
+          "reference_characters": 273,
+          "hypothesis_characters": 219
+        }
+      },
+      "insertion_analysis": {
+        "insertion_share_of_edits": 0.3973941368078176,
+        "insertions_per_reference_character": 0.4468864468864469,
+        "non_insertion_edits_per_reference_character": 0.6776556776556777,
+        "observations_by_insertion": [
+          {
+            "trial": 1,
+            "case_id": "ja-clean-game",
+            "reference_characters": 14,
+            "hypothesis_characters": 63,
+            "edit_counts": {
+              "substitutions": 3,
+              "deletions": 0,
+              "insertions": 49,
+              "total": 52
+            },
+            "micro_cer_contribution": 0.19047619047619047,
+            "insertion_cer_contribution": 0.1794871794871795
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-clean-game",
+            "reference_characters": 14,
+            "hypothesis_characters": 52,
+            "edit_counts": {
+              "substitutions": 14,
+              "deletions": 0,
+              "insertions": 38,
+              "total": 52
+            },
+            "micro_cer_contribution": 0.19047619047619047,
+            "insertion_cer_contribution": 0.1391941391941392
+          },
+          {
+            "trial": 1,
+            "case_id": "ja-ko-code-switch",
+            "reference_characters": 9,
+            "hypothesis_characters": 32,
+            "edit_counts": {
+              "substitutions": 8,
+              "deletions": 0,
+              "insertions": 23,
+              "total": 31
+            },
+            "micro_cer_contribution": 0.11355311355311355,
+            "insertion_cer_contribution": 0.08424908424908426
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-clean-game",
+            "reference_characters": 14,
+            "hypothesis_characters": 17,
+            "edit_counts": {
+              "substitutions": 4,
+              "deletions": 0,
+              "insertions": 3,
+              "total": 7
+            },
+            "micro_cer_contribution": 0.02564102564102564,
+            "insertion_cer_contribution": 0.01098901098901099
+          },
+          {
+            "trial": 1,
+            "case_id": "ko-clean-game",
+            "reference_characters": 9,
+            "hypothesis_characters": 10,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 2,
+            "case_id": "ko-clean-game",
+            "reference_characters": 9,
+            "hypothesis_characters": 10,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 3,
+            "case_id": "ko-clean-game",
+            "reference_characters": 9,
+            "hypothesis_characters": 10,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 1,
+            "case_id": "ko-fan-noise",
+            "reference_characters": 11,
+            "hypothesis_characters": 12,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 2,
+            "case_id": "ko-fan-noise",
+            "reference_characters": 11,
+            "hypothesis_characters": 12,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 3,
+            "case_id": "ko-fan-noise",
+            "reference_characters": 11,
+            "hypothesis_characters": 12,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 1,
+            "case_id": "ko-short",
+            "reference_characters": 1,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 2,
+            "case_id": "ko-short",
+            "reference_characters": 1,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 3,
+            "case_id": "ko-short",
+            "reference_characters": 1,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 1,
+              "total": 1
+            },
+            "micro_cer_contribution": 0.003663003663003663,
+            "insertion_cer_contribution": 0.003663003663003663
+          },
+          {
+            "trial": 1,
+            "case_id": "ja-clipped",
+            "reference_characters": 11,
+            "hypothesis_characters": 3,
+            "edit_counts": {
+              "substitutions": 3,
+              "deletions": 8,
+              "insertions": 0,
+              "total": 11
+            },
+            "micro_cer_contribution": 0.040293040293040296,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-clipped",
+            "reference_characters": 11,
+            "hypothesis_characters": 3,
+            "edit_counts": {
+              "substitutions": 3,
+              "deletions": 8,
+              "insertions": 0,
+              "total": 11
+            },
+            "micro_cer_contribution": 0.040293040293040296,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-clipped",
+            "reference_characters": 11,
+            "hypothesis_characters": 3,
+            "edit_counts": {
+              "substitutions": 3,
+              "deletions": 8,
+              "insertions": 0,
+              "total": 11
+            },
+            "micro_cer_contribution": 0.040293040293040296,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 1,
+            "case_id": "ja-keyboard-noise",
+            "reference_characters": 11,
+            "hypothesis_characters": 4,
+            "edit_counts": {
+              "substitutions": 3,
+              "deletions": 7,
+              "insertions": 0,
+              "total": 10
+            },
+            "micro_cer_contribution": 0.03663003663003663,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-keyboard-noise",
+            "reference_characters": 11,
+            "hypothesis_characters": 4,
+            "edit_counts": {
+              "substitutions": 3,
+              "deletions": 7,
+              "insertions": 0,
+              "total": 10
+            },
+            "micro_cer_contribution": 0.03663003663003663,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-keyboard-noise",
+            "reference_characters": 11,
+            "hypothesis_characters": 4,
+            "edit_counts": {
+              "substitutions": 3,
+              "deletions": 7,
+              "insertions": 0,
+              "total": 10
+            },
+            "micro_cer_contribution": 0.03663003663003663,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-ko-code-switch",
+            "reference_characters": 9,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 9,
+              "insertions": 0,
+              "total": 9
+            },
+            "micro_cer_contribution": 0.03296703296703297,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-ko-code-switch",
+            "reference_characters": 9,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 9,
+              "insertions": 0,
+              "total": 9
+            },
+            "micro_cer_contribution": 0.03296703296703297,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 1,
+            "case_id": "ja-low-volume",
+            "reference_characters": 10,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            },
+            "micro_cer_contribution": 0.03663003663003663,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-low-volume",
+            "reference_characters": 10,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            },
+            "micro_cer_contribution": 0.03663003663003663,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-low-volume",
+            "reference_characters": 10,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            },
+            "micro_cer_contribution": 0.03663003663003663,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 1,
+            "case_id": "ja-pause-600ms",
+            "reference_characters": 13,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 13,
+              "insertions": 0,
+              "total": 13
+            },
+            "micro_cer_contribution": 0.047619047619047616,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-pause-600ms",
+            "reference_characters": 13,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 13,
+              "insertions": 0,
+              "total": 13
+            },
+            "micro_cer_contribution": 0.047619047619047616,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-pause-600ms",
+            "reference_characters": 13,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 13,
+              "insertions": 0,
+              "total": 13
+            },
+            "micro_cer_contribution": 0.047619047619047616,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 1,
+            "case_id": "ja-short",
+            "reference_characters": 2,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 2,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 2
+            },
+            "micro_cer_contribution": 0.007326007326007326,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 2,
+            "case_id": "ja-short",
+            "reference_characters": 2,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 2,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 2
+            },
+            "micro_cer_contribution": 0.007326007326007326,
+            "insertion_cer_contribution": 0
+          },
+          {
+            "trial": 3,
+            "case_id": "ja-short",
+            "reference_characters": 2,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 2,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 2
+            },
+            "micro_cer_contribution": 0.007326007326007326,
+            "insertion_cer_contribution": 0
+          }
+        ],
+        "cases_by_insertion": [
+          {
+            "case_id": "ja-clean-game",
+            "observation_count": 3,
+            "reference_characters": 42,
+            "hypothesis_characters": 132,
+            "edit_counts": {
+              "substitutions": 21,
+              "deletions": 0,
+              "insertions": 90,
+              "total": 111
+            },
+            "micro_cer_contribution": 0.4065934065934066,
+            "insertion_cer_contribution": 0.32967032967032966,
+            "insertion_share_of_profile": 0.7377049180327869,
+            "cumulative_insertion_share": 0.7377049180327869
+          },
+          {
+            "case_id": "ja-ko-code-switch",
+            "observation_count": 3,
+            "reference_characters": 27,
+            "hypothesis_characters": 32,
+            "edit_counts": {
+              "substitutions": 8,
+              "deletions": 18,
+              "insertions": 23,
+              "total": 49
+            },
+            "micro_cer_contribution": 0.1794871794871795,
+            "insertion_cer_contribution": 0.08424908424908426,
+            "insertion_share_of_profile": 0.1885245901639344,
+            "cumulative_insertion_share": 0.9262295081967213
+          },
+          {
+            "case_id": "ko-clean-game",
+            "observation_count": 3,
+            "reference_characters": 27,
+            "hypothesis_characters": 30,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 3,
+              "total": 3
+            },
+            "micro_cer_contribution": 0.01098901098901099,
+            "insertion_cer_contribution": 0.01098901098901099,
+            "insertion_share_of_profile": 0.02459016393442623,
+            "cumulative_insertion_share": 0.9508196721311476
+          },
+          {
+            "case_id": "ko-fan-noise",
+            "observation_count": 3,
+            "reference_characters": 33,
+            "hypothesis_characters": 36,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 3,
+              "total": 3
+            },
+            "micro_cer_contribution": 0.01098901098901099,
+            "insertion_cer_contribution": 0.01098901098901099,
+            "insertion_share_of_profile": 0.02459016393442623,
+            "cumulative_insertion_share": 0.9754098360655739
+          },
+          {
+            "case_id": "ko-short",
+            "observation_count": 3,
+            "reference_characters": 3,
+            "hypothesis_characters": 6,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 3,
+              "total": 3
+            },
+            "micro_cer_contribution": 0.01098901098901099,
+            "insertion_cer_contribution": 0.01098901098901099,
+            "insertion_share_of_profile": 0.02459016393442623,
+            "cumulative_insertion_share": 1
+          },
+          {
+            "case_id": "ja-clipped",
+            "observation_count": 3,
+            "reference_characters": 33,
+            "hypothesis_characters": 9,
+            "edit_counts": {
+              "substitutions": 9,
+              "deletions": 24,
+              "insertions": 0,
+              "total": 33
+            },
+            "micro_cer_contribution": 0.12087912087912088,
+            "insertion_cer_contribution": 0,
+            "insertion_share_of_profile": 0,
+            "cumulative_insertion_share": 1
+          },
+          {
+            "case_id": "ja-keyboard-noise",
+            "observation_count": 3,
+            "reference_characters": 33,
+            "hypothesis_characters": 12,
+            "edit_counts": {
+              "substitutions": 9,
+              "deletions": 21,
+              "insertions": 0,
+              "total": 30
+            },
+            "micro_cer_contribution": 0.10989010989010989,
+            "insertion_cer_contribution": 0,
+            "insertion_share_of_profile": 0,
+            "cumulative_insertion_share": 1
+          },
+          {
+            "case_id": "ja-low-volume",
+            "observation_count": 3,
+            "reference_characters": 30,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 30,
+              "insertions": 0,
+              "total": 30
+            },
+            "micro_cer_contribution": 0.10989010989010989,
+            "insertion_cer_contribution": 0,
+            "insertion_share_of_profile": 0,
+            "cumulative_insertion_share": 1
+          },
+          {
+            "case_id": "ja-pause-600ms",
+            "observation_count": 3,
+            "reference_characters": 39,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 39,
+              "insertions": 0,
+              "total": 39
+            },
+            "micro_cer_contribution": 0.14285714285714285,
+            "insertion_cer_contribution": 0,
+            "insertion_share_of_profile": 0,
+            "cumulative_insertion_share": 1
+          },
+          {
+            "case_id": "ja-short",
+            "observation_count": 3,
+            "reference_characters": 6,
+            "hypothesis_characters": 6,
+            "edit_counts": {
+              "substitutions": 6,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 6
+            },
+            "micro_cer_contribution": 0.02197802197802198,
+            "insertion_cer_contribution": 0,
+            "insertion_share_of_profile": 0,
+            "cumulative_insertion_share": 1
+          }
+        ],
+        "classification": {
+          "status": "not_evaluated",
+          "categories": [
+            "repetition",
+            "cross-boundary",
+            "language-duplication",
+            "reference-mismatch",
+            "silence-hallucination",
+            "other"
+          ],
+          "reason": "分類には認識本文の差分、確定原文token列、境界時系列、heard referenceの人手監査が必要です。保存済み観測だけから原因を推測して分類しません。"
+        }
+      },
       "clean_cer": 1.4652777777777777,
       "key_term_recall": 0.4166666666666667,
       "key_term_counts": {
@@ -3112,6 +5684,18 @@
             "insertions": 49,
             "total": 52
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 3.2142857142857144,
+            "character_edits": 45,
+            "reference_characters": 14,
+            "hypothesis_characters": 56,
+            "edit_counts": {
+              "substitutions": 3,
+              "deletions": 0,
+              "insertions": 42,
+              "total": 45
+            }
+          },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
           "key_terms_expected": 1,
@@ -3154,6 +5738,18 @@
             "deletions": 0,
             "insertions": 1,
             "total": 1
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 9,
+            "hypothesis_characters": 9,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
           },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
@@ -3198,6 +5794,18 @@
             "insertions": 0,
             "total": 2
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 2,
+            "reference_characters": 2,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 1,
+              "deletions": 1,
+              "insertions": 0,
+              "total": 2
+            }
+          },
           "key_term_recall": null,
           "key_terms_recalled": 0,
           "key_terms_expected": 0,
@@ -3241,6 +5849,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 1,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": null,
           "key_terms_recalled": 0,
           "key_terms_expected": 0,
@@ -3283,6 +5903,18 @@
             "deletions": 10,
             "insertions": 0,
             "total": 10
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 10,
+            "reference_characters": 10,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -3333,6 +5965,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 11,
+            "hypothesis_characters": 11,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": null,
           "key_terms_recalled": 0,
           "key_terms_expected": 0,
@@ -3375,6 +6019,18 @@
             "deletions": 7,
             "insertions": 0,
             "total": 10
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0.9090909090909091,
+            "character_edits": 10,
+            "reference_characters": 11,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 1,
+              "deletions": 9,
+              "insertions": 0,
+              "total": 10
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -3431,6 +6087,18 @@
             "insertions": 0,
             "total": 11
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 11,
+            "reference_characters": 11,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 2,
+              "deletions": 9,
+              "insertions": 0,
+              "total": 11
+            }
+          },
           "key_term_recall": 0,
           "key_terms_recalled": 0,
           "key_terms_expected": 1,
@@ -3479,6 +6147,18 @@
             "deletions": 13,
             "insertions": 0,
             "total": 13
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 13,
+            "reference_characters": 13,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 13,
+              "insertions": 0,
+              "total": 13
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -3535,6 +6215,18 @@
             "insertions": 23,
             "total": 31
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 2.888888888888889,
+            "character_edits": 26,
+            "reference_characters": 9,
+            "hypothesis_characters": 27,
+            "edit_counts": {
+              "substitutions": 8,
+              "deletions": 0,
+              "insertions": 18,
+              "total": 26
+            }
+          },
           "key_term_recall": 0,
           "key_terms_recalled": 0,
           "key_terms_expected": 1,
@@ -3577,6 +6269,18 @@
             "deletions": 0,
             "insertions": 38,
             "total": 52
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 3.142857142857143,
+            "character_edits": 44,
+            "reference_characters": 14,
+            "hypothesis_characters": 44,
+            "edit_counts": {
+              "substitutions": 14,
+              "deletions": 0,
+              "insertions": 30,
+              "total": 44
+            }
           },
           "key_term_recall": 0,
           "key_terms_recalled": 0,
@@ -3621,6 +6325,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 9,
+            "hypothesis_characters": 9,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
           "key_terms_expected": 1,
@@ -3663,6 +6379,18 @@
             "deletions": 0,
             "insertions": 0,
             "total": 2
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 2,
+            "reference_characters": 2,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 1,
+              "deletions": 1,
+              "insertions": 0,
+              "total": 2
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -3707,6 +6435,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 1,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": null,
           "key_terms_recalled": 0,
           "key_terms_expected": 0,
@@ -3749,6 +6489,18 @@
             "deletions": 10,
             "insertions": 0,
             "total": 10
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 10,
+            "reference_characters": 10,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -3799,6 +6551,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 11,
+            "hypothesis_characters": 11,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": null,
           "key_terms_recalled": 0,
           "key_terms_expected": 0,
@@ -3841,6 +6605,18 @@
             "deletions": 7,
             "insertions": 0,
             "total": 10
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0.9090909090909091,
+            "character_edits": 10,
+            "reference_characters": 11,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 1,
+              "deletions": 9,
+              "insertions": 0,
+              "total": 10
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -3897,6 +6673,18 @@
             "insertions": 0,
             "total": 11
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 11,
+            "reference_characters": 11,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 2,
+              "deletions": 9,
+              "insertions": 0,
+              "total": 11
+            }
+          },
           "key_term_recall": 0,
           "key_terms_recalled": 0,
           "key_terms_expected": 1,
@@ -3945,6 +6733,18 @@
             "deletions": 13,
             "insertions": 0,
             "total": 13
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 13,
+            "reference_characters": 13,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 13,
+              "insertions": 0,
+              "total": 13
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -4001,6 +6801,18 @@
             "insertions": 0,
             "total": 9
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 9,
+            "reference_characters": 9,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 9,
+              "insertions": 0,
+              "total": 9
+            }
+          },
           "key_term_recall": 0,
           "key_terms_recalled": 0,
           "key_terms_expected": 1,
@@ -4049,6 +6861,18 @@
             "deletions": 0,
             "insertions": 3,
             "total": 7
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0.2857142857142857,
+            "character_edits": 4,
+            "reference_characters": 14,
+            "hypothesis_characters": 14,
+            "edit_counts": {
+              "substitutions": 4,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 4
+            }
           },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
@@ -4105,6 +6929,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 9,
+            "hypothesis_characters": 9,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": 1,
           "key_terms_recalled": 1,
           "key_terms_expected": 1,
@@ -4147,6 +6983,18 @@
             "deletions": 0,
             "insertions": 0,
             "total": 2
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 2,
+            "reference_characters": 2,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 1,
+              "deletions": 1,
+              "insertions": 0,
+              "total": 2
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -4197,6 +7045,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 1,
+            "hypothesis_characters": 1,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": null,
           "key_terms_recalled": 0,
           "key_terms_expected": 0,
@@ -4239,6 +7099,18 @@
             "deletions": 10,
             "insertions": 0,
             "total": 10
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 10,
+            "reference_characters": 10,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 10,
+              "insertions": 0,
+              "total": 10
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -4289,6 +7161,18 @@
             "insertions": 1,
             "total": 1
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0,
+            "character_edits": 0,
+            "reference_characters": 11,
+            "hypothesis_characters": 11,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 0,
+              "insertions": 0,
+              "total": 0
+            }
+          },
           "key_term_recall": null,
           "key_terms_recalled": 0,
           "key_terms_expected": 0,
@@ -4331,6 +7215,18 @@
             "deletions": 7,
             "insertions": 0,
             "total": 10
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 0.9090909090909091,
+            "character_edits": 10,
+            "reference_characters": 11,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 1,
+              "deletions": 9,
+              "insertions": 0,
+              "total": 10
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -4387,6 +7283,18 @@
             "insertions": 0,
             "total": 11
           },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 11,
+            "reference_characters": 11,
+            "hypothesis_characters": 2,
+            "edit_counts": {
+              "substitutions": 2,
+              "deletions": 9,
+              "insertions": 0,
+              "total": 11
+            }
+          },
           "key_term_recall": 0,
           "key_terms_recalled": 0,
           "key_terms_expected": 1,
@@ -4435,6 +7343,18 @@
             "deletions": 13,
             "insertions": 0,
             "total": 13
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 13,
+            "reference_characters": 13,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 13,
+              "insertions": 0,
+              "total": 13
+            }
           },
           "key_term_recall": null,
           "key_terms_recalled": 0,
@@ -4490,6 +7410,18 @@
             "deletions": 9,
             "insertions": 0,
             "total": 9
+          },
+          "punctuation_and_symbol_insensitive_score": {
+            "cer": 1,
+            "character_edits": 9,
+            "reference_characters": 9,
+            "hypothesis_characters": 0,
+            "edit_counts": {
+              "substitutions": 0,
+              "deletions": 9,
+              "insertions": 0,
+              "total": 9
+            }
           },
           "key_term_recall": 0,
           "key_terms_recalled": 0,
@@ -4609,6 +7541,111 @@
         "coefficient": -0.6521,
         "case_count": 8
       }
+    },
+    "confidence_triage": {
+      "status": "partial",
+      "source_profile": "baseline",
+      "error_definition": "punctuation_and_symbol_insensitive_cer_greater_than_zero",
+      "confidence_available_observation_count": 24,
+      "missing_confidence_observation_count": 6,
+      "error_observation_count": 21,
+      "error_with_confidence_observation_count": 15,
+      "error_without_confidence_observation_count": 6,
+      "correct_with_confidence_observation_count": 9,
+      "thresholds": [
+        {
+          "threshold": 0.7,
+          "comparison": "below",
+          "mean": {
+            "flagged_observation_count": 0,
+            "flagged_ratio_of_confidence_available": 0,
+            "eligible_error_recall": 0,
+            "eligible_false_positive_rate": 0,
+            "flagged_error_precision": null,
+            "missed_error_observation_count": 15,
+            "flagged_or_missing_observation_count": 6,
+            "flagged_or_missing_ratio_of_all_observations": 0.2,
+            "all_error_recall_if_missing_flagged": 0.2857142857142857,
+            "all_false_positive_rate_if_missing_flagged": 0
+          },
+          "minimum": {
+            "flagged_observation_count": 21,
+            "flagged_ratio_of_confidence_available": 0.875,
+            "eligible_error_recall": 1,
+            "eligible_false_positive_rate": 0.6666666666666666,
+            "flagged_error_precision": 0.7142857142857143,
+            "missed_error_observation_count": 0,
+            "flagged_or_missing_observation_count": 27,
+            "flagged_or_missing_ratio_of_all_observations": 0.9,
+            "all_error_recall_if_missing_flagged": 1,
+            "all_false_positive_rate_if_missing_flagged": 0.6666666666666666
+          }
+        },
+        {
+          "threshold": 0.8,
+          "comparison": "below",
+          "mean": {
+            "flagged_observation_count": 6,
+            "flagged_ratio_of_confidence_available": 0.25,
+            "eligible_error_recall": 0.4,
+            "eligible_false_positive_rate": 0,
+            "flagged_error_precision": 1,
+            "missed_error_observation_count": 9,
+            "flagged_or_missing_observation_count": 12,
+            "flagged_or_missing_ratio_of_all_observations": 0.4,
+            "all_error_recall_if_missing_flagged": 0.5714285714285714,
+            "all_false_positive_rate_if_missing_flagged": 0
+          },
+          "minimum": {
+            "flagged_observation_count": 21,
+            "flagged_ratio_of_confidence_available": 0.875,
+            "eligible_error_recall": 1,
+            "eligible_false_positive_rate": 0.6666666666666666,
+            "flagged_error_precision": 0.7142857142857143,
+            "missed_error_observation_count": 0,
+            "flagged_or_missing_observation_count": 27,
+            "flagged_or_missing_ratio_of_all_observations": 0.9,
+            "all_error_recall_if_missing_flagged": 1,
+            "all_false_positive_rate_if_missing_flagged": 0.6666666666666666
+          }
+        },
+        {
+          "threshold": 0.9,
+          "comparison": "below",
+          "mean": {
+            "flagged_observation_count": 16,
+            "flagged_ratio_of_confidence_available": 0.6666666666666666,
+            "eligible_error_recall": 1,
+            "eligible_false_positive_rate": 0.1111111111111111,
+            "flagged_error_precision": 0.9375,
+            "missed_error_observation_count": 0,
+            "flagged_or_missing_observation_count": 22,
+            "flagged_or_missing_ratio_of_all_observations": 0.7333333333333333,
+            "all_error_recall_if_missing_flagged": 1,
+            "all_false_positive_rate_if_missing_flagged": 0.1111111111111111
+          },
+          "minimum": {
+            "flagged_observation_count": 21,
+            "flagged_ratio_of_confidence_available": 0.875,
+            "eligible_error_recall": 1,
+            "eligible_false_positive_rate": 0.6666666666666666,
+            "flagged_error_precision": 0.7142857142857143,
+            "missed_error_observation_count": 0,
+            "flagged_or_missing_observation_count": 27,
+            "flagged_or_missing_ratio_of_all_observations": 0.9,
+            "all_error_recall_if_missing_flagged": 1,
+            "all_false_positive_rate_if_missing_flagged": 0.6666666666666666
+          }
+        }
+      ],
+      "limitations": [
+        "閾値0.7、0.8、0.9は探索用であり、採用済みの振り分け条件ではありません。",
+        "句読点と記号だけの差を誤認識から除くため、punctuation-and-symbol-insensitive CERが0より大きい観測をerrorとしています。",
+        "文字列が一致しても言語labelが誤る観測は、このerror定義では検出しません。",
+        "同一人工音声の複数試行を含むため、実Discord音声への一般化は未検証です。",
+        "heard referenceの人手監査は未実施であり、manifestのreferenceを正解として評価しています。",
+        "原文tokenがない観測にはconfidenceがありません。missingを再認識へ回す仮定も別に集計しています。"
+      ]
     },
     "tag_slices": {
       "artificial": {
