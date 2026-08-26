@@ -248,16 +248,30 @@ pnpm stt:evaluate score \
   --output .data/stt-eval/report.json
 ```
 
-大量挿入が集中したcaseだけを切り分ける場合は、次のコマンドを使う。PCM直送とDiscord相当のOpus往復を、音声認識のみ・双方向翻訳ありの2条件と組み合わせる。4条件とも翻訳用語と認識contextを送らず、双方向翻訳の有無だけを変える。Sonioxのendpoint検出は無効にし、ファイル終端で200 msの無音を一度送ってから`finalize()`を一度だけ呼ぶ。本文と確定token列はprivate observationsだけに保存し、公開reportには含めない。
+大量挿入が集中したcaseを切り分ける前に、人が元PCMとDiscord相当のOpus往復音声を聞く。次のコマンドは、48 kHz・16 bit・monoのWAVを2種類ずつと、`pending`状態の監査JSONを0600で新規作成する。既存の監査結果は上書きしない。
+
+```bash
+pnpm stt:evaluate prepare-insertion-audit \
+  --manifest .data/stt-eval/artificial/manifest.json \
+  --cases ja-clean-game,ja-clipped,ja-ko-code-switch \
+  --output-directory .data/stt-eval/artificial/insertion-audio-audit
+```
+
+`audit.json`の各caseで、`heard_reference`、`reference_status`、`audit_note`を記録する。`reference_status`は`verified`、`ambiguous`、`invalid`のいずれかである。選択した全caseが`verified`であり、監査WAV、manifest、PCMのSHA-256が一致するまで、live triageは接続前に失敗する。
+
+監査後は、以前の現行Aを再現する陽性対照Pと、PCM/Opus経路×翻訳有無のA〜Dを各5試行する。Pは元PCM、双方向翻訳、case別の翻訳用語、endpoint検出、従来の100 ms＋100 ms手動fallbackを使う。A〜Dは翻訳用語と認識contextを送らず、endpoint検出も無効にして、既知のファイル終端で200 msの無音と`finalize()`を一度だけ送る。条件順はcase・trialごとに回し、3 case×5条件×5試行で75観測になる。
 
 ```bash
 pnpm stt:evaluate triage-insertions \
   --manifest .data/stt-eval/artificial/manifest.json \
+  --audio-audit .data/stt-eval/artificial/insertion-audio-audit/audit.json \
   --cases ja-clean-game,ja-clipped,ja-ko-code-switch \
   --observations-output .data/stt-eval/insertion-triage-observations.json \
   --output .data/stt-eval/insertion-triage-report.json \
   --trials 5
 ```
+
+private observationsには、実際に送ったspeechのSHA-256と時間、末尾無音、確定原文tokenの受信時刻、受理した境界、編集内訳、CER、1秒当たりの認識文字数を保存する。PはSoniox endpointが先に成立すれば`finalize()`が0回、手動fallbackが先なら1回になる。A〜Dは1回である。本文、監査注記、token列は公開reportへ含めない。
 
 Sonioxの現行条件とAmazon Transcribe Streamingを比べる場合は、AWSの標準認証チェーンを用意し、実測リージョンを明示する。比較は同じcase内で開始先を交替し、Amazonには語彙を追加せず、日韓の多言語自動識別を指定する。音声は同一packet traceを使うが、発話後の終了手順は各providerの公式protocolに従う。本文入りobservationsの扱いはSoniox内の比較と同じである。
 
@@ -311,9 +325,9 @@ level 1で残った固有名詞gateを検証するため、同じ10件の`key_te
 
 評価runnerは、確定した原文tokenだけを本文へ採用し、途中結果、翻訳token、制御tokenを除外する。同じ時刻、本文、言語の確定原文tokenが再送された場合は、黙って重複除去せずに失敗させる。新しい観測には、受信順の`original_final_tokens`として開始・終了時刻、本文、言語、confidenceも0600のprivate fileへ保存する。保存済みの90観測にはこの列がないため、確定tokenの再送がなかったことや、無音区間で余計なtokenが発生したことまでは遡って証明できない。挿入原因の分類は`not_evaluated`とし、認識文の差分、token時刻列、人工音声を聞いて作る`heard reference`が揃うまで自動分類しない。
 
-新しい切り分けrunnerについては、挿入の96.8%が集中した3 caseをローカルのfake WebSocket受信器へ1試行ずつ送り、4条件、合計12観測の入力経路だけを事前監査した。すべての観測で、入力SHA-256がdatasetと一致し、source packetの重複と欠落がなく、Opus packet数、`sendAudio()`回数、送信時間、`finalize()` 1回、endpoint event 0回を説明できた。fake受信器が実際に受け取ったbinary message数とbyte数も、送信側の回数とbyte数に一致した。Opusの末尾frameを有効な長さへ合わせる無音paddingは最大7.375 msだった。この結果は新しいrunnerが同じ入力を一度だけ送ることの証拠であり、過去runnerの送信履歴やSoniox実サービスの認識結果を証明しない。詳細は[本文非含有の入力preflight](./docs/evaluation/stt-insertion-input-preflight-2026-08-26.json)に残している。
+最初のA〜D切り分けrunnerについては、挿入の96.8%が集中した3 caseをローカルのfake WebSocket受信器へ1試行ずつ送り、4条件、合計12観測の入力経路だけを事前監査した。すべての観測で、入力SHA-256がdatasetと一致し、source packetの重複と欠落がなく、Opus packet数、`sendAudio()`回数、送信時間、`finalize()` 1回、endpoint event 0回を説明できた。fake受信器が実際に受け取ったbinary message数とbyte数も、送信側の回数とbyte数に一致した。Opusの末尾frameを有効な長さへ合わせる無音paddingは最大7.375 msだった。この履歴は[本文非含有の入力preflight](./docs/evaluation/stt-insertion-input-preflight-2026-08-26.json)に残している。陽性対照Pを含む現行runnerでは、local fakeにより、手動fallback時はPも`finalize()` 1回、Soniox endpoint相当の境界が先なら0回になることを確認した。
 
-元の人工音声4 fileはすべてmonoだったため、左右の音量差、stereo相関、downmix時の位相打ち消しはこのcorpusでは評価できない。人による`heard_reference`監査とSoniox実サービスへの3 case×4条件×5試行は未実施である。また、主CERはすでにNFKC正規化後の空白を除いて計算するため、同じ意味の「空白なしCER」は重複して追加していない。
+元の人工音声4 fileはすべてmonoだったため、左右の音量差、stereo相関、downmix時の位相打ち消しはこのcorpusでは評価できない。2026年8月27日に問題の3 caseについて元PCMとOpus往復の監査WAV計6 fileをprivate領域へ作成したが、人による確認は`pending`である。このため、Soniox実サービスへの3 case×5条件×5試行はまだ実行していない。主CERはすでにNFKC正規化後の空白を除いて計算するため、同じ意味の「空白なしCER」は重複して追加していない。
 
 句読点・記号を除くCERが0より大きい観測を内容誤りとして、平均・最低confidenceの閾値も探索した。confidenceを取得できた24観測のうち、内容誤りは15件、内容一致は9件だった。平均confidence 0.8未満では誤りを6/15件しか拾えず、9件を見逃した。0.9未満では15/15件を拾うが、confidenceなしも再認識へ回すと22/30件、73.3%が追加処理の対象になる。最低confidence 0.8未満では15/15件を拾う一方、内容一致も6/9件を誤って対象にし、confidenceなしを含めると27/30件、90.0%を処理する。人工音声10件へ過適合した探索値なので、いずれも本番の再認識条件には採用していない。
 

@@ -749,31 +749,44 @@ Aでは、`ja-clean-game`の3試行だけで42正解文字に147文字の挿入�
 
 この結果から言える範囲は、「人工音声10件に対し、全case共通の3語カタログとlevel 1を組み合わせた候補が事前採用基準を通過しなかった」までである。Soniox全体で改善余地がないとは結論づけない。実Discord音声、利用者のマイク、Discordの処理、Opus圧縮、packet欠落、日本人が話す韓国語と韓国人が話す日本語は未評価である。
 
-#### 大量挿入3ケースを4条件へ分離する
+#### 大量挿入3ケースを陽性対照PとA〜Dへ分離する
 
-`triage-insertions`は、`ja-clean-game`、`ja-clipped`、`ja-ko-code-switch`だけを次の4条件へ送る評価専用runnerである。通常のDiscord Driverからは呼ばない。翻訳用語と認識contextは4条件とも送らず、双方向翻訳の有無だけを変える。既知のファイル終端を基準にするため、4条件ともSonioxのendpoint検出を無効にし、音声の後へ200 msの無音を一度追加して`finalize()`を一度だけ呼ぶ。
+`triage-insertions`は、`ja-clean-game`、`ja-clipped`、`ja-ko-code-switch`だけを次の5条件へ送る評価専用runnerである。通常のDiscord Driverからは呼ばない。Pは、挿入285文字を観測した`recognition_catalog_level1`実験のbaseline Aを再現する陽性対照である。保存済みobservationsの実効設定と、観測生成時点のcommit `8c17b6d`にあるrunnerを突き合わせた。
 
-| 条件 | 入力経路 | Soniox機能 | 発話確定 |
-|---|---|---|---|
-| `pcm_stt_only` | 元PCMを直接送信 | 音声認識のみ | ファイル終端 |
-| `pcm_translation` | 元PCMを直接送信 | 双方向翻訳あり | ファイル終端 |
-| `opus_stt_only` | mono PCMをstereo化し、Discordと同じOpus codecで往復 | 音声認識のみ | ファイル終端 |
-| `opus_translation` | Opus往復 | 双方向翻訳あり | ファイル終端 |
+Pは元のPCM packet列を送り、双方向翻訳、case別`translation_terms`、言語hint、言語識別、Soniox endpoint検出を有効にする。認識用contextは無効であり、endpointの遅延・感度overrideは送らない。最後のpacketから100 ms後に発話終了とし、さらに100 ms後に既存`SttTurnFinalizer`が200 msの無音と`finalize()`を送る。Soniox endpointが先に成立した場合、手動`finalize()`は送らない。A〜Dは翻訳用語と認識用contextを送らず、endpoint検出を無効にして、既知のファイル終端で200 msの無音と`finalize()`を一度だけ送る。
 
-runnerはsource音声のSHA-256、sample数・時間、source packet数、送信回数、重複・欠落packet数、Opus packet数、復号sample数、codec padding、`sendAudio()`回数・byte数・時間、追加無音、`finalize()`回数、endpoint・finalized event数をprivate observationsへ保存する。公開reportは条件・case別CER、編集内訳、1秒当たりの認識文字数、入力完全性だけを残し、認識本文と確定token列を含めない。
+| ID | condition | 入力経路 | Soniox機能 | 発話確定 |
+|---|---|---|---|---|
+| P | `historical_baseline` | 元PCM | 双方向翻訳＋case別翻訳用語 | 従来のendpoint＋100 ms＋100 ms fallback |
+| A | `pcm_stt_only` | 元PCM | 音声認識のみ | 既知のファイル終端 |
+| B | `pcm_translation` | 元PCM | 双方向翻訳、翻訳用語なし | 既知のファイル終端 |
+| C | `opus_stt_only` | Discord相当のOpus往復 | 音声認識のみ | 既知のファイル終端 |
+| D | `opus_translation` | Opus往復 | 双方向翻訳、翻訳用語なし | 既知のファイル終端 |
+
+実行順はcase indexとtrialから決める巡回順である。3 caseを5試行すると、各caseで5条件が先頭位置へ一度ずつ現れ、合計75観測になる。STT model、48 kHz・mono、言語hint、音声送信時刻、セッション生成方法、API regionは共通にする。
+
+live実行前に、`prepare-insertion-audit`で元PCMとOpus往復PCMを48 kHz・16 bit・monoのWAVへ格納する。監査JSONは、TTSへ入力した`intended_reference`、人が聞いた`heard_reference`、`pending`、`verified`、`ambiguous`、`invalid`の監査状態、注記、音声とWAVのSHA-256を保持する。選択caseがすべて`verified`であり、WAV、manifest、PCMの証跡が一致しなければ、`triage-insertions`はSoniox clientを作る前に失敗する。2026年8月27日に3 case×2種類の6 WAVをprivate領域へ作成した。人の確認は`pending`なので、live評価は未実施である。
 
 ```bash
+pnpm stt:evaluate prepare-insertion-audit \
+  --manifest .data/stt-eval/artificial/manifest.json \
+  --cases ja-clean-game,ja-clipped,ja-ko-code-switch \
+  --output-directory .data/stt-eval/artificial/insertion-audio-audit
+
 pnpm stt:evaluate triage-insertions \
   --manifest .data/stt-eval/artificial/manifest.json \
+  --audio-audit .data/stt-eval/artificial/insertion-audio-audit/audit.json \
   --cases ja-clean-game,ja-clipped,ja-ko-code-switch \
   --observations-output .data/stt-eval/insertion-triage-observations.json \
   --output .data/stt-eval/insertion-triage-report.json \
   --trials 5
 ```
 
-外部送信前の監査として、同じprivate PCMとpacket traceをローカルfake WebSocketへ1試行ずつ送った。3 case×4条件の12観測すべてで、入力SHA-256がdatasetと一致し、source packetの重複0・欠落0、Opus packet数とsource packet数の一致、`sendAudio()`回数がsource packet数+末尾無音1回、送信時間が復号PCM+200 ms、`finalize()` 1回、endpoint event 0回、finalized event 1回だった。fake受信器側のbinary message数とbyte数も、送信側の`sendAudio()`回数とbyte数に一致した。Opus末尾frameの無音paddingは最大7.375 msである。[入力preflight](./evaluation/stt-insertion-input-preflight-2026-08-26.json)には本文、token、秘密値、private pathを含めていない。
+private observationsは、sourceと実送信speechのSHA-256・sample数・時間、末尾無音、source packetの送信回数・重複・欠落、Opus packet数、復号sample数、codec padding、`sendAudio()`回数・byte数・時間、`finalize()`回数、endpoint・finalized event数を保存する。確定原文tokenには本文、言語、confidence、音声replay開始からの受信時刻を残す。受理した境界、heard reference、編集内訳、CER、送信speech 1秒当たりの認識文字数も保存する。公開reportには本文、監査注記、token列を含めない。
 
-このpreflightが証明するのは新runnerの入力経路だけであり、保存済み90観測を作った過去runnerが二重送信しなかったことは証明しない。Soniox実サービス、双方向翻訳が原文認識へ与える影響、実Discord音声、Pi runtimeも未評価である。元の人工音声4 fileはすべて22.05 kHz・monoだったため、左右音量差、stereo相関、downmix時の位相打ち消しは測定対象外とした。主CERはすでにNFKC正規化後の空白を除くため、同じ診断値は追加しない。
+最初の4条件runnerについては、同じprivate PCMとpacket traceをローカルfake WebSocketへ1試行ずつ送り、3 case×4条件の12観測を監査した。入力SHA-256、source packetの重複0・欠落0、Opus packet数、`sendAudio()`回数・byte数、`finalize()` 1回を説明できた。詳細は[入力preflight](./evaluation/stt-insertion-input-preflight-2026-08-26.json)に残している。P追加後のlocal fakeでは、手動fallback時のPが200 msの無音と`finalize()`を一度だけ送り、endpoint相当の境界が先ならどちらも送らないことを確認した。
+
+この検証が証明するのは評価runnerの入力経路と分岐であり、保存済み90観測を作った過去runnerの実送信履歴、Soniox実サービスの認識結果、実Discord音声、Pi runtimeを証明しない。元の人工音声4 fileはすべて22.05 kHz・monoだったため、左右音量差、stereo相関、downmix時の位相打ち消しは測定対象外とした。主CERはすでにNFKC正規化後の空白を除くため、同じ診断値は追加しない。
 
 #### 次回はtermsとlevel 1を2×2で分離する
 
