@@ -584,12 +584,14 @@ STT設定の変更には`pnpm stt:evaluate`を使う。入力は、明示的に�
 manifest version 1は、言語ペアと48 kHz・mono・PCM s16le形式を固定し、caseごとに次を持つ。
 
 - 相対pathで指定するPCMとpacket trace
-- 正解文、主言語、caseのtag
+- TTSへ入力した`reference`、任意の`heard_reference`、主言語、caseのtag
 - 固有名詞などの`key_terms`
 - 期待する言語と発話分割数
 - 翻訳用の`translation_terms`
 
 packet trace version 1は、復号できずPCMへ入らなかった`dropped_packet_count`と、復号済みpacketの送信時刻`at_ms`・`byte_length`を持つ。時刻は厳密な昇順とし、byte合計はPCMと一致させる。評価時と採点時のmanifest、PCM、packet traceが同一であることは、SHA-256とpacket数で検査する。
+
+`reference`はTTSへ入力した意図上の文である。人が実際の音声を聞いて書き起こした場合だけ`heard_reference`を追加し、CERは`heard_reference`を優先する。未監査の文を推測で`heard_reference`へ入れない。caseごとに任意なので、公開triage reportは対象caseの監査状況を`not_evaluated`、`partially_evaluated`、`evaluated`で区別する。どちらの本文もprivate manifestだけに置き、公開reportへは写さない。
 
 公開レポートは、本文の代わりに指標と入力SHA-256を残す監査証拠である。過去の人工音声corpus、manifest、packet trace、本文入りobservationsは`.data/stt-eval/`からGitへ追跡しない。したがって、clean checkoutだけで過去の数値は再実行できない。厳密な再実行には、公開レポートのSHA-256と一致するlocal dataが必要である。SHA-256が異なる入力は新しい実験として扱う。
 
@@ -743,9 +745,35 @@ Aでは、`ja-clean-game`の3試行だけで42正解文字に147文字の挿入�
 
 保存済みobservationsには、受信イベント単位のtoken列と時刻が残っていない。したがって、今回の90観測に確定tokenの再送がなかったこと、無音中にtokenが生成されたこと、言語判定が短時間で反転したことは遡って証明できない。新しいSoniox観測では、受信順の`original_final_tokens`へ開始・終了時刻、本文、言語、confidenceを保存する。本文を含むため、従来のobservationsと同じく0600のprivate fileだけに置き、公開レポートへは写さない。
 
-挿入原因の分類は、`repetition`、`cross-boundary`、`language-duplication`、`reference-mismatch`、`silence-hallucination`、`other`の候補だけを定義し、今回のレポートでは`not_evaluated`とした。認識文だけを見て原因を断定せず、人工音声を人が聞いて作る`heard reference`、文字差分、確定token時刻列、境界時系列が揃ってから分類する。現在のmanifestにはTTSへ入力した正解文だけがあり、`heard reference`の監査は未実施である。
+挿入原因の分類は、`repetition`、`cross-boundary`、`language-duplication`、`reference-mismatch`、`silence-hallucination`、`other`の候補だけを定義し、今回のレポートでは`not_evaluated`とした。認識文だけを見て原因を断定せず、人工音声を人が聞いて作る`heard_reference`、文字差分、確定token時刻列、境界時系列が揃ってから分類する。現在のmanifestにはTTSへ入力した正解文だけがあり、`heard_reference`の監査は未実施である。
 
 この結果から言える範囲は、「人工音声10件に対し、全case共通の3語カタログとlevel 1を組み合わせた候補が事前採用基準を通過しなかった」までである。Soniox全体で改善余地がないとは結論づけない。実Discord音声、利用者のマイク、Discordの処理、Opus圧縮、packet欠落、日本人が話す韓国語と韓国人が話す日本語は未評価である。
+
+#### 大量挿入3ケースを4条件へ分離する
+
+`triage-insertions`は、`ja-clean-game`、`ja-clipped`、`ja-ko-code-switch`だけを次の4条件へ送る評価専用runnerである。通常のDiscord Driverからは呼ばない。翻訳用語と認識contextは4条件とも送らず、双方向翻訳の有無だけを変える。既知のファイル終端を基準にするため、4条件ともSonioxのendpoint検出を無効にし、音声の後へ200 msの無音を一度追加して`finalize()`を一度だけ呼ぶ。
+
+| 条件 | 入力経路 | Soniox機能 | 発話確定 |
+|---|---|---|---|
+| `pcm_stt_only` | 元PCMを直接送信 | 音声認識のみ | ファイル終端 |
+| `pcm_translation` | 元PCMを直接送信 | 双方向翻訳あり | ファイル終端 |
+| `opus_stt_only` | mono PCMをstereo化し、Discordと同じOpus codecで往復 | 音声認識のみ | ファイル終端 |
+| `opus_translation` | Opus往復 | 双方向翻訳あり | ファイル終端 |
+
+runnerはsource音声のSHA-256、sample数・時間、source packet数、送信回数、重複・欠落packet数、Opus packet数、復号sample数、codec padding、`sendAudio()`回数・byte数・時間、追加無音、`finalize()`回数、endpoint・finalized event数をprivate observationsへ保存する。公開reportは条件・case別CER、編集内訳、1秒当たりの認識文字数、入力完全性だけを残し、認識本文と確定token列を含めない。
+
+```bash
+pnpm stt:evaluate triage-insertions \
+  --manifest .data/stt-eval/artificial/manifest.json \
+  --cases ja-clean-game,ja-clipped,ja-ko-code-switch \
+  --observations-output .data/stt-eval/insertion-triage-observations.json \
+  --output .data/stt-eval/insertion-triage-report.json \
+  --trials 5
+```
+
+外部送信前の監査として、同じprivate PCMとpacket traceをローカルfake WebSocketへ1試行ずつ送った。3 case×4条件の12観測すべてで、入力SHA-256がdatasetと一致し、source packetの重複0・欠落0、Opus packet数とsource packet数の一致、`sendAudio()`回数がsource packet数+末尾無音1回、送信時間が復号PCM+200 ms、`finalize()` 1回、endpoint event 0回、finalized event 1回だった。fake受信器側のbinary message数とbyte数も、送信側の`sendAudio()`回数とbyte数に一致した。Opus末尾frameの無音paddingは最大7.375 msである。[入力preflight](./evaluation/stt-insertion-input-preflight-2026-08-26.json)には本文、token、秘密値、private pathを含めていない。
+
+このpreflightが証明するのは新runnerの入力経路だけであり、保存済み90観測を作った過去runnerが二重送信しなかったことは証明しない。Soniox実サービス、双方向翻訳が原文認識へ与える影響、実Discord音声、Pi runtimeも未評価である。元の人工音声4 fileはすべて22.05 kHz・monoだったため、左右音量差、stereo相関、downmix時の位相打ち消しは測定対象外とした。主CERはすでにNFKC正規化後の空白を除くため、同じ診断値は追加しない。
 
 #### 次回はtermsとlevel 1を2×2で分離する
 

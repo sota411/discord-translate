@@ -223,7 +223,7 @@ pnpm stt:evaluate run \
   --trials 3
 ```
 
-manifestには、48 kHz・mono・PCM s16le音声、正解文、期待する言語と分割数、固有名詞、翻訳用語を記録する。packet traceには、packetごとの送信時刻・byte数と、発話全体の欠落数を記録する。詳しいfieldは[設計書のSTT評価](./docs/design.md#stt候補は同じ音声で採否を決める)を参照する。
+manifestには、48 kHz・mono・PCM s16le音声、正解文、期待する言語と分割数、固有名詞、翻訳用語を記録する。`reference`はTTSへ入力した文である。人が音声を聞いて監査した場合だけ、任意の`heard_reference`へ実際に聞こえた文を記録する。`heard_reference`があればCERはそちらを正解とする。packet traceには、packetごとの送信時刻・byte数と、発話全体の欠落数を記録する。詳しいfieldは[設計書のSTT評価](./docs/design.md#stt候補は同じ音声で採否を決める)を参照する。
 
 追跡する評価レポートは指標と入力SHA-256の監査証拠であり、過去の人工音声corpusそのものではない。manifest、PCM、packet trace、本文入りobservationsは`.data/stt-eval/`のlocal dataであり、Gitには含めない。過去の数値を厳密に再実行するには、公開レポートのSHA-256と一致するlocal dataが必要である。clean checkoutだけでは再実行できない。別の入力で実行した場合は、過去レポートの再現ではなく新しい実験として扱う。
 
@@ -246,6 +246,17 @@ pnpm stt:evaluate score \
   --manifest .data/stt-eval/manifest.json \
   --observations .data/stt-eval/observations.json \
   --output .data/stt-eval/report.json
+```
+
+大量挿入が集中したcaseだけを切り分ける場合は、次のコマンドを使う。PCM直送とDiscord相当のOpus往復を、音声認識のみ・双方向翻訳ありの2条件と組み合わせる。4条件とも翻訳用語と認識contextを送らず、双方向翻訳の有無だけを変える。Sonioxのendpoint検出は無効にし、ファイル終端で200 msの無音を一度送ってから`finalize()`を一度だけ呼ぶ。本文と確定token列はprivate observationsだけに保存し、公開reportには含めない。
+
+```bash
+pnpm stt:evaluate triage-insertions \
+  --manifest .data/stt-eval/artificial/manifest.json \
+  --cases ja-clean-game,ja-clipped,ja-ko-code-switch \
+  --observations-output .data/stt-eval/insertion-triage-observations.json \
+  --output .data/stt-eval/insertion-triage-report.json \
+  --trials 5
 ```
 
 Sonioxの現行条件とAmazon Transcribe Streamingを比べる場合は、AWSの標準認証チェーンを用意し、実測リージョンを明示する。比較は同じcase内で開始先を交替し、Amazonには語彙を追加せず、日韓の多言語自動識別を指定する。音声は同一packet traceを使うが、発話後の終了手順は各providerの公式protocolに従う。本文入りobservationsの扱いはSoniox内の比較と同じである。
@@ -300,6 +311,10 @@ level 1で残った固有名詞gateを検証するため、同じ10件の`key_te
 
 評価runnerは、確定した原文tokenだけを本文へ採用し、途中結果、翻訳token、制御tokenを除外する。同じ時刻、本文、言語の確定原文tokenが再送された場合は、黙って重複除去せずに失敗させる。新しい観測には、受信順の`original_final_tokens`として開始・終了時刻、本文、言語、confidenceも0600のprivate fileへ保存する。保存済みの90観測にはこの列がないため、確定tokenの再送がなかったことや、無音区間で余計なtokenが発生したことまでは遡って証明できない。挿入原因の分類は`not_evaluated`とし、認識文の差分、token時刻列、人工音声を聞いて作る`heard reference`が揃うまで自動分類しない。
 
+新しい切り分けrunnerについては、挿入の96.8%が集中した3 caseをローカルのfake WebSocket受信器へ1試行ずつ送り、4条件、合計12観測の入力経路だけを事前監査した。すべての観測で、入力SHA-256がdatasetと一致し、source packetの重複と欠落がなく、Opus packet数、`sendAudio()`回数、送信時間、`finalize()` 1回、endpoint event 0回を説明できた。fake受信器が実際に受け取ったbinary message数とbyte数も、送信側の回数とbyte数に一致した。Opusの末尾frameを有効な長さへ合わせる無音paddingは最大7.375 msだった。この結果は新しいrunnerが同じ入力を一度だけ送ることの証拠であり、過去runnerの送信履歴やSoniox実サービスの認識結果を証明しない。詳細は[本文非含有の入力preflight](./docs/evaluation/stt-insertion-input-preflight-2026-08-26.json)に残している。
+
+元の人工音声4 fileはすべてmonoだったため、左右の音量差、stereo相関、downmix時の位相打ち消しはこのcorpusでは評価できない。人による`heard_reference`監査とSoniox実サービスへの3 case×4条件×5試行は未実施である。また、主CERはすでにNFKC正規化後の空白を除いて計算するため、同じ意味の「空白なしCER」は重複して追加していない。
+
 句読点・記号を除くCERが0より大きい観測を内容誤りとして、平均・最低confidenceの閾値も探索した。confidenceを取得できた24観測のうち、内容誤りは15件、内容一致は9件だった。平均confidence 0.8未満では誤りを6/15件しか拾えず、9件を見逃した。0.9未満では15/15件を拾うが、confidenceなしも再認識へ回すと22/30件、73.3%が追加処理の対象になる。最低confidence 0.8未満では15/15件を拾う一方、内容一致も6/9件を誤って対象にし、confidenceなしを含めると27/30件、90.0%を処理する。人工音声10件へ過適合した探索値なので、いずれも本番の再認識条件には採用していない。
 
 Soniox内の候補が採用基準を満たさなかったため、同じ10件をAmazon Transcribe Streamingの多言語自動識別でも3試行した。Amazonは全体CERを44.3%改善したが、本文を取得できた観測は30件中15件だけだった。本文取得率はSonioxの86.7%から50.0%へ下がり、固有名詞再現率は75.0%から0%、日韓切り替え時の期待言語再現率は50.0%から0%へ下がった。p95は483 msから3,378 msへ増えた。空の認識結果はCERが1になるため、CERだけでは改善と判定せず、本文取得率の非悪化もprovider比較のgateにしている。固有名詞、言語切り替え、遅延、本文取得率が不合格なので、Amazonは評価専用のままとし、本番STTへ採用していない。詳細は[provider比較レポート](./docs/evaluation/stt-provider-comparison-2026-08-26.json)に残している。Google Chirp、Azure Speech、Deepgram Novaの実測には、各サービスの認証情報と公式SDKの追加が必要である。今回は認証情報の新規発行と試用契約を範囲外とした。
@@ -320,6 +335,7 @@ Soniox内の候補が採用基準を満たさなかったため、同じ10件を
 - [2026-08-26 STT endpoint latency level評価（本文非含有）](./docs/evaluation/stt-endpoint-latency-level-2026-08-26.json)
 - [2026-08-26 STT固有名詞カタログ評価（本文非含有）](./docs/evaluation/stt-recognition-catalog-level1-2026-08-26.json)
 - [2026-08-26 STT固有名詞カタログCER監査（本文非含有）](./docs/evaluation/stt-recognition-catalog-scoring-audit-2026-08-26.json)
+- [2026-08-26 STT大量挿入3ケース入力preflight（本文非含有）](./docs/evaluation/stt-insertion-input-preflight-2026-08-26.json)
 - [2026-08-26 STT音質相関評価（本文非含有）](./docs/evaluation/stt-audio-quality-correlation-2026-08-26.json)
 - [2026-08-26 STT両言語terms評価（本文非含有）](./docs/evaluation/stt-recognition-terms-2026-08-26.json)
 - [2026-08-26 STT source限定terms評価（本文非含有）](./docs/evaluation/stt-recognition-source-terms-2026-08-26.json)
