@@ -24,6 +24,7 @@ import {
 } from "./evaluation/stt-insertion-audio-audit.js";
 import {
   assertOwnerOnlyDirectoryChain,
+  assertPrivateSttEvaluationDatasetPaths,
   assertPrivateSttEvaluationFiles,
   isWithinPath,
   sttEvaluationRepositoryRoot,
@@ -154,19 +155,7 @@ async function assertPrivateRepositoryFiles(
 }
 
 async function assertPrivateDatasetPaths(dataset: LoadedSttEvaluationDataset): Promise<void> {
-  await assertPrivateRepositoryFiles([
-    { filePath: dataset.manifestPath, label: "STT評価manifest" },
-    ...dataset.cases.flatMap((evaluationCase) => [
-      {
-        filePath: evaluationCase.audioPath,
-        label: `case「${evaluationCase.definition.id}」のPCM`,
-      },
-      {
-        filePath: evaluationCase.packetTracePath,
-        label: `case「${evaluationCase.definition.id}」のpacket trace`,
-      },
-    ]),
-  ]);
+  await assertPrivateSttEvaluationDatasetPaths(dataset);
 }
 
 async function assertPrivateObservationsPath(observationsPath: string): Promise<void> {

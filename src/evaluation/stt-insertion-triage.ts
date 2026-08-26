@@ -121,9 +121,27 @@ const originalFinalTokenSchema = z.object({
 
 const acceptedBoundarySchema = z.object({
   kind: z.enum(["endpoint", "finalized"]),
-  reason: z.enum(["speaking_end", "soniox_endpoint", "soniox_finalized", "known_file_end"]),
+  reason: z.enum([
+    "speaking_end",
+    "transcript_inactivity",
+    "max_turn_duration",
+    "soniox_endpoint",
+    "soniox_finalized",
+    "known_file_end",
+  ]),
   received_at_ms: z.number().nonnegative(),
-}).strict();
+}).strict().superRefine((value, context) => {
+  const providerReasonMatches = value.kind === "endpoint"
+    ? value.reason !== "soniox_finalized" && value.reason !== "known_file_end"
+    : value.reason !== "soniox_endpoint";
+  if (!providerReasonMatches) {
+    context.addIssue({
+      code: "custom",
+      path: ["reason"],
+      message: "境界種別と確定理由が一致しません",
+    });
+  }
+});
 
 const inputAuditSchema = z.object({
   source_audio_sha256: sha256Schema,
@@ -305,7 +323,7 @@ const resultSchema = z.object({
     value.input_audit.finalize_call_count !== 1 ||
     value.input_audit.trailing_silence_ms !== 200 ||
     value.input_audit.endpoint_event_count !== 0 ||
-    value.input_audit.finalized_event_count < 1 ||
+    value.input_audit.finalized_event_count !== 1 ||
     value.duplicate_final_original_token_count !== 0 ||
     value.accepted_boundaries.length !== 1 ||
     terminalBoundary.kind !== "finalized" ||
@@ -319,6 +337,7 @@ const resultSchema = z.object({
   }
   if (historical) {
     if (
+      value.accepted_boundaries.some((boundary) => boundary.reason === "known_file_end") ||
       value.input_audit.trailing_silence_ms !==
         value.input_audit.finalize_call_count * 200 ||
       (value.input_audit.finalize_call_count === 0 &&
@@ -653,6 +672,7 @@ function inputIntegrity(scores: readonly ScoredObservation[]) {
         ? score.input_audit.trailing_silence_ms === score.input_audit.finalize_call_count * 200
         : (
           score.input_audit.finalize_call_count === 1 &&
+          score.input_audit.finalized_event_count === 1 &&
           score.accepted_boundaries.length === 1 &&
           score.accepted_boundaries[0]?.kind === "finalized" &&
           score.accepted_boundaries[0].reason === "known_file_end"

@@ -217,6 +217,63 @@ void test("受理した境界はprovider event数と一致しなければなら�
   );
 });
 
+void test("陽性対照Pは旧baselineのtimer確定理由を保持する", () => {
+  for (const reason of ["transcript_inactivity", "max_turn_duration"] as const) {
+    const value = JSON.parse(JSON.stringify(observations())) as {
+      results: {
+        accepted_boundaries: { kind: string; reason: string; received_at_ms: number }[];
+      }[];
+    };
+    const positiveControl = value.results[0];
+    assert.ok(positiveControl);
+    positiveControl.accepted_boundaries = [{
+      kind: "finalized",
+      reason,
+      received_at_ms: 220,
+    }];
+
+    assert.doesNotThrow(
+      () => parseSttInsertionTriageObservations(JSON.stringify(value)),
+    );
+  }
+});
+
+void test("境界種別と確定理由の矛盾を拒否する", () => {
+  const invalid = JSON.parse(JSON.stringify(observations())) as {
+    results: {
+      accepted_boundaries: { kind: string; reason: string; received_at_ms: number }[];
+      input_audit: { endpoint_event_count: number };
+    }[];
+  };
+  const positiveControl = invalid.results[0];
+  assert.ok(positiveControl);
+  positiveControl.accepted_boundaries = [{
+    kind: "endpoint",
+    reason: "known_file_end",
+    received_at_ms: 220,
+  }];
+  positiveControl.input_audit.endpoint_event_count = 1;
+
+  assert.throws(
+    () => parseSttInsertionTriageObservations(JSON.stringify(invalid)),
+    /境界種別.*確定理由/u,
+  );
+});
+
+void test("既知終端条件はfinalized eventを1回だけ受理する", () => {
+  const invalid = observations();
+  const knownFileEnd = invalid.results.find(
+    (result) => result.condition === "pcm_stt_only",
+  );
+  assert.ok(knownFileEnd);
+  knownFileEnd.input_audit.finalized_event_count = 2;
+
+  assert.throws(
+    () => parseSttInsertionTriageObservations(JSON.stringify(invalid)),
+    /known file end/u,
+  );
+});
+
 void test("private observationのverified referenceをCERの正解として使う", () => {
   const heardObservations = observations();
   for (const result of heardObservations.results) {

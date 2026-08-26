@@ -473,6 +473,40 @@ void test("大量挿入triage runnerは共有可能な監査directoryから接�
   assert.equal(connectionCount, 0);
 });
 
+void test("大量挿入triage runnerを直接呼んでも共有可能なdatasetでは接続しない", async () => {
+  let connectionCount = 0;
+  await withServer((socket) => {
+    connectionCount += 1;
+    handleSuccessfulSttConnection(socket);
+  }, async (url) => {
+    const dataset = await loadSttEvaluationDataset(writeDataset(
+      path.join(temporaryDirectory, "insertion-triage-shared-dataset"),
+    ));
+    const audioAudit = await writeVerifiedAudioAudit(
+      dataset,
+      path.join(temporaryDirectory, "insertion-triage-private-audit"),
+      ["ja-term"],
+    );
+    const evaluationCase = dataset.cases[0];
+    assert.ok(evaluationCase);
+    chmodSync(evaluationCase.audioPath, 0o644);
+
+    await assert.rejects(
+      runSttInsertionTriageDataset(dataset, {
+        apiKey: "do-not-leak-api-key",
+        model: "stt-rt-v5",
+        sttWebSocketUrl: url,
+        caseIds: ["ja-term"],
+        audioAuditPath: audioAudit.auditPath,
+        trials: 1,
+      }),
+      /PCM.*0600/u,
+    );
+  });
+
+  assert.equal(connectionCount, 0);
+});
+
 void test("大量挿入triageは旧baseline PとPCM・Opus×翻訳有無を分離する", async () => {
   const configurations: Record<string, unknown>[] = [];
   const audioByConnection: Buffer[][] = [];

@@ -2,6 +2,8 @@ import { lstat, realpath } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { LoadedSttEvaluationDataset } from "./stt-evaluation-files.js";
+
 export const sttEvaluationRepositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -71,4 +73,22 @@ export async function assertPrivateSttEvaluationFiles(
       path.dirname(canonicalFilePath),
     );
   }
+}
+
+export async function assertPrivateSttEvaluationDatasetPaths(
+  dataset: LoadedSttEvaluationDataset,
+): Promise<void> {
+  await assertPrivateSttEvaluationFiles([
+    { filePath: dataset.manifestPath, label: "STT評価manifest" },
+    ...dataset.cases.flatMap((evaluationCase) => [
+      {
+        filePath: evaluationCase.audioPath,
+        label: `case「${evaluationCase.definition.id}」のPCM`,
+      },
+      {
+        filePath: evaluationCase.packetTracePath,
+        label: `case「${evaluationCase.definition.id}」のpacket trace`,
+      },
+    ]),
+  ]);
 }

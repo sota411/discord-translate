@@ -32,6 +32,7 @@ import {
   type SttInsertionTriageObservations,
 } from "./stt-insertion-triage.js";
 import { scoreSttCharacterError } from "./stt-evaluation.js";
+import { assertPrivateSttEvaluationDatasetPaths } from "./stt-private-files.js";
 
 const trailingSilenceMs = 200;
 const transcriptInactivityMs = 3_000;
@@ -83,14 +84,7 @@ function isEvaluationLanguage(value: string | undefined): value is "ja" | "ko" {
 function acceptedReason(
   reason: SttAcceptedFinalizeReason,
 ): AcceptedBoundary["reason"] {
-  if (
-    reason === "speaking_end" ||
-    reason === "soniox_endpoint" ||
-    reason === "soniox_finalized"
-  ) {
-    return reason;
-  }
-  throw new Error(`historical baselineで想定外の確定理由「${reason}」を受け取りました`);
+  return reason;
 }
 
 async function runCase(
@@ -398,6 +392,7 @@ export async function runSttInsertionTriageDataset(
   if (options.caseIds.length === 0 || new Set(options.caseIds).size !== options.caseIds.length) {
     throw new Error("大量挿入triageのcase IDは重複なしで1件以上指定してください");
   }
+  await assertPrivateSttEvaluationDatasetPaths(dataset);
   const audioAudit = await loadVerifiedSttInsertionAudioAudit(
     dataset,
     options.audioAuditPath,
