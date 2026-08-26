@@ -23,7 +23,7 @@ const temporaryDirectory = mkdtempSync(path.join(tmpdir(), "discord-stt-eval-tes
 after(() => rmSync(temporaryDirectory, { recursive: true, force: true }));
 let datasetSequence = 0;
 
-void test("評価CLIはprovider比較と大量挿入triageのコマンドを案内する", () => {
+void test("評価CLIはprovider比較、音声監査、大量挿入triageのコマンドを案内する", () => {
   const result = spawnSync(process.execPath, [
     "--import",
     "tsx",
@@ -38,6 +38,8 @@ void test("評価CLIはprovider比較と大量挿入triageのコマンドを案�
   assert.match(result.stdout, /compare-provider/u);
   assert.match(result.stdout, /aws-region/u);
   assert.match(result.stdout, /triage-insertions/u);
+  assert.match(result.stdout, /prepare-insertion-audit/u);
+  assert.match(result.stdout, /--audio-audit/u);
   assert.match(result.stdout, /--cases/u);
 });
 
@@ -117,6 +119,98 @@ function writeDataset(traceByteLength = 8): {
     outputPath: path.join(audioDirectory, "report.json"),
   };
 }
+
+void test("音声監査CLIはprivate WAVとpending監査JSONを新規作成する", async () => {
+  const paths = writeDataset();
+  const outputDirectory = path.join(temporaryDirectory, `audio-audit-${String(datasetSequence)}`);
+
+  const summary = await runSttEvaluationCli([
+    "prepare-insertion-audit",
+    "--manifest",
+    paths.manifestPath,
+    "--cases",
+    "private-reference",
+    "--output-directory",
+    outputDirectory,
+  ]);
+
+  assert.deepEqual(summary, {
+    experiment: "insertion_audio_audit",
+    case_count: 1,
+    audio_file_count: 2,
+    audit_status: "pending_human_review",
+    live_triage_allowed: false,
+  });
+  const auditPath = path.join(outputDirectory, "audit.json");
+  const sourceWavPath = path.join(outputDirectory, "private-reference.source.wav");
+  const opusWavPath = path.join(outputDirectory, "private-reference.opus-roundtrip.wav");
+  const audit = JSON.parse(readFileSync(auditPath, "utf8")) as {
+    cases: { reference_status: string; heard_reference: string | null }[];
+  };
+  const firstAuditCase = audit.cases[0];
+  assert.ok(firstAuditCase);
+  assert.equal(firstAuditCase.reference_status, "pending");
+  assert.equal(firstAuditCase.heard_reference, null);
+  for (const filePath of [auditPath, sourceWavPath, opusWavPath]) {
+    assert.equal(statSync(filePath).mode & 0o777, 0o600);
+  }
+  assert.equal(statSync(outputDirectory).mode & 0o777, 0o700);
+  assert.equal(readFileSync(sourceWavPath).subarray(0, 4).toString("ascii"), "RIFF");
+  assert.equal(readFileSync(opusWavPath).subarray(8, 12).toString("ascii"), "WAVE");
+
+  await assert.rejects(
+    runSttEvaluationCli([
+      "prepare-insertion-audit",
+      "--manifest",
+      paths.manifestPath,
+      "--cases",
+      "private-reference",
+      "--output-directory",
+      outputDirectory,
+    ]),
+    /既に存在/u,
+  );
+});
+
+void test("pending音声監査ではlive triageへ接続する前に拒否する", async () => {
+  const paths = writeDataset();
+  const outputDirectory = path.join(temporaryDirectory, `pending-audit-${String(datasetSequence)}`);
+  await runSttEvaluationCli([
+    "prepare-insertion-audit",
+    "--manifest",
+    paths.manifestPath,
+    "--cases",
+    "private-reference",
+    "--output-directory",
+    outputDirectory,
+  ]);
+
+  await assert.rejects(
+    runSttEvaluationCli([
+      "triage-insertions",
+      "--manifest",
+      paths.manifestPath,
+      "--audio-audit",
+      path.join(outputDirectory, "audit.json"),
+      "--cases",
+      "private-reference",
+      "--observations-output",
+      path.join(outputDirectory, "observations.json"),
+      "--output",
+      path.join(outputDirectory, "report.json"),
+      "--stt-websocket-url",
+      "ws://127.0.0.1:9",
+      "--trials",
+      "1",
+    ], {
+      environment: {
+        SONIOX_API_KEY: "do-not-leak-api-key",
+        SONIOX_STT_MODEL: "stt-rt-v5",
+      },
+    }),
+    /verified/u,
+  );
+});
 
 function runScore(paths: ReturnType<typeof writeDataset>) {
   return spawnSync(process.execPath, [

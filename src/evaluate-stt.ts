@@ -20,6 +20,10 @@ import {
   type LoadedSttEvaluationDataset,
 } from "./evaluation/stt-evaluation-files.js";
 import {
+  createPendingSttInsertionAudioAudit,
+  loadVerifiedSttInsertionAudioAudit,
+} from "./evaluation/stt-insertion-audio-audit.js";
+import {
   runSttEndpointOnlyProbe,
   runSttEvaluationDataset,
   runSttProviderComparisonDataset,
@@ -39,7 +43,8 @@ const usage = `使用方法:
   pnpm stt:evaluate run --manifest <manifest.json> --observations-output <observations.json> --output <report.json> [--experiment <context_endpoint|endpoint_timing|context_endpoint_400|endpoint_latency_level|recognition_catalog_level1|recognition_catalog_factorial|recognition_terms|recognition_source_terms>] [--profiles <comma-separated>] [--stt-websocket-url <wss://...>] [--trials <1-10>]
   pnpm stt:evaluate compare-provider --manifest <manifest.json> --observations-output <observations.json> --output <report.json> --aws-region <region> [--stt-websocket-url <wss://...>] [--trials <1-10>] [--amazon-timeout-ms <milliseconds>]
   pnpm stt:evaluate probe-endpoint-only --manifest <manifest.json> --required-case <case-id> --output <summary.json> [--stt-websocket-url <wss://...>] [--trials 3] [--boundary-timeout-ms <milliseconds>]
-  pnpm stt:evaluate triage-insertions --manifest <manifest.json> --cases <comma-separated-case-ids> --observations-output <observations.json> --output <report.json> [--stt-websocket-url <wss://...>] [--trials 5]
+  pnpm stt:evaluate prepare-insertion-audit --manifest <manifest.json> --cases <comma-separated-case-ids> --output-directory <private-directory>
+  pnpm stt:evaluate triage-insertions --manifest <manifest.json> --audio-audit <verified-audit.json> --cases <comma-separated-case-ids> --observations-output <observations.json> --output <report.json> [--stt-websocket-url <wss://...>] [--trials 5]
   pnpm stt:evaluate score --manifest <manifest.json> --observations <observations.json> --output <report.json>
 
 評価音声、packet trace、本文入り観測結果はGit管理外の.data/stt-eval/、または所有者だけが利用できるリポジトリ外directoryへ置いてください。`;
@@ -87,6 +92,19 @@ async function writePrivateJson(filePath: string, value: unknown): Promise<void>
   } finally {
     if (!closed) await file.close();
     await unlinkIfExists(temporaryPath);
+  }
+}
+
+async function writeNewPrivateFile(filePath: string, value: Uint8Array): Promise<void> {
+  const file = await open(filePath, "wx", 0o600);
+  try {
+    await file.writeFile(value);
+    await file.sync();
+    await file.close();
+  } catch (error) {
+    await file.close().catch(() => undefined);
+    await unlinkIfExists(filePath);
+    throw error;
   }
 }
 
@@ -253,6 +271,7 @@ async function prepareLiveEvaluationRun(
   manifestPath: string,
   observationsOutput: string,
   outputPath: string,
+  additionalProtectedPaths: readonly string[] = [],
 ): Promise<{
   dataset: LoadedSttEvaluationDataset;
   resolvedObservationsOutput: string;
@@ -262,6 +281,7 @@ async function prepareLiveEvaluationRun(
   await assertPrivateDatasetPaths(dataset);
   const protectedPaths = new Set([
     dataset.manifestPath,
+    ...additionalProtectedPaths,
     ...dataset.cases.flatMap((evaluationCase) => [
       evaluationCase.audioPath,
       evaluationCase.packetTracePath,
@@ -478,6 +498,82 @@ function parseCaseIds(value: string): string[] {
   return caseIds;
 }
 
+async function prepareInsertionAudit(
+  args: readonly string[],
+): Promise<Record<string, unknown>> {
+  const parsed = parseArgs({
+    args,
+    strict: true,
+    options: {
+      manifest: { type: "string" },
+      cases: { type: "string" },
+      "output-directory": { type: "string" },
+    },
+  });
+  const manifestPath = parsed.values.manifest;
+  const caseSelection = parsed.values.cases;
+  const outputDirectoryValue = parsed.values["output-directory"];
+  if (!manifestPath || !caseSelection || !outputDirectoryValue) throw new Error(usage);
+  const dataset = await loadSttEvaluationDataset(manifestPath);
+  await assertPrivateDatasetPaths(dataset);
+  const caseIds = parseCaseIds(caseSelection);
+  const bundle = createPendingSttInsertionAudioAudit(dataset, caseIds);
+  const requestedOutputDirectory = path.resolve(outputDirectoryValue);
+  await mkdir(requestedOutputDirectory, { recursive: true, mode: 0o700 });
+  const requestedStatus = await lstat(requestedOutputDirectory);
+  if (!requestedStatus.isDirectory() || requestedStatus.isSymbolicLink()) {
+    throw new Error("STT音声監査の出力先は通常directoryにしてください");
+  }
+  const outputDirectory = await realpath(requestedOutputDirectory);
+  const canonicalRepositoryRoot = await realpath(repositoryRoot);
+  const privateRepositoryRoot = path.join(canonicalRepositoryRoot, ".data", "stt-eval");
+  if (
+    isWithinPath(canonicalRepositoryRoot, outputDirectory) &&
+    !isWithinPath(privateRepositoryRoot, outputDirectory)
+  ) {
+    throw new Error("STT音声監査はリポジトリ外または.data/stt-eval/配下へ出力してください");
+  }
+  const directoryPermissionRoot = isWithinPath(canonicalRepositoryRoot, outputDirectory)
+    ? privateRepositoryRoot
+    : outputDirectory;
+  await assertOwnerOnlyDirectoryChain(directoryPermissionRoot, outputDirectory);
+  const outputs = [
+    ...bundle.audio_files.map((file) => ({
+      filePath: path.join(outputDirectory, file.file_name),
+      bytes: file.bytes,
+    })),
+    {
+      filePath: path.join(outputDirectory, "audit.json"),
+      bytes: Buffer.from(`${JSON.stringify(bundle.audit, null, 2)}\n`, "utf8"),
+    },
+  ];
+  for (const output of outputs) {
+    try {
+      await lstat(output.filePath);
+      throw new Error(`STT音声監査の出力「${output.filePath}」は既に存在します`);
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+    }
+  }
+  const writtenPaths: string[] = [];
+  try {
+    for (const output of outputs) {
+      await writeNewPrivateFile(output.filePath, output.bytes);
+      writtenPaths.push(output.filePath);
+    }
+  } catch (error) {
+    await Promise.all(writtenPaths.map(unlinkIfExists));
+    throw error;
+  }
+  return {
+    experiment: "insertion_audio_audit",
+    case_count: caseIds.length,
+    audio_file_count: bundle.audio_files.length,
+    audit_status: "pending_human_review",
+    live_triage_allowed: false,
+  };
+}
+
 async function triageInsertions(
   args: readonly string[],
   environment: NodeJS.ProcessEnv,
@@ -487,6 +583,7 @@ async function triageInsertions(
     strict: true,
     options: {
       manifest: { type: "string" },
+      "audio-audit": { type: "string" },
       cases: { type: "string" },
       "observations-output": { type: "string" },
       output: { type: "string" },
@@ -495,10 +592,11 @@ async function triageInsertions(
     },
   });
   const manifestPath = parsed.values.manifest;
+  const audioAuditPath = parsed.values["audio-audit"];
   const caseSelection = parsed.values.cases;
   const observationsOutput = parsed.values["observations-output"];
   const outputPath = parsed.values.output;
-  if (!manifestPath || !caseSelection || !observationsOutput || !outputPath) {
+  if (!manifestPath || !audioAuditPath || !caseSelection || !observationsOutput || !outputPath) {
     throw new Error(usage);
   }
   const apiKey = environment.SONIOX_API_KEY?.trim();
@@ -506,8 +604,18 @@ async function triageInsertions(
   if (!apiKey) throw new Error("SONIOX_API_KEYが設定されていません");
   if (!model) throw new Error("SONIOX_STT_MODELが設定されていません");
   const { dataset, resolvedObservationsOutput, resolvedOutputPath } =
-    await prepareLiveEvaluationRun(manifestPath, observationsOutput, outputPath);
+    await prepareLiveEvaluationRun(
+      manifestPath,
+      observationsOutput,
+      outputPath,
+      [path.resolve(audioAuditPath)],
+    );
   const caseIds = parseCaseIds(caseSelection);
+  const audioAudit = await loadVerifiedSttInsertionAudioAudit(
+    dataset,
+    audioAuditPath,
+    caseIds,
+  );
   const observations = await runSttInsertionTriageDataset(dataset, {
     apiKey,
     model,
@@ -516,6 +624,7 @@ async function triageInsertions(
       environment,
     ),
     caseIds,
+    audioAudit,
     trials: parsed.values.trials === undefined ? 5 : Number(parsed.values.trials),
   });
   const report = createSttInsertionTriageReport(dataset.manifest, observations);
@@ -597,6 +706,9 @@ export async function runSttEvaluationCli(
   }
   if (command === "probe-endpoint-only") {
     return await probeEndpointOnly(args, dependencies.environment);
+  }
+  if (command === "prepare-insertion-audit") {
+    return await prepareInsertionAudit(args);
   }
   if (command === "triage-insertions") {
     return await triageInsertions(args, dependencies.environment);

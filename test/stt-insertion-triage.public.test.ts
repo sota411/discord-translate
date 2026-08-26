@@ -3,13 +3,15 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import {
+  createSttInsertionTriageRunOrder,
   createSttInsertionTriageReport,
   parseSttInsertionTriageObservations,
   sttInsertionTriageConditionConfigurations,
   type SttInsertionTriageObservations,
 } from "../src/evaluation/stt-insertion-triage.js";
+import { sha256 } from "../src/evaluation/stt-insertion-audio.js";
 import {
-  parseSttEvaluationManifest,
+  scoreSttCharacterError,
   type SttEvaluationManifest,
 } from "../src/evaluation/stt-evaluation.js";
 
@@ -40,13 +42,18 @@ function inputAudit(inputRoute: "pcm_direct" | "discord_opus_roundtrip") {
     source_packet_send_count: 1,
     duplicate_source_packet_index_count: 0,
     missing_source_packet_count: 0,
+    sent_speech_audio_sha256: inputRoute === "pcm_direct"
+      ? "a".repeat(64)
+      : "d".repeat(64),
+    sent_speech_sample_count: 960,
+    sent_speech_duration_ms: 20,
     opus_packet_count: inputRoute === "discord_opus_roundtrip" ? 1 : null,
     decoded_sample_count: 960,
     codec_padding_sample_count: 0,
     send_audio_call_count: 2,
     sent_audio_bytes: 21_120,
     sent_audio_duration_ms: 220,
-    injected_silence_ms: 200,
+    trailing_silence_ms: 200,
     finalize_call_count: 1,
     endpoint_event_count: 0,
     finalized_event_count: 1,
@@ -58,7 +65,7 @@ function observations(): SttInsertionTriageObservations {
     keyof typeof sttInsertionTriageConditionConfigurations
   )[];
   return {
-    version: 1,
+    version: 2,
     experiment: "insertion_triage",
     selected_case_ids: ["problem-case"],
     dataset: {
@@ -73,13 +80,31 @@ function observations(): SttInsertionTriageObservations {
         duration_ms: 20,
       }],
     },
+    audio_audit: {
+      audit_sha256: "e".repeat(64),
+      manifest_sha256: "b".repeat(64),
+      cases: [{
+        case_id: "problem-case",
+        reference_status: "verified",
+        intended_reference_sha256: sha256(Buffer.from("TTSへ入力した文", "utf8")),
+        heard_reference_sha256: sha256(Buffer.from("正解文", "utf8")),
+        source_audio_sha256: "a".repeat(64),
+        source_wav_sha256: "f".repeat(64),
+        opus_roundtrip_audio_sha256: "d".repeat(64),
+        opus_roundtrip_wav_sha256: "9".repeat(64),
+      }],
+    },
     results: conditions.map((condition, index) => {
       const configuration = sttInsertionTriageConditionConfigurations[condition];
+      const transcript = index < 3 ? "正解文" : "正解文正解文";
+      const characterError = scoreSttCharacterError("正解文", transcript);
       return {
+        execution_index: index + 1,
         trial: 1,
         case_id: "problem-case",
         condition,
-        transcript: index < 2 ? "正解文" : "正解文正解文",
+        reference_text: "正解文",
+        transcript,
         recognized_languages: ["ja" as const],
         original_final_tokens: [{
           start_ms: 0,
@@ -87,7 +112,13 @@ function observations(): SttInsertionTriageObservations {
           text: "private-token-text",
           language: "ja",
           confidence: 0.9,
+          received_at_ms: 25,
         }],
+        accepted_boundary: configuration.finalization_mode === "historical_baseline"
+          ? { kind: "finalized" as const, reason: "speaking_end" as const, received_at_ms: 220 }
+          : { kind: "finalized" as const, reason: "known_file_end" as const, received_at_ms: 220 },
+        character_error: characterError,
+        transcript_characters_per_second: characterError.hypothesis_characters / 0.02,
         input_audit: inputAudit(configuration.input_route),
         configuration,
       };
@@ -95,7 +126,7 @@ function observations(): SttInsertionTriageObservations {
   };
 }
 
-void test("大量挿入triage観測は入力監査と4条件を厳格に検証する", () => {
+void test("大量挿入triage観測は入力監査とP/A/B/C/Dを厳格に検証する", () => {
   const value = observations();
   assert.deepEqual(
     parseSttInsertionTriageObservations(JSON.stringify(value)),
@@ -114,14 +145,28 @@ void test("大量挿入triage観測は入力監査と4条件を厳格に検証�
   );
 });
 
+void test("3ケース5試行の5条件は75観測となり、条件の開始位置を均等に回す", () => {
+  const caseIds = ["case-a", "case-b", "case-c"];
+  const order = createSttInsertionTriageRunOrder(caseIds, 5);
+
+  assert.equal(order.length, 75);
+  for (const caseId of caseIds) {
+    const firstConditions = order
+      .filter((entry) => entry.case_id === caseId && entry.condition_position === 0)
+      .map((entry) => entry.condition);
+    assert.equal(new Set(firstConditions).size, 5);
+  }
+});
+
 void test("公開triage reportは本文を含めず、条件別CERと入力完全性を出す", () => {
   const report = createSttInsertionTriageReport(manifest, observations());
   const serialized = JSON.stringify(report);
 
-  assert.equal(report.version, 1);
+  assert.equal(report.version, 2);
   assert.equal(report.experiment, "insertion_triage");
   assert.equal(report.scope.independent_case_count, 1);
-  assert.equal(report.scope.heard_reference_audit, "not_evaluated");
+  assert.equal(report.scope.heard_reference_audit, "verified");
+  assert.equal(report.scope.positive_control, "historical_baseline");
   assert.equal(report.scope.source_channel_analysis, "not_applicable_source_pcm_mono");
   assert.equal(report.classification.status, "not_evaluated");
   assert.equal(report.conditions.pcm_stt_only.micro_cer, 0);
@@ -142,8 +187,8 @@ void test("公開triage reportは本文を含めず、条件別CERと入力完�
     report.conditions.opus_stt_only.input_integrity.all_source_audio_hashes_match_dataset,
     true,
   );
-  assert.equal(report.conditions.opus_stt_only.input_integrity.all_finalize_once, true);
-  assert.equal(report.conditions.opus_stt_only.input_integrity.all_endpoint_events_zero, true);
+  assert.equal(report.conditions.opus_stt_only.input_integrity.all_finalize_at_most_once, true);
+  assert.equal(report.conditions.opus_stt_only.input_integrity.all_endpoint_events_match_mode, true);
   assert.equal(report.conditions.opus_stt_only.cases[0]?.characters_per_second_mean, 300);
   assert.doesNotMatch(
     serialized,
@@ -151,23 +196,18 @@ void test("公開triage reportは本文を含めず、条件別CERと入力完�
   );
 });
 
-void test("heard_referenceがあるcaseは実際に聞こえた文をCERの正解として使う", () => {
-  const heardManifest = parseSttEvaluationManifest(JSON.stringify({
-    ...manifest,
-    cases: manifest.cases.map((evaluationCase) => ({
-      ...evaluationCase,
-      reference: "TTSへ入力した文",
-      heard_reference: "実際に聞こえた文",
-    })),
-  }));
+void test("private observationのverified referenceをCERの正解として使う", () => {
   const heardObservations = observations();
   for (const result of heardObservations.results) {
-    result.transcript = "実際に聞こえた文";
+    result.transcript = result.reference_text;
+    result.character_error = scoreSttCharacterError(result.reference_text, result.transcript);
+    result.transcript_characters_per_second =
+      result.character_error.hypothesis_characters / 0.02;
   }
 
-  const report = createSttInsertionTriageReport(heardManifest, heardObservations);
+  const report = createSttInsertionTriageReport(manifest, heardObservations);
 
-  assert.equal(report.scope.heard_reference_audit, "evaluated");
+  assert.equal(report.scope.heard_reference_audit, "verified");
   for (const condition of Object.values(report.conditions)) {
     assert.equal(condition.micro_cer, 0);
   }

@@ -16,7 +16,14 @@ import { after, test } from "node:test";
 
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 
-import { loadSttEvaluationDataset } from "../src/evaluation/stt-evaluation-files.js";
+import {
+  createPendingSttInsertionAudioAudit,
+  loadVerifiedSttInsertionAudioAudit,
+} from "../src/evaluation/stt-insertion-audio-audit.js";
+import {
+  loadSttEvaluationDataset,
+  type LoadedSttEvaluationDataset,
+} from "../src/evaluation/stt-evaluation-files.js";
 import { runSttInsertionTriageDataset } from "../src/evaluation/stt-insertion-triage-runner.js";
 import { runSttEvaluationDataset } from "../src/evaluation/stt-evaluation-runner.js";
 import {
@@ -81,6 +88,37 @@ function writeDataset(
     }],
   }), { mode: 0o600 });
   return manifestPath;
+}
+
+async function writeVerifiedAudioAudit(
+  dataset: LoadedSttEvaluationDataset,
+  directory: string,
+  caseIds: readonly string[],
+) {
+  const bundle = createPendingSttInsertionAudioAudit(dataset, caseIds);
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  chmodSync(directory, 0o700);
+  for (const file of bundle.audio_files) {
+    writeFileSync(path.join(directory, file.file_name), file.bytes, { mode: 0o600 });
+  }
+  const mutableAudit = JSON.parse(JSON.stringify(bundle.audit)) as {
+    cases: {
+      reference_status: "pending" | "verified";
+      heard_reference: string | null;
+      audit_note: string;
+    }[];
+  };
+  for (const auditCase of mutableAudit.cases) {
+    auditCase.reference_status = "verified";
+    auditCase.heard_reference = "ヴァロラント";
+    auditCase.audit_note = "test fixtureで確認済み";
+  }
+  const auditPath = path.join(directory, "audit.json");
+  writeFileSync(auditPath, `${JSON.stringify(mutableAudit, null, 2)}\n`, { mode: 0o600 });
+  return {
+    auditPath,
+    verified: await loadVerifiedSttInsertionAudioAudit(dataset, auditPath, caseIds),
+  };
 }
 
 function writeRecognitionCatalogDataset(
@@ -325,7 +363,7 @@ void test("同じPCMを複数試行し、A〜Dの開始順を交替してcontext
   assert.equal(contextEndpointConfiguration.max_endpoint_delay_ms, 500);
 });
 
-void test("大量挿入triageはPCM・Opusと翻訳有無を分離し、既知終端で1回だけ確定する", async () => {
+void test("大量挿入triageは旧baseline PとPCM・Opus×翻訳有無を分離する", async () => {
   const configurations: Record<string, unknown>[] = [];
   const audioByConnection: Buffer[][] = [];
   const finalizeMessages: Record<string, unknown>[] = [];
@@ -376,17 +414,24 @@ void test("大量挿入triageはPCM・Opusと翻訳有無を分離し、既知�
     const dataset = await loadSttEvaluationDataset(writeDataset(
       path.join(temporaryDirectory, "insertion-triage-dataset"),
     ));
+    const audioAudit = await writeVerifiedAudioAudit(
+      dataset,
+      path.join(temporaryDirectory, "insertion-triage-audit"),
+      ["ja-term"],
+    );
     const result = await runSttInsertionTriageDataset(dataset, {
       apiKey: "do-not-leak-api-key",
       model: "stt-rt-v5",
       sttWebSocketUrl: url,
       caseIds: ["ja-term"],
+      audioAudit: audioAudit.verified,
       trials: 1,
       boundaryTimeoutMs: 1_000,
       finishTimeoutMs: 1_000,
     });
 
     assert.deepEqual(result.results.map((entry) => entry.condition), [
+      "historical_baseline",
       "pcm_stt_only",
       "pcm_translation",
       "opus_stt_only",
@@ -397,7 +442,7 @@ void test("大量挿入triageはPCM・Opusと翻訳有無を分離し、既知�
       assert.equal(entry.input_audit.duplicate_source_packet_index_count, 0);
       assert.equal(entry.input_audit.missing_source_packet_count, 0);
       assert.equal(entry.input_audit.send_audio_call_count, 2);
-      assert.equal(entry.input_audit.injected_silence_ms, 200);
+      assert.equal(entry.input_audit.trailing_silence_ms, 200);
       assert.equal(entry.input_audit.finalize_call_count, 1);
       assert.equal(entry.input_audit.endpoint_event_count, 0);
       assert.equal(entry.input_audit.finalized_event_count, 1);
@@ -405,22 +450,33 @@ void test("大量挿入triageはPCM・Opusと翻訳有無を分離し、既知�
     }
     assert.equal(result.results[0]?.input_audit.opus_packet_count, null);
     assert.equal(result.results[1]?.input_audit.opus_packet_count, null);
-    assert.equal(result.results[2]?.input_audit.opus_packet_count, 1);
+    assert.equal(result.results[2]?.input_audit.opus_packet_count, null);
     assert.equal(result.results[3]?.input_audit.opus_packet_count, 1);
+    assert.equal(result.results[4]?.input_audit.opus_packet_count, 1);
+    assert.ok(result.results.every((entry) => entry.original_final_tokens[0]?.received_at_ms !== undefined));
     assert.doesNotMatch(JSON.stringify(result), /do-not-leak-api-key/u);
   });
 
-  assert.equal(configurations.length, 4);
-  assert.equal(audioByConnection.length, 4);
-  assert.equal(finalizeMessages.length, 4);
+  assert.equal(configurations.length, 5);
+  assert.equal(audioByConnection.length, 5);
+  assert.equal(finalizeMessages.length, 5);
   assert.ok(finalizeMessages.every((message) => message.trailing_silence_ms === 200));
-  for (const configuration of configurations) {
+  const positiveControl = configurations[0];
+  assert.ok(positiveControl);
+  assert.equal(positiveControl.enable_endpoint_detection, true);
+  assert.equal("context" in positiveControl, true);
+  assert.deepEqual(positiveControl.translation, {
+    type: "two_way",
+    language_a: "ja",
+    language_b: "ko",
+  });
+  for (const configuration of configurations.slice(1)) {
     assert.equal(configuration.enable_endpoint_detection, false);
     assert.equal("context" in configuration, false);
   }
-  assert.equal("translation" in (configurations[0] ?? {}), false);
-  const pcmTranslation = configurations[1];
-  const opusTranslation = configurations[3];
+  assert.equal("translation" in (configurations[1] ?? {}), false);
+  const pcmTranslation = configurations[2];
+  const opusTranslation = configurations[4];
   assert.ok(pcmTranslation);
   assert.ok(opusTranslation);
   assert.deepEqual(pcmTranslation.translation, {
@@ -428,10 +484,102 @@ void test("大量挿入triageはPCM・Opusと翻訳有無を分離し、既知�
     language_a: "ja",
     language_b: "ko",
   });
-  assert.equal("translation" in (configurations[2] ?? {}), false);
+  assert.equal("translation" in (configurations[3] ?? {}), false);
   assert.deepEqual(opusTranslation.translation, pcmTranslation.translation);
   assert.ok(audioByConnection.every((chunks) => chunks.length === 2));
   assert.ok(audioByConnection.every((chunks) => chunks[1]?.equals(Buffer.alloc(19_200))));
+});
+
+void test("陽性対照PはSoniox endpointが先なら手動finalizeを呼ばない", async () => {
+  await withServer((socket) => {
+    let endpointDetectionEnabled = false;
+    socket.on("message", (data, isBinary) => {
+      if (isBinary) {
+        if (!endpointDetectionEnabled) return;
+        socket.send(JSON.stringify({
+          tokens: [
+            {
+              text: "ヴァロラント",
+              is_final: true,
+              confidence: 0.95,
+              language: "ja",
+              translation_status: "original",
+              start_ms: 0,
+              end_ms: 20,
+            },
+            { text: "<end>", is_final: true },
+          ],
+          final_audio_proc_ms: 20,
+          total_audio_proc_ms: 20,
+        }));
+        return;
+      }
+      const text = rawDataToUtf8(data);
+      if (text.length === 0) {
+        socket.send(JSON.stringify({
+          tokens: [],
+          final_audio_proc_ms: 220,
+          total_audio_proc_ms: 220,
+          finished: true,
+        }));
+        return;
+      }
+      const message = JSON.parse(text) as Record<string, unknown>;
+      if (message.api_key !== undefined) {
+        endpointDetectionEnabled = message.enable_endpoint_detection === true;
+        return;
+      }
+      if (message.type !== "finalize") return;
+      socket.send(JSON.stringify({
+        tokens: [
+          {
+            text: "ヴァロラント",
+            is_final: true,
+            confidence: 0.95,
+            language: "ja",
+            translation_status: "original",
+            start_ms: 0,
+            end_ms: 20,
+          },
+          { text: "<fin>", is_final: true },
+        ],
+        final_audio_proc_ms: 220,
+        total_audio_proc_ms: 220,
+      }));
+    });
+  }, async (url) => {
+    const dataset = await loadSttEvaluationDataset(writeDataset(
+      path.join(temporaryDirectory, "insertion-triage-endpoint-dataset"),
+    ));
+    const audioAudit = await writeVerifiedAudioAudit(
+      dataset,
+      path.join(temporaryDirectory, "insertion-triage-endpoint-audit"),
+      ["ja-term"],
+    );
+    const result = await runSttInsertionTriageDataset(dataset, {
+      apiKey: "do-not-leak-api-key",
+      model: "stt-rt-v5",
+      sttWebSocketUrl: url,
+      caseIds: ["ja-term"],
+      audioAudit: audioAudit.verified,
+      trials: 1,
+      boundaryTimeoutMs: 1_000,
+      finishTimeoutMs: 1_000,
+    });
+
+    const positiveControl = result.results[0];
+    assert.equal(positiveControl?.condition, "historical_baseline");
+    assert.equal(positiveControl.input_audit.finalize_call_count, 0);
+    assert.equal(positiveControl.input_audit.trailing_silence_ms, 0);
+    assert.equal(positiveControl.input_audit.send_audio_call_count, 1);
+    assert.equal(positiveControl.input_audit.endpoint_event_count, 1);
+    assert.equal(positiveControl.accepted_boundary.kind, "endpoint");
+    assert.equal(positiveControl.accepted_boundary.reason, "soniox_endpoint");
+    for (const entry of result.results.slice(1)) {
+      assert.equal(entry.input_audit.finalize_call_count, 1);
+      assert.equal(entry.input_audit.trailing_silence_ms, 200);
+    }
+  });
 });
 
 void test("大量挿入triage CLIはprivate観測と本文非含有reportを0600で保存する", async () => {
@@ -471,10 +619,21 @@ void test("大量挿入triage CLIはprivate観測と本文非含有reportを0600
       }));
     });
   }, async (url) => {
+    const manifestPath = writeDataset(
+      path.join(temporaryDirectory, "insertion-triage-cli-dataset"),
+    );
+    const dataset = await loadSttEvaluationDataset(manifestPath);
+    const audioAudit = await writeVerifiedAudioAudit(
+      dataset,
+      path.join(temporaryDirectory, "insertion-triage-cli-audit"),
+      ["ja-term"],
+    );
     const result = await runEvaluationCli([
       "triage-insertions",
       "--manifest",
-      writeDataset(path.join(temporaryDirectory, "insertion-triage-cli-dataset")),
+      manifestPath,
+      "--audio-audit",
+      audioAudit.auditPath,
       "--cases",
       "ja-term",
       "--observations-output",
@@ -499,7 +658,7 @@ void test("大量挿入triage CLIはprivate観測と本文非含有reportを0600
       experiment: "insertion_triage",
       case_count: 1,
       trial_count: 1,
-      observation_count: 4,
+      observation_count: 5,
       decision: "no_production_change",
     });
   });
