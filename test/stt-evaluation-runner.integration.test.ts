@@ -513,6 +513,7 @@ void test("大量挿入triageは旧baseline PとPCM・Opus×翻訳有無を分�
   const finalizeMessages: Record<string, unknown>[] = [];
   await withServer((socket) => {
     const audio: Buffer[] = [];
+    let translationEnabled = false;
     audioByConnection.push(audio);
     socket.on("message", (data, isBinary) => {
       if (isBinary) {
@@ -532,6 +533,7 @@ void test("大量挿入triageは旧baseline PとPCM・Opus×翻訳有無を分�
       const message = JSON.parse(text) as Record<string, unknown>;
       if (message.api_key !== undefined) {
         configurations.push(message);
+        translationEnabled = message.translation !== undefined;
         return;
       }
       if (message.type === "finalize") {
@@ -543,7 +545,7 @@ void test("大量挿入triageは旧baseline PとPCM・Opus×翻訳有無を分�
               is_final: true,
               confidence: 0.95,
               language: "ja",
-              translation_status: "original",
+              ...(translationEnabled ? { translation_status: "original" } : {}),
               start_ms: 0,
               end_ms: 20,
             },

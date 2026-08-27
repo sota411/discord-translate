@@ -215,7 +215,7 @@ async function runCase(
     for (const token of result.tokens) {
       const isOriginal = historical
         ? token.translation_status === "original"
-        : token.translation_status === "original" || token.translation_status === "none";
+        : token.translation_status !== "translation";
       if (!token.is_final || !isOriginal) continue;
       if (token.start_ms !== undefined && token.end_ms !== undefined) {
         const identity = JSON.stringify([
