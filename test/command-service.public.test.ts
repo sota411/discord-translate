@@ -873,7 +873,6 @@ void test("language setは本人の選択を保存し、次回セッションか
     language: "ko",
     guildId: "223456789012345678",
     actorId: "323456789012345678",
-    actorCanManageGuild: false,
     targetUserId: "323456789012345678",
   });
 
@@ -888,7 +887,7 @@ void test("language setは本人の選択を保存し、次回セッションか
   }]);
 });
 
-void test("language showは環境既定値の由来を示し、他人の参照と変更をManageGuildに限定する", async () => {
+void test("languageは許可済み利用者同士で他人の設定を確認・変更できる", async () => {
   const harness = createHarness();
   harness.speakerLanguages.selectionResult = {
     mode: "ja",
@@ -900,34 +899,31 @@ void test("language showは環境既定値の由来を示し、他人の参照�
     action: "show",
     guildId: "223456789012345678",
     actorId: "323456789012345678",
-    actorCanManageGuild: false,
     targetUserId: "323456789012345678",
   });
   assert.equal(own.ok, true);
   assert.match(own.interactionMessage, /日本語/u);
   assert.match(own.interactionMessage, /環境設定/u);
 
-  const denied = await harness.service.execute({
+  const other = await harness.service.execute({
     kind: "language",
     action: "show",
     guildId: "223456789012345678",
     actorId: "323456789012345678",
-    actorCanManageGuild: false,
     targetUserId: "423456789012345678",
   });
-  assert.equal(denied.ok, false);
-  assert.equal(denied.code, "SPEAKER_LANGUAGE_NOT_ALLOWED");
+  assert.equal(other.ok, true);
+  assert.match(other.interactionMessage, /指定した利用者/u);
 
-  const managed = await harness.service.execute({
+  const changed = await harness.service.execute({
     kind: "language",
     action: "set",
     language: "ko",
     guildId: "223456789012345678",
     actorId: "323456789012345678",
-    actorCanManageGuild: true,
     targetUserId: "423456789012345678",
   });
-  assert.equal(managed.ok, true);
+  assert.equal(changed.ok, true);
   assert.equal(harness.speakerLanguages.updates.length, 1);
   assert.equal(harness.speakerLanguages.updates[0]?.userId, "423456789012345678");
 });
@@ -935,13 +931,24 @@ void test("language showは環境既定値の由来を示し、他人の参照�
 void test("languageは未許可Userを対象にできず、autoを有効な選択として保存する", async () => {
   const harness = createHarness();
 
+  const untrustedActor = await harness.service.execute({
+    kind: "language",
+    action: "set",
+    language: "ja",
+    guildId: "223456789012345678",
+    actorId: "999999999999999999",
+    targetUserId: "423456789012345678",
+  });
+  assert.equal(untrustedActor.ok, false);
+  assert.equal(untrustedActor.code, "USER_NOT_ALLOWED");
+  assert.equal(harness.speakerLanguages.updates.length, 0);
+
   const denied = await harness.service.execute({
     kind: "language",
     action: "set",
     language: "ja",
     guildId: "223456789012345678",
     actorId: "323456789012345678",
-    actorCanManageGuild: true,
     targetUserId: "999999999999999999",
   });
   assert.equal(denied.ok, false);
@@ -954,7 +961,6 @@ void test("languageは未許可Userを対象にできず、autoを有効な選�
     language: "auto",
     guildId: "223456789012345678",
     actorId: "323456789012345678",
-    actorCanManageGuild: false,
     targetUserId: "323456789012345678",
   });
   assert.equal(automatic.ok, true);

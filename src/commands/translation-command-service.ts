@@ -113,7 +113,6 @@ type LanguageCommandCommonInput = {
   kind: "language";
   guildId: string | undefined;
   actorId: string;
-  actorCanManageGuild: boolean;
   targetUserId: string;
 };
 
@@ -456,13 +455,6 @@ export class TranslationCommandService {
         "対象の利用者は、このBotの許可リストに含まれていません。",
       );
     }
-    if (input.targetUserId !== input.actorId && !input.actorCanManageGuild) {
-      throw new ApplicationError(
-        "SPEAKER_LANGUAGE_NOT_ALLOWED",
-        "他の利用者の話者言語を確認・変更するには、サーバー管理権限が必要です。",
-      );
-    }
-
     const showSubject = input.targetUserId === input.actorId
       ? "現在の音声認識言語"
       : "指定した利用者の音声認識言語";

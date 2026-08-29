@@ -741,8 +741,6 @@ export class DiscordBotController {
       kind: "language" as const,
       guildId: interaction.guildId ?? undefined,
       actorId: interaction.user.id,
-      actorCanManageGuild:
-        interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ?? false,
       targetUserId:
         interaction.options.getUser("user", false)?.id ?? interaction.user.id,
     };

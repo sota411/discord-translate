@@ -190,7 +190,7 @@ void test("register addの3引数を認可サービスへそのまま渡す", as
   assert.deepEqual(edits, ["翻訳用語を登録しました。"]);
 });
 
-void test("language setはuser省略時に実行者本人を対象として認可情報を渡す", async () => {
+void test("language setはuser省略時に実行者本人を対象として渡す", async () => {
   const inputs: TranslationCommandInput[] = [];
   const edits: unknown[] = [];
   const controller = new DiscordBotController({
@@ -228,13 +228,12 @@ void test("language setはuser省略時に実行者本人を対象として認�
     language: "ko",
     guildId: "guild-1",
     actorId: "user-1",
-    actorCanManageGuild: false,
     targetUserId: "user-1",
   }]);
   assert.deepEqual(edits, ["音声認識言語を韓国語に設定しました。"]);
 });
 
-void test("language showは指定UserとManageGuild権限を認可サービスへ渡す", async () => {
+void test("language showは指定Userを認可サービスへ渡す", async () => {
   const inputs: TranslationCommandInput[] = [];
   const controller = new DiscordBotController({
     client: {} as Client,
@@ -269,7 +268,6 @@ void test("language showは指定UserとManageGuild権限を認可サービス�
     action: "show",
     guildId: "guild-1",
     actorId: "user-1",
-    actorCanManageGuild: true,
     targetUserId: "user-2",
   }]);
 });
