@@ -197,7 +197,7 @@ void test("Guild別翻訳用語をSQLiteへ保存し、再起動後もsource順�
       );
       const inspection = new Database(databasePath, { readonly: true });
       try {
-        assert.equal(inspection.pragma("user_version", { simple: true }), 3);
+        assert.equal(inspection.pragma("user_version", { simple: true }), 2);
       } finally {
         inspection.close();
       }
@@ -313,6 +313,65 @@ void test("SQLite version 2から話者言語テーブルだけを追加し、�
     } finally {
       migrated.close();
     }
+  });
+});
+
+void test("候補版のSQLite version 3を旧image互換のversion 2へ戻して設定を保持する", async () => {
+  await withLedger((ledger, databasePath) => {
+    ledger.upsertStoredSpeakerLanguageMode({
+      guildId: "223456789012345678",
+      userId: "323456789012345678",
+      mode: "ko",
+      updatedAt: new Date("2026-08-30T00:00:00Z"),
+    });
+    ledger.close();
+
+    const candidateVersion = new Database(databasePath);
+    candidateVersion.pragma("user_version = 3");
+    candidateVersion.close();
+
+    const normalized = UsageLedger.open({
+      databasePath,
+      pricing,
+      limits,
+      reconcileMaxStalenessSeconds: 180,
+    });
+    try {
+      assert.equal(
+        normalized.getStoredSpeakerLanguageMode(
+          "223456789012345678",
+          "323456789012345678",
+        ),
+        "ko",
+      );
+      const inspection = new Database(databasePath, { readonly: true });
+      try {
+        assert.equal(inspection.pragma("user_version", { simple: true }), 2);
+      } finally {
+        inspection.close();
+      }
+    } finally {
+      normalized.close();
+    }
+  });
+});
+
+void test("未知のSQLite version 4は互換扱いせず起動前に拒否する", async () => {
+  await withLedger((ledger, databasePath) => {
+    ledger.close();
+    const futureVersion = new Database(databasePath);
+    futureVersion.pragma("user_version = 4");
+    futureVersion.close();
+
+    assert.throws(
+      () => UsageLedger.open({
+        databasePath,
+        pricing,
+        limits,
+        reconcileMaxStalenessSeconds: 180,
+      }),
+      /SQLite schema version 4は未対応です/u,
+    );
   });
 });
 

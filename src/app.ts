@@ -137,7 +137,6 @@ export async function startApplication(
     const driver = new DiscordTranslationDriver({
       client: discordClient,
       config,
-      speakerLanguages,
       ledger,
       sttFactory,
       tts,

@@ -26,7 +26,6 @@ import {
 } from "@soniox/node";
 
 import type { AppConfig } from "../config.js";
-import type { SpeakerLanguageSettings } from "../config/speaker-language-settings.js";
 import type { TranslationTerm } from "../config/translation-terms.js";
 import { decodeDiscordOpusPacketToMono } from "../audio/pcm.js";
 import { OpusStartupBuffer } from "../audio/opus-startup-buffer.js";
@@ -89,7 +88,6 @@ export type RuntimeFailureHandler = (
 type DiscordTranslationDriverOptions = {
   client: Client;
   config: AppConfig;
-  speakerLanguages: Pick<SpeakerLanguageSettings, "resolve">;
   ledger: UsageLedger;
   sttFactory: SonioxSttFactory;
   tts: TtsGateway;
@@ -183,7 +181,6 @@ function speakerLanguageHint(
 export class DiscordTranslationDriver implements TranslationSessionDriver {
   readonly #client: Client;
   readonly #config: AppConfig;
-  readonly #speakerLanguages: Pick<SpeakerLanguageSettings, "resolve">;
   readonly #ledger: UsageLedger;
   readonly #sttFactory: SonioxSttFactory;
   readonly #tts: TtsGateway;
@@ -198,7 +195,6 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
   public constructor(options: DiscordTranslationDriverOptions) {
     this.#client = options.client;
     this.#config = options.config;
-    this.#speakerLanguages = options.speakerLanguages;
     this.#ledger = options.ledger;
     this.#sttFactory = options.sttFactory;
     this.#tts = options.tts;
@@ -218,6 +214,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
     participantIds: readonly string[],
     signal: AbortSignal,
     translationTerms: readonly TranslationTerm[],
+    speakerLanguageHints: ReadonlyMap<string, Language>,
   ): Promise<SessionRuntime> {
     signal.throwIfAborted();
     const guild = this.#client.guilds.cache.get(session.guildId);
@@ -286,7 +283,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
         presentation,
         connection,
         config: this.#config,
-        speakerLanguages: this.#speakerLanguages,
+        speakerLanguageHints,
         ledger: this.#ledger,
         sttFactory: this.#sttFactory,
         translationTerms,
@@ -341,7 +338,7 @@ export type TranslationRuntimeOptions = {
   presentation: DiscordSessionPresentation;
   connection: VoiceConnection;
   config: AppConfig;
-  speakerLanguages: Pick<SpeakerLanguageSettings, "resolve">;
+  speakerLanguageHints: ReadonlyMap<string, Language>;
   ledger: UsageLedger;
   sttFactory: SonioxSttFactory;
   translationTerms: readonly TranslationTerm[];
@@ -364,7 +361,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
   readonly #presentation: DiscordSessionPresentation;
   readonly #connection: VoiceConnection;
   readonly #config: AppConfig;
-  readonly #speakerLanguageHints = new Map<string, Language>();
+  readonly #speakerLanguageHints: ReadonlyMap<string, Language>;
   readonly #ledger: UsageLedger;
   readonly #sttFactory: SonioxSttFactory;
   readonly #translationTerms: readonly TranslationTerm[];
@@ -394,14 +391,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
   public constructor(options: TranslationRuntimeOptions) {
     this.captionThreadId = options.presentation.threadId;
     this.#session = options.session;
-    for (const allowedUserId of options.config.discord.allowedUserIds) {
-      const language = options.speakerLanguages.resolve(
-        options.session.guildId,
-        allowedUserId,
-        options.session.pair,
-      );
-      if (language !== undefined) this.#speakerLanguageHints.set(allowedUserId, language);
-    }
+    this.#speakerLanguageHints = new Map(options.speakerLanguageHints);
     this.#guild = options.guild;
     this.#voiceChannel = options.voiceChannel;
     this.#presentation = options.presentation;

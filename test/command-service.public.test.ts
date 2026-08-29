@@ -12,7 +12,7 @@ import type {
   SpeakerLanguageSelection,
 } from "../src/config/speaker-language-settings.js";
 import { ApplicationError } from "../src/domain/application-error.js";
-import type { LanguagePair } from "../src/domain/language-pair.js";
+import type { Language, LanguagePair } from "../src/domain/language-pair.js";
 import {
   SessionManager,
   type CapacityGate,
@@ -43,6 +43,11 @@ class RecordingSpeakerLanguageSettings {
     mode: SpeakerLanguageMode;
     at: Date;
   }[] = [];
+  public readonly snapshots: {
+    guildId: string;
+    userIds: readonly string[];
+    pair: LanguagePair;
+  }[] = [];
 
   public selection(guildId: string, userId: string) {
     this.selections.push({ guildId, userId });
@@ -61,6 +66,17 @@ class RecordingSpeakerLanguageSettings {
       source: "guild",
     };
     return input.mode;
+  }
+
+  public snapshot(
+    guildId: string,
+    userIds: ReadonlySet<string>,
+    pair: LanguagePair,
+  ): ReadonlyMap<string, Language> {
+    this.snapshots.push({ guildId, userIds: [...userIds], pair });
+    const mode = this.selectionResult.mode;
+    if (mode === "auto") return new Map();
+    return new Map([...userIds].map((userId) => [userId, mode]));
   }
 }
 
@@ -197,6 +213,7 @@ class RecordingDriver implements TranslationSessionDriver {
     guildId: string;
     participantIds: readonly string[];
     translationTerms: readonly TranslationTerm[];
+    speakerLanguageHints: ReadonlyMap<string, Language>;
   }[] = [];
   public readonly runtimes: RecordingRuntime[] = [];
   public readonly signals: AbortSignal[] = [];
@@ -207,11 +224,13 @@ class RecordingDriver implements TranslationSessionDriver {
     participantIds: readonly string[],
     signal: AbortSignal,
     translationTerms: readonly TranslationTerm[],
+    speakerLanguageHints: ReadonlyMap<string, Language>,
   ): Promise<SessionRuntime> {
     this.starts.push({
       guildId: session.guildId,
       participantIds: [...participantIds],
       translationTerms: translationTerms.map((term) => ({ ...term })),
+      speakerLanguageHints: new Map(speakerLanguageHints),
     });
     this.signals.push(signal);
     await this.wait;
@@ -884,6 +903,45 @@ void test("language setは本人の選択を保存し、次回セッションか
     userId: "323456789012345678",
     mode: "ko",
     at: new Date("2026-08-15T03:00:00Z"),
+  }]);
+});
+
+void test("開始処理中のlanguage変更は開始要求時に固定したセッションへ混ぜない", async () => {
+  const harness = createHarness();
+  harness.speakerLanguages.selectionResult = {
+    mode: "ja",
+    source: "guild",
+  };
+  const usageGate = Promise.withResolvers<undefined>();
+  harness.usageGate.wait = usageGate.promise;
+
+  const starting = harness.service.execute(validStart());
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(harness.service.getSession("223456789012345678")?.state, "AUTHORIZING");
+
+  const changed = await harness.service.execute({
+    kind: "language",
+    action: "set",
+    language: "ko",
+    guildId: "223456789012345678",
+    actorId: "323456789012345678",
+    targetUserId: "323456789012345678",
+  });
+  assert.equal(changed.ok, true);
+  usageGate.resolve(undefined);
+  assert.equal((await starting).ok, true);
+
+  assert.deepEqual(
+    [...(harness.driver.starts[0]?.speakerLanguageHints ?? new Map())],
+    [
+      ["323456789012345678", "ja"],
+      ["423456789012345678", "ja"],
+    ],
+  );
+  assert.deepEqual(harness.speakerLanguages.snapshots, [{
+    guildId: "223456789012345678",
+    userIds: ["323456789012345678", "423456789012345678"],
+    pair: "ja-ko",
   }]);
 });
 

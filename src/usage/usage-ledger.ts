@@ -106,7 +106,8 @@ type ProviderContextRow = {
   reconciled_cost_microusd: number | null;
 };
 
-const schemaVersion = 3;
+const schemaVersion = 2;
+const highestReadableSchemaVersion = 3;
 const millisecondsPerHour = 3_600_000n;
 const charactersPerMillion = 1_000_000n;
 
@@ -214,10 +215,9 @@ function periodStartUtc(period: string): string {
 
 function migrate(database: Database.Database): void {
   const currentVersion = database.pragma("user_version", { simple: true }) as number;
-  if (currentVersion > schemaVersion) {
+  if (currentVersion > highestReadableSchemaVersion) {
     throw new Error(`SQLite schema version ${String(currentVersion)}は未対応です`);
   }
-  if (currentVersion === schemaVersion) return;
 
   database.transaction(() => {
     if (currentVersion < 1) {
@@ -287,17 +287,15 @@ function migrate(database: Database.Database): void {
         );
       `);
     }
-    if (currentVersion < 3) {
-      database.exec(`
-        CREATE TABLE speaker_language_setting (
-          guild_id TEXT NOT NULL,
-          user_id TEXT NOT NULL,
-          mode TEXT NOT NULL CHECK (mode IN ('auto', 'ja', 'ko', 'en')),
-          updated_at TEXT NOT NULL,
-          PRIMARY KEY (guild_id, user_id)
-        );
-      `);
-    }
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS speaker_language_setting (
+        guild_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        mode TEXT NOT NULL CHECK (mode IN ('auto', 'ja', 'ko', 'en')),
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (guild_id, user_id)
+      );
+    `);
     database.pragma(`user_version = ${String(schemaVersion)}`);
   })();
 }

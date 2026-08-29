@@ -183,7 +183,7 @@ type TranslationCommandServiceDependencies = {
     TranslationTermCatalog,
     "snapshot" | "register" | "listRegisteredTerms" | "delete"
   >;
-  speakerLanguages: Pick<SpeakerLanguageSettings, "selection" | "set">;
+  speakerLanguages: Pick<SpeakerLanguageSettings, "selection" | "set" | "snapshot">;
   now?: () => Date;
 };
 
@@ -208,7 +208,10 @@ export class TranslationCommandService {
     TranslationTermCatalog,
     "snapshot" | "register" | "listRegisteredTerms" | "delete"
   >;
-  readonly #speakerLanguages: Pick<SpeakerLanguageSettings, "selection" | "set">;
+  readonly #speakerLanguages: Pick<
+    SpeakerLanguageSettings,
+    "selection" | "set" | "snapshot"
+  >;
   readonly #now: () => Date;
 
   public constructor(dependencies: TranslationCommandServiceDependencies) {
@@ -345,6 +348,11 @@ export class TranslationCommandService {
       ? "conversation"
       : this.#requirePlaybackMode(input.mode);
     const translationTerms = this.#terms.snapshot(guildId, input.pair);
+    const speakerLanguageHints = this.#speakerLanguages.snapshot(
+      guildId,
+      this.#allowedUserIds,
+      input.pair,
+    );
 
     await this.#sessions.start({
       guildId,
@@ -361,6 +369,7 @@ export class TranslationCommandService {
       captionFailurePolicy: "continue_audio",
       requiredSttStreams: this.#maxSpeakersPerSession,
       translationTerms,
+      speakerLanguageHints,
     });
 
     return {

@@ -281,7 +281,7 @@ SQLiteは利用量、運用メタデータ、Guild登録用語、話者言語設
 | `registered_translation_term` | Guild ID、言語ペア、翻訳前の用語、希望する翻訳、更新時刻 |
 | `speaker_language_setting` | Guild ID、User ID、音声認識言語、自動判定、更新時刻 |
 
-音声、会話の原文・翻訳文、表示名は保存しない。`/register add`へ入力された翻訳前の用語と希望する翻訳は、設定データとして保存する。`/register list`はこのテーブルを読み、`/register delete`は指定した主キーの行だけを削除する。`/language set`はGuildとUserの設定を保存する。Discord IDとChannel IDは運用メタデータとして保存する。SQLite schema version 2では、version 1の利用量データを保ったまま`registered_translation_term`を追加した。schema version 3では既存データを保ったまま`speaker_language_setting`を追加する。起動時には、未完了の`provider_request`を`failed`へ変更し、未完了の`session_usage`を`PROCESS_RESTART`で終了する。
+音声、会話の原文・翻訳文、表示名は保存しない。`/register add`へ入力された翻訳前の用語と希望する翻訳は、設定データとして保存する。`/register list`はこのテーブルを読み、`/register delete`は指定した主キーの行だけを削除する。`/language set`はGuildとUserの設定を保存する。Discord IDとChannel IDは運用メタデータとして保存する。SQLite schema version 2では、version 1の利用量データを保ったまま`registered_translation_term`を追加した。`speaker_language_setting`は旧version 2実装が無視できる互換的な追加であるため、`user_version`を上げない。候補版が付けたversion 3も、同じテーブルを保持したままversion 2へ正規化し、直前のimageへ巻き戻せるようにする。起動時には、未完了の`provider_request`を`failed`へ変更し、未完了の`session_usage`を`PROCESS_RESTART`で終了する。
 
 月の境界は`Asia/Tokyo`で計算する。セッション、紐づくSoniox要求、User・Guildの月次集計は当月と前月を保持する。Globalの月次集計は当月を含む12か月を保持する。登録用語は利用量の保持期限では削除しない。Discord上のスレッドと字幕もSQLiteの保持処理に含まれず、Botが終了時にアーカイブしてもDiscordへ残る。
 

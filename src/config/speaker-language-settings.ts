@@ -97,6 +97,19 @@ export class SpeakerLanguageSettings {
     return mode;
   }
 
+  public snapshot(
+    guildId: string,
+    userIds: ReadonlySet<string>,
+    pair: LanguagePair,
+  ): ReadonlyMap<string, Language> {
+    const snapshot = new Map<string, Language>();
+    for (const userId of userIds) {
+      const language = this.resolve(guildId, userId, pair);
+      if (language !== undefined) snapshot.set(userId, language);
+    }
+    return snapshot;
+  }
+
   #storeUnavailable(cause: unknown): ApplicationError {
     return new ApplicationError(
       "SPEAKER_LANGUAGE_STORE_UNAVAILABLE",
