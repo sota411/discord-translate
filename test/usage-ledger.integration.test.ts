@@ -197,7 +197,7 @@ void test("Guild別翻訳用語をSQLiteへ保存し、再起動後もsource順�
       );
       const inspection = new Database(databasePath, { readonly: true });
       try {
-        assert.equal(inspection.pragma("user_version", { simple: true }), 2);
+        assert.equal(inspection.pragma("user_version", { simple: true }), 3);
       } finally {
         inspection.close();
       }
@@ -207,7 +207,116 @@ void test("Guild別翻訳用語をSQLiteへ保存し、再起動後もsource順�
   });
 });
 
-void test("SQLite version 1から用語テーブルだけを追加し、既存利用量を保持する", async () => {
+void test("話者言語設定はGuild・User単位でautoを含めて再起動後も保持する", async () => {
+  await withLedger((ledger, databasePath) => {
+    ledger.upsertStoredSpeakerLanguageMode({
+      guildId: "223456789012345678",
+      userId: "323456789012345678",
+      mode: "ko",
+      updatedAt: new Date("2026-08-30T00:00:00Z"),
+    });
+    ledger.upsertStoredSpeakerLanguageMode({
+      guildId: "223456789012345678",
+      userId: "423456789012345678",
+      mode: "auto",
+      updatedAt: new Date("2026-08-30T00:01:00Z"),
+    });
+    ledger.upsertStoredSpeakerLanguageMode({
+      guildId: "999999999999999999",
+      userId: "323456789012345678",
+      mode: "ja",
+      updatedAt: new Date("2026-08-30T00:02:00Z"),
+    });
+    ledger.close();
+
+    const reopened = UsageLedger.open({
+      databasePath,
+      pricing,
+      limits,
+      reconcileMaxStalenessSeconds: 180,
+    });
+    try {
+      assert.equal(
+        reopened.getStoredSpeakerLanguageMode(
+          "223456789012345678",
+          "323456789012345678",
+        ),
+        "ko",
+      );
+      assert.equal(
+        reopened.getStoredSpeakerLanguageMode(
+          "223456789012345678",
+          "423456789012345678",
+        ),
+        "auto",
+      );
+      assert.equal(
+        reopened.getStoredSpeakerLanguageMode(
+          "999999999999999999",
+          "323456789012345678",
+        ),
+        "ja",
+      );
+      assert.equal(
+        reopened.getStoredSpeakerLanguageMode(
+          "999999999999999999",
+          "423456789012345678",
+        ),
+        undefined,
+      );
+    } finally {
+      reopened.close();
+    }
+  });
+});
+
+void test("SQLite version 2から話者言語テーブルだけを追加し、既存用語を保持する", async () => {
+  await withLedger((ledger, databasePath) => {
+    ledger.upsertRegisteredTranslationTerm({
+      guildId: "223456789012345678",
+      pair: "ja-ko",
+      source: "ult",
+      target: "궁극기",
+      updatedAt: new Date("2026-08-30T00:00:00Z"),
+    });
+    ledger.close();
+
+    const versionTwo = new Database(databasePath);
+    versionTwo.exec("DROP TABLE speaker_language_setting");
+    versionTwo.pragma("user_version = 2");
+    versionTwo.close();
+
+    const migrated = UsageLedger.open({
+      databasePath,
+      pricing,
+      limits,
+      reconcileMaxStalenessSeconds: 180,
+    });
+    try {
+      assert.deepEqual(
+        migrated.listRegisteredTranslationTerms("223456789012345678", "ja-ko"),
+        [{ source: "ult", target: "궁극기" }],
+      );
+      assert.equal(
+        migrated.getStoredSpeakerLanguageMode(
+          "223456789012345678",
+          "323456789012345678",
+        ),
+        undefined,
+      );
+      migrated.upsertStoredSpeakerLanguageMode({
+        guildId: "223456789012345678",
+        userId: "323456789012345678",
+        mode: "ko",
+        updatedAt: new Date("2026-08-30T00:01:00Z"),
+      });
+    } finally {
+      migrated.close();
+    }
+  });
+});
+
+void test("SQLite version 1から設定テーブルを追加し、既存利用量を保持する", async () => {
   await withLedger((ledger, databasePath) => {
     ledger.createSession({
       sessionId: "00000000-0000-4000-8000-000000000050",
@@ -221,7 +330,10 @@ void test("SQLite version 1から用語テーブルだけを追加し、既存�
     ledger.close();
 
     const versionOne = new Database(databasePath);
-    versionOne.exec("DROP TABLE registered_translation_term");
+    versionOne.exec(`
+      DROP TABLE registered_translation_term;
+      DROP TABLE speaker_language_setting;
+    `);
     versionOne.pragma("user_version = 1");
     versionOne.close();
 

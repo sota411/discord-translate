@@ -63,6 +63,8 @@ void test("RuntimeのSTT resultから警告送信失敗を非致命ログへ渡�
   let deleted = 0;
   let discordUnavailable = true;
   const failures: string[] = [];
+  const resolvedUserIds: string[] = [];
+  const sttCreateCalls: unknown[][] = [];
   const observedWarning = Promise.withResolvers<{
     guildId: string;
     operation: string;
@@ -132,6 +134,12 @@ void test("RuntimeのSTT resultから警告送信失敗を非致命ログへ渡�
       destroy: () => undefined,
     },
     config: loadConfig(validEnv({ SONIOX_REGION: "jp" })),
+    speakerLanguages: {
+      resolve: (_guildId: string, resolvedUserId: string) => {
+        resolvedUserIds.push(resolvedUserId);
+        return resolvedUserId === userId ? "ko" : undefined;
+      },
+    },
     ledger: {
       openProviderRequest: () => undefined,
       recordProviderUsage: () => undefined,
@@ -139,7 +147,10 @@ void test("RuntimeのSTT resultから警告送信失敗を非致命ログへ渡�
       finishSession: () => undefined,
     },
     sttFactory: {
-      create: () => ({ session: stt, initialTextCharacterCount: 0 }),
+      create: (...args: unknown[]) => {
+        sttCreateCalls.push(args);
+        return { session: stt, initialTextCharacterCount: 0 };
+      },
     },
     tts: {},
     latency: {
@@ -155,7 +166,17 @@ void test("RuntimeのSTT resultから警告送信失敗を非致命ログへ渡�
   } as unknown as TranslationRuntimeOptions);
 
   try {
+    assert.deepEqual(resolvedUserIds, [userId, replacementUserId]);
     speaking.emit("start", userId);
+    assert.deepEqual(sttCreateCalls[0]?.[3], {
+      language: "ko",
+      strict: false,
+    });
+    assert.deepEqual(
+      resolvedUserIds,
+      [userId, replacementUserId],
+      "発話開始時に話者言語を再解決しています",
+    );
     stt.emit("result", unsupportedResult);
 
     const warning = await observedWarning.promise;
@@ -205,6 +226,11 @@ void test("RuntimeのSTT resultから警告送信失敗を非致命ログへ渡�
     assert.equal(deleted, 1);
 
     await runtime.updateParticipants([replacementUserId]);
+    assert.deepEqual(
+      resolvedUserIds,
+      [userId, replacementUserId],
+      "途中参加時に現在のセッションへ新しい設定を混ぜています",
+    );
     stt.emit("result", {
       tokens: [
         {
@@ -300,6 +326,7 @@ void test("Discord音声受信streamの一時エラーは再購読してセッ�
       destroy: () => undefined,
     },
     config: loadConfig(validEnv({ SONIOX_REGION: "jp" })),
+    speakerLanguages: { resolve: () => undefined },
     ledger: {
       openProviderRequest: () => undefined,
       recordProviderUsage: () => undefined,

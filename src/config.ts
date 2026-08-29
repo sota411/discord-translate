@@ -2,6 +2,7 @@ import path from "node:path";
 
 import { z } from "zod";
 
+import type { Language } from "./domain/language-pair.js";
 import { ttsSpeedMax, ttsSpeedMin } from "./session/session-settings.js";
 
 const snowflakePattern = /^\d{17,20}$/;
@@ -22,6 +23,7 @@ const rawConfigSchema = z.object({
   DISCORD_APPLICATION_ID: z.string().regex(snowflakePattern),
   ALLOWED_GUILD_IDS: requiredString,
   ALLOWED_USER_IDS: requiredString,
+  SPEAKER_LANGUAGE_HINTS: z.string().optional(),
   SONIOX_API_KEY: requiredString,
   SONIOX_REGION: requiredString,
   SESSION_MAX_MINUTES: positiveInteger,
@@ -67,6 +69,7 @@ export type AppConfig = {
     applicationId: string;
     allowedGuildIds: ReadonlySet<string>;
     allowedUserIds: ReadonlySet<string>;
+    speakerLanguageHints: ReadonlyMap<string, Language>;
   };
   soniox: {
     apiKey: string;
@@ -160,6 +163,40 @@ function parseSnowflakeList(name: string, value: string, issues: string[]): Set<
   return new Set(entries);
 }
 
+function parseSpeakerLanguageHints(
+  value: string | undefined,
+  allowedUserIds: ReadonlySet<string>,
+  issues: string[],
+): Map<string, Language> {
+  const hints = new Map<string, Language>();
+  if (value === undefined || value.trim().length === 0) return hints;
+
+  for (const rawEntry of value.split(",")) {
+    const entry = rawEntry.trim();
+    const match = /^(\d{17,20}):(ja|ko|en)$/u.exec(entry);
+    if (!match) {
+      issues.push(
+        "SPEAKER_LANGUAGE_HINTS: Discord User ID:ja|ko|enをカンマ区切りで指定してください",
+      );
+      continue;
+    }
+    const [, userId, language] = match;
+    if (!userId || !language) continue;
+    if (hints.has(userId)) {
+      issues.push(`SPEAKER_LANGUAGE_HINTS: User ID「${userId}」が重複しています`);
+      continue;
+    }
+    if (!allowedUserIds.has(userId)) {
+      issues.push(
+        `SPEAKER_LANGUAGE_HINTS: User ID「${userId}」をALLOWED_USER_IDSにも指定してください`,
+      );
+      continue;
+    }
+    hints.set(userId, language as Language);
+  }
+  return hints;
+}
+
 function daysBetween(earlier: Date, later: Date): number {
   return Math.floor((later.getTime() - earlier.getTime()) / 86_400_000);
 }
@@ -187,6 +224,11 @@ export function loadConfig(
   const allowedUserIds = parseSnowflakeList(
     "ALLOWED_USER_IDS",
     raw.ALLOWED_USER_IDS,
+    issues,
+  );
+  const speakerLanguageHints = parseSpeakerLanguageHints(
+    raw.SPEAKER_LANGUAGE_HINTS,
+    allowedUserIds,
     issues,
   );
 
@@ -249,6 +291,7 @@ export function loadConfig(
       applicationId: raw.DISCORD_APPLICATION_ID,
       allowedGuildIds,
       allowedUserIds,
+      speakerLanguageHints,
     },
     soniox: {
       apiKey: raw.SONIOX_API_KEY,

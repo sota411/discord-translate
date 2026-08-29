@@ -14,6 +14,7 @@ import { ApplicationError } from "../domain/application-error.js";
 import {
   languagePairs,
   languagesForPair,
+  type Language,
   type LanguagePair,
 } from "../domain/language-pair.js";
 import type { CapacityGate } from "../session/session-manager.js";
@@ -215,11 +216,24 @@ export class SonioxSttFactory {
     pair: LanguagePair,
     requestRef: string,
     translationTerms: readonly TranslationTerm[],
+    speakerLanguageHint?: {
+      language: Language;
+      strict: boolean;
+    },
   ): {
     session: RealtimeSttSession;
     initialTextCharacterCount: number;
   } {
     const [languageA, languageB] = languagesForPair(pair);
+    if (
+      speakerLanguageHint !== undefined &&
+      speakerLanguageHint.language !== languageA &&
+      speakerLanguageHint.language !== languageB
+    ) {
+      throw new TypeError(
+        `単言語話者hint「${speakerLanguageHint.language}」は言語ペア「${pair}」に含まれていません`,
+      );
+    }
     const builtContext = buildSonioxTranscriptionContext(
       pair,
       translationTerms,
@@ -230,7 +244,10 @@ export class SonioxSttFactory {
       audio_format: "pcm_s16le",
       sample_rate: 48_000,
       num_channels: 1,
-      language_hints: [languageA, languageB],
+      language_hints: speakerLanguageHint === undefined
+        ? [languageA, languageB]
+        : [speakerLanguageHint.language],
+      ...(speakerLanguageHint?.strict === true ? { language_hints_strict: true } : {}),
       enable_language_identification: true,
       enable_endpoint_detection: true,
       translation: {

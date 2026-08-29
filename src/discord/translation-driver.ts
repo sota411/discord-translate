@@ -26,6 +26,7 @@ import {
 } from "@soniox/node";
 
 import type { AppConfig } from "../config.js";
+import type { SpeakerLanguageSettings } from "../config/speaker-language-settings.js";
 import type { TranslationTerm } from "../config/translation-terms.js";
 import { decodeDiscordOpusPacketToMono } from "../audio/pcm.js";
 import { OpusStartupBuffer } from "../audio/opus-startup-buffer.js";
@@ -34,6 +35,10 @@ import {
   type SttBoundaryKind,
 } from "../audio/stt-turn-finalizer.js";
 import { ApplicationError } from "../domain/application-error.js";
+import {
+  languagesForPair,
+  type Language,
+} from "../domain/language-pair.js";
 import type { TranslationLatencyRecorder } from "../observability/translation-latency.js";
 import {
   createTranslationQualityObservation,
@@ -84,6 +89,7 @@ export type RuntimeFailureHandler = (
 type DiscordTranslationDriverOptions = {
   client: Client;
   config: AppConfig;
+  speakerLanguages: Pick<SpeakerLanguageSettings, "resolve">;
   ledger: UsageLedger;
   sttFactory: SonioxSttFactory;
   tts: TtsGateway;
@@ -166,9 +172,18 @@ function mapSttError(error: unknown): ApplicationError {
       );
 }
 
+function speakerLanguageHint(
+  language: Language | undefined,
+  pair: SessionDescriptor["pair"],
+): { language: ReturnType<typeof languagesForPair>[number]; strict: false } | undefined {
+  if (language === undefined || !languagesForPair(pair).includes(language)) return undefined;
+  return { language, strict: false };
+}
+
 export class DiscordTranslationDriver implements TranslationSessionDriver {
   readonly #client: Client;
   readonly #config: AppConfig;
+  readonly #speakerLanguages: Pick<SpeakerLanguageSettings, "resolve">;
   readonly #ledger: UsageLedger;
   readonly #sttFactory: SonioxSttFactory;
   readonly #tts: TtsGateway;
@@ -183,6 +198,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
   public constructor(options: DiscordTranslationDriverOptions) {
     this.#client = options.client;
     this.#config = options.config;
+    this.#speakerLanguages = options.speakerLanguages;
     this.#ledger = options.ledger;
     this.#sttFactory = options.sttFactory;
     this.#tts = options.tts;
@@ -270,6 +286,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
         presentation,
         connection,
         config: this.#config,
+        speakerLanguages: this.#speakerLanguages,
         ledger: this.#ledger,
         sttFactory: this.#sttFactory,
         translationTerms,
@@ -324,6 +341,7 @@ export type TranslationRuntimeOptions = {
   presentation: DiscordSessionPresentation;
   connection: VoiceConnection;
   config: AppConfig;
+  speakerLanguages: Pick<SpeakerLanguageSettings, "resolve">;
   ledger: UsageLedger;
   sttFactory: SonioxSttFactory;
   translationTerms: readonly TranslationTerm[];
@@ -346,6 +364,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
   readonly #presentation: DiscordSessionPresentation;
   readonly #connection: VoiceConnection;
   readonly #config: AppConfig;
+  readonly #speakerLanguageHints = new Map<string, Language>();
   readonly #ledger: UsageLedger;
   readonly #sttFactory: SonioxSttFactory;
   readonly #translationTerms: readonly TranslationTerm[];
@@ -375,6 +394,14 @@ export class DiscordTranslationRuntime implements SessionRuntime {
   public constructor(options: TranslationRuntimeOptions) {
     this.captionThreadId = options.presentation.threadId;
     this.#session = options.session;
+    for (const allowedUserId of options.config.discord.allowedUserIds) {
+      const language = options.speakerLanguages.resolve(
+        options.session.guildId,
+        allowedUserId,
+        options.session.pair,
+      );
+      if (language !== undefined) this.#speakerLanguageHints.set(allowedUserId, language);
+    }
     this.#guild = options.guild;
     this.#voiceChannel = options.voiceChannel;
     this.#presentation = options.presentation;
@@ -589,10 +616,15 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       end: { behavior: EndBehaviorType.Manual },
     });
     const requestRef = randomUUID();
+    const languageHint = speakerLanguageHint(
+      this.#speakerLanguageHints.get(userId),
+      this.#session.pair,
+    );
     const stt = this.#sttFactory.create(
       this.#session.pair,
       requestRef,
       this.#translationTerms,
+      languageHint,
     );
     const turnFinalizer = new SttTurnFinalizer({
       session: stt.session,

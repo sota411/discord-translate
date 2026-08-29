@@ -9,6 +9,10 @@ import {
   languagePairs,
 } from "../domain/language-pair.js";
 import {
+  speakerLanguageModeLabels,
+  speakerLanguageModes,
+} from "../config/speaker-language-settings.js";
+import {
   playbackModeLabels,
   playbackModes,
   ttsSpeedMax,
@@ -72,6 +76,43 @@ export const statusCommand = new SlashCommandBuilder()
   .setName("status")
   .setDescription("現在の翻訳セッションの状態を表示します")
   .setContexts(InteractionContextType.Guild);
+
+export const languageCommand = new SlashCommandBuilder()
+  .setName("language")
+  .setDescription("話者ごとの音声認識言語を確認・変更します")
+  .setContexts(InteractionContextType.Guild)
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("show")
+      .setDescription("現在の音声認識言語を表示します")
+      .addUserOption((option) =>
+        option
+          .setName("user")
+          .setDescription("確認する利用者。省略時は自分です")
+          .setRequired(false),
+      ),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("set")
+      .setDescription("音声認識で優先する言語を設定します")
+      .addStringOption((option) =>
+        option
+          .setName("language")
+          .setDescription("音声認識で優先する言語")
+          .setRequired(true)
+          .addChoices(...speakerLanguageModes.map((mode) => ({
+            name: speakerLanguageModeLabels[mode],
+            value: mode,
+          }))),
+      )
+      .addUserOption((option) =>
+        option
+          .setName("user")
+          .setDescription("設定する利用者。省略時は自分です")
+          .setRequired(false),
+      ),
+  );
 
 export const exportCommand = new SlashCommandBuilder()
   .setName("export")
@@ -155,3 +196,11 @@ export const registerCommand = new SlashCommandBuilder()
           .setAutocomplete(true),
       ),
   );
+
+export const guildCommands = [
+  translateCommand,
+  statusCommand,
+  exportCommand,
+  registerCommand,
+  languageCommand,
+] as const;

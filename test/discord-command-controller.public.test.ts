@@ -190,6 +190,90 @@ void test("register addの3引数を認可サービスへそのまま渡す", as
   assert.deepEqual(edits, ["翻訳用語を登録しました。"]);
 });
 
+void test("language setはuser省略時に実行者本人を対象として認可情報を渡す", async () => {
+  const inputs: TranslationCommandInput[] = [];
+  const edits: unknown[] = [];
+  const controller = new DiscordBotController({
+    client: {} as Client,
+    commands: commands(inputs, {
+      ok: true,
+      ephemeral: true,
+      interactionMessage: "音声認識言語を韓国語に設定しました。",
+    }),
+    logger: logger(),
+  });
+  const interaction = {
+    isChatInputCommand: () => true,
+    commandName: "language",
+    guildId: "guild-1",
+    user: { id: "user-1" },
+    memberPermissions: { has: () => false },
+    options: {
+      getSubcommand: () => "set",
+      getString: (name: string) => name === "language" ? "ko" : null,
+      getUser: () => null,
+    },
+    deferReply: () => Promise.resolve(),
+    editReply: (value: unknown) => {
+      edits.push(value);
+      return Promise.resolve();
+    },
+  } as unknown as ChatInputCommandInteraction;
+
+  await controller.handleInteraction(interaction);
+
+  assert.deepEqual(inputs, [{
+    kind: "language",
+    action: "set",
+    language: "ko",
+    guildId: "guild-1",
+    actorId: "user-1",
+    actorCanManageGuild: false,
+    targetUserId: "user-1",
+  }]);
+  assert.deepEqual(edits, ["音声認識言語を韓国語に設定しました。"]);
+});
+
+void test("language showは指定UserとManageGuild権限を認可サービスへ渡す", async () => {
+  const inputs: TranslationCommandInput[] = [];
+  const controller = new DiscordBotController({
+    client: {} as Client,
+    commands: commands(inputs, {
+      ok: true,
+      ephemeral: true,
+      interactionMessage: "指定した利用者の音声認識言語は日本語です。",
+    }),
+    logger: logger(),
+  });
+  const interaction = {
+    isChatInputCommand: () => true,
+    commandName: "language",
+    guildId: "guild-1",
+    user: { id: "user-1" },
+    memberPermissions: {
+      has: (permission: bigint) => permission === PermissionFlagsBits.ManageGuild,
+    },
+    options: {
+      getSubcommand: () => "show",
+      getString: () => null,
+      getUser: () => ({ id: "user-2" }),
+    },
+    deferReply: () => Promise.resolve(),
+    editReply: () => Promise.resolve(),
+  } as unknown as ChatInputCommandInteraction;
+
+  await controller.handleInteraction(interaction);
+
+  assert.deepEqual(inputs, [{
+    kind: "language",
+    action: "show",
+    guildId: "guild-1",
+    actorId: "user-1",
+    actorCanManageGuild: true,
+    targetUserId: "user-2",
+  }]);
+});
+
 void test("register listは任意のpairを渡し、Components V2一覧をephemeral表示する", async () => {
   const inputs: TranslationCommandInput[] = [];
   const edits: unknown[] = [];

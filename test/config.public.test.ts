@@ -57,6 +57,44 @@ void test("構造化会話contextは明示的に有効化し、不正な真偽�
   );
 });
 
+void test("単言語話者hintは許可済みDiscord User IDと言語の対応へ変換する", () => {
+  const config = loadConfig(
+    validEnv({
+      SPEAKER_LANGUAGE_HINTS:
+        "323456789012345678:ja,423456789012345678:ko",
+    }),
+    new Date("2026-08-15T00:00:00Z"),
+  );
+
+  assert.deepEqual([...config.discord.speakerLanguageHints], [
+    ["323456789012345678", "ja"],
+    ["423456789012345678", "ko"],
+  ]);
+  assert.equal(
+    loadConfig(
+      validEnv({ SPEAKER_LANGUAGE_HINTS: undefined }),
+      new Date("2026-08-15T00:00:00Z"),
+    ).discord.speakerLanguageHints.size,
+    0,
+  );
+});
+
+void test("単言語話者hintの不正形式、重複、許可外User IDを起動前に拒否する", () => {
+  for (const value of [
+    "323456789012345678:japanese",
+    "323456789012345678:ja,323456789012345678:ko",
+    "999999999999999999:ja",
+  ]) {
+    assert.throws(
+      () => loadConfig(
+        validEnv({ SPEAKER_LANGUAGE_HINTS: value }),
+        new Date("2026-08-15T00:00:00Z"),
+      ),
+      /SPEAKER_LANGUAGE_HINTS/u,
+    );
+  }
+});
+
 void test("同時話者数を3人に設定できる", () => {
   const config = loadConfig(
     validEnv({ MAX_SPEAKERS_PER_SESSION: "3" }),

@@ -17,6 +17,7 @@ import {
 
 import type {
   CommandResult,
+  LanguageCommandInput,
   RegisterCommandInput,
   TranslationCommandService,
 } from "../commands/translation-command-service.js";
@@ -113,7 +114,9 @@ export class DiscordBotController {
   public async handleInteraction(interaction: ChatInputCommandInteraction): Promise<void> {
     if (
       !interaction.isChatInputCommand() ||
-      !["translate", "status", "export", "register"].includes(interaction.commandName)
+      !["translate", "status", "export", "register", "language"].includes(
+        interaction.commandName,
+      )
     ) {
       return;
     }
@@ -166,6 +169,10 @@ export class DiscordBotController {
         }
         if (interaction.commandName === "register") {
           await this.#handleRegisterCommand(interaction);
+          return;
+        }
+        if (interaction.commandName === "language") {
+          await this.#handleLanguageCommand(interaction);
           return;
         }
         await this.#handleExportCommand(
@@ -259,6 +266,13 @@ export class DiscordBotController {
       filter,
       requestedPage: 0,
     }));
+  }
+
+  async #handleLanguageCommand(
+    interaction: ChatInputCommandInteraction,
+  ): Promise<void> {
+    const result = await this.#commands.execute(this.#languageInput(interaction));
+    await this.#completeInteraction(interaction, result);
   }
 
   public async handleAutocomplete(
@@ -719,6 +733,28 @@ export class DiscordBotController {
       };
     }
     throw new Error("未対応のregisterサブコマンドです");
+  }
+
+  #languageInput(interaction: ChatInputCommandInteraction): LanguageCommandInput {
+    const action = interaction.options.getSubcommand(true);
+    const common = {
+      kind: "language" as const,
+      guildId: interaction.guildId ?? undefined,
+      actorId: interaction.user.id,
+      actorCanManageGuild:
+        interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ?? false,
+      targetUserId:
+        interaction.options.getUser("user", false)?.id ?? interaction.user.id,
+    };
+    if (action === "show") return { action, ...common };
+    if (action === "set") {
+      return {
+        action,
+        language: interaction.options.getString("language", true),
+        ...common,
+      };
+    }
+    throw new Error("未対応のlanguageサブコマンドです");
   }
 
   async #completeInteraction(

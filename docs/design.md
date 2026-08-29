@@ -36,6 +36,7 @@ Discordでは、Botが音声チャンネルへ流した音声を参加者ごと�
 - 現在のセッション状態を実行者だけに表示
 - 公開スレッドに残るBotの確定字幕をMarkdownで出力
 - Guild・言語ペアごとの翻訳用語をSQLiteへ登録・一覧表示・削除
+- 話者ごとに音声認識で優先する言語を指定
 - 確定翻訳だけをTTSへ送り、発話の確定順に再生
 - 会話優先と正確さ優先の2モード
 - 実行中のセッションごとに0.7〜1.3倍の読み上げ速度を変更
@@ -72,12 +73,16 @@ Discordでは、Botが音声チャンネルへ流した音声を参加者ごと�
 | `/translate speed` | `rate`必須。0.7〜1.3 | 現在のセッションだけ読み上げ速度を変える。次に生成する翻訳音声から反映する |
 | `/translate stop` | なし | 実行中または開始中のセッションを停止する |
 | `/status` | なし | 現在の状態、言語ペア、参加者、経過時間、モード、読み上げ速度、音声の有無、字幕スレッドを表示する |
+| `/language show` | `user`任意 | 話者に設定されている音声認識言語を表示する |
+| `/language set` | `language`必須、`user`任意 | 話者の音声認識言語を保存し、次のセッションから使う |
 | `/export` | 公開スレッドの`thread`任意 | 対象スレッドにあるBotの確定字幕をMarkdownで出力する。省略時はコマンドを実行した公開スレッドを使う |
 | `/register add` | `pair`、`source`、`target`必須 | Guild用の翻訳用語を保存し、同じ`source`があれば更新する |
 | `/register list` | `pair`任意 | Guild登録用語を一覧表示する。省略時は全言語ペアを表示する |
 | `/register delete` | `pair`、`source`必須 | Guild登録用語を完全一致で削除する。`source`は入力補完を使える |
 
-`pair`は3言語ペアの選択肢だけを受け付ける。`mode`を省略すると会話優先の`conversation`になる。コマンドはGuild内だけで使える。`/translate`のDiscord上の既定権限は管理者のみで、一般メンバーへ使わせる場合はDiscordのIntegrationsでロールまたはUserへ明示的に許可する。`/status`、`/export`、`/register`はGuildの全メンバーに表示するが、Bot側では3コマンドともGuild・User許可リストを適用する。`/translate start`にも同じ許可リストを適用する。`/translate stop`、`/translate speed`、カード操作の認可は「セッションカードと字幕」に示す。
+`pair`は3言語ペアの選択肢だけを受け付ける。`mode`を省略すると会話優先の`conversation`になる。コマンドはGuild内だけで使える。`/translate`のDiscord上の既定権限は管理者のみで、一般メンバーへ使わせる場合はDiscordのIntegrationsでロールまたはUserへ明示的に許可する。`/status`、`/language`、`/export`、`/register`はGuildの全メンバーに表示するが、Bot側では4コマンドともGuild・User許可リストを適用する。`/translate start`にも同じ許可リストを適用する。`/translate stop`、`/translate speed`、カード操作の認可は「セッションカードと字幕」に示す。
+
+`/language`はephemeralで応答する。`user`を省略すると実行者を対象にする。他の利用者の設定を確認または変更するには`ManageGuild`権限が必要である。設定はGuildと利用者の組み合わせごとにSQLiteへ保存し、次に開始するセッションから反映する。保存した設定は`SPEAKER_LANGUAGE_HINTS`より優先する。「自動判定」を保存すると環境設定を明示的に無効化する。
 
 `/status`の応答はephemeralである。セッションがなければ、その旨だけを返す。開始中または実行中なら、`AUTHORIZING`から`STOPPING`までの状態を日本語へ変換し、参加者の現在の表示名、読み上げ速度、字幕スレッドへのリンクを含める。スレッド作成前は「作成中」と表示する。
 
@@ -89,7 +94,7 @@ Discordでは、Botが音声チャンネルへ流した音声を参加者ごと�
 
 `delete`の`source`入力補完は、選択した言語ペアのGuild登録用語を大文字と小文字を区別しない部分一致で絞り、最大25件を`source → target`形式で返す。候補名は100文字以内に切り詰めるが、値には完全な`source`を使う。未認可なら候補を返さない。実行時は確認を挟まず、Guild・言語ペア・`source`の完全一致で1件を削除する。対象がない場合は安定したエラーを返し、静的用語は一覧・候補・削除の対象にしない。登録と削除は実行中または開始処理中のセッションには混ぜず、次に開始するセッションから反映する。
 
-BotはDiscord側の権限とは別に、次の条件を順に検査する。すべてのコマンドに1〜2を適用し、`/translate start`、`/status`、`/export`、`/register`には3も適用する。`/translate start`では4〜10も続けて検査する。
+BotはDiscord側の権限とは別に、次の条件を順に検査する。すべてのコマンドに1〜2を適用し、`/translate start`、`/status`、`/language`、`/export`、`/register`には3も適用する。`/translate start`では4〜10も続けて検査する。
 
 1. コマンドがGuild内で実行されている
 2. Guildが`ALLOWED_GUILD_IDS`に含まれる
@@ -199,6 +204,8 @@ STTには次を指定する。
 - 双方向翻訳
 - セッション開始前に固定した、静的用語とGuild登録用語のスナップショット
 
+セッションを作るときに、許可された全利用者の話者言語をSQLiteと環境設定から1回だけ解決する。設定言語が選択中の言語ペアに含まれる場合は、STTの`language_hints`をその1言語に絞る。`language_hints_strict`は有効にせず、言語識別と双方向翻訳は維持する。設定が「自動判定」の場合や言語ペア外の場合は、従来どおり2言語を渡す。発話開始時のSQLite読み取り、音声の待機、音声前処理は追加しない。
+
 `SONIOX_GENERAL_CONTEXT_ENABLED=true`の場合は、個人間のDiscord会話であること、選択中の2言語、日常会話を想定する話題、話した言語をそのまま認識する方針、自然な口語訳を求める方針を`context.general`へ追加する。既定値は`false`である。用語は有効・無効にかかわらず`translation_terms`へ渡し、ASRの`terms`へ重複して渡さない。固定文脈と用語を含むcontext全体が10,000文字を超える設定は、起動前に拒否する。
 
 Sonioxから届く認識・翻訳結果について、各トークンが確定済みか、翻訳結果かを判定する。あわせて言語と翻訳元言語を検査し、発話を組み立てる。言語ペア外の言語を検出した場合は翻訳せず、スレッドへ英語の警告を出す。
@@ -263,7 +270,7 @@ TTSへ次を送る。
 
 ### SQLiteへ保存するデータ
 
-SQLiteは利用量、運用メタデータ、Guild登録用語を保持する。読み取りと書き込みの競合を減らすWAL modeで開く。親ディレクトリを新規作成した場合は`0700`、DBファイルは`0600`にする。
+SQLiteは利用量、運用メタデータ、Guild登録用語、話者言語設定を保持する。読み取りと書き込みの競合を減らすWAL modeで開く。親ディレクトリを新規作成した場合は`0700`、DBファイルは`0600`にする。
 
 | テーブル | 主な内容 |
 |---|---|
@@ -272,8 +279,9 @@ SQLiteは利用量、運用メタデータ、Guild登録用語を保持する。
 | `monthly_usage` | User・Guild・Globalごとの月、利用時間、文字数、見積額・照合額 |
 | `app_meta` | 最終照合時刻と書き込み確認 |
 | `registered_translation_term` | Guild ID、言語ペア、翻訳前の用語、希望する翻訳、更新時刻 |
+| `speaker_language_setting` | Guild ID、User ID、音声認識言語、自動判定、更新時刻 |
 
-音声、会話の原文・翻訳文、表示名は保存しない。`/register add`へ入力された翻訳前の用語と希望する翻訳は、設定データとして保存する。`/register list`はこのテーブルを読み、`/register delete`は指定した主キーの行だけを削除する。Discord IDとChannel IDは運用メタデータとして保存する。SQLite schema version 2では、version 1の利用量データを保ったまま`registered_translation_term`を追加する。一覧と削除には既存テーブルを使うため、schema versionは2のままで移行を追加しない。起動時には、未完了の`provider_request`を`failed`へ変更し、未完了の`session_usage`を`PROCESS_RESTART`で終了する。
+音声、会話の原文・翻訳文、表示名は保存しない。`/register add`へ入力された翻訳前の用語と希望する翻訳は、設定データとして保存する。`/register list`はこのテーブルを読み、`/register delete`は指定した主キーの行だけを削除する。`/language set`はGuildとUserの設定を保存する。Discord IDとChannel IDは運用メタデータとして保存する。SQLite schema version 2では、version 1の利用量データを保ったまま`registered_translation_term`を追加した。schema version 3では既存データを保ったまま`speaker_language_setting`を追加する。起動時には、未完了の`provider_request`を`failed`へ変更し、未完了の`session_usage`を`PROCESS_RESTART`で終了する。
 
 月の境界は`Asia/Tokyo`で計算する。セッション、紐づくSoniox要求、User・Guildの月次集計は当月と前月を保持する。Globalの月次集計は当月を含む12か月を保持する。登録用語は利用量の保持期限では削除しない。Discord上のスレッドと字幕もSQLiteの保持処理に含まれず、Botが終了時にアーカイブしてもDiscordへ残る。
 
@@ -413,6 +421,7 @@ Sonioxの401・403は認証失敗、402は予算到達、429は同時実行上�
 | `DISCORD_APPLICATION_ID` | 空 | 17〜20桁 |
 | `ALLOWED_GUILD_IDS` | 空 | 17〜20桁のIDを1件以上 |
 | `ALLOWED_USER_IDS` | 空 | 全発話者のIDを1件以上 |
+| `SPEAKER_LANGUAGE_HINTS` | 空 | 任意。`User ID:ja|ko|en`をカンマ区切りで指定し、Userは許可リストに含める |
 | `SONIOX_API_KEY` | 空 | Bot専用ProjectのKey |
 | `SONIOX_REGION` | `us` | `us`、`eu`、`jp`。Projectのリージョンと一致させる |
 | `LOG_ID_HMAC_KEY` | 空 | 32文字以上。他用途と共有しない |
@@ -520,7 +529,7 @@ Discordの参照先:
 次は未検証である。
 
 - 現行版のDiscord・Soniox E2E
-- Discord実サービス上の`/translate speed`、`/status`、`/export`、`/register add`、`/register list`、`/register delete`
+- Discord実サービス上の`/translate speed`、`/status`、`/language show`、`/language set`、`/export`、`/register add`、`/register list`、`/register delete`
 - 2人・3人通話、日英、韓英
 - 3言語ペアの30分継続運転
 - 実請求額とローカル台帳の照合精度
@@ -541,6 +550,8 @@ Discordの参照先:
 - Voice受信の一時障害、破損Opus、TTS WebSocketの異常応答を局所化する
 - 利用量を本文なしで記録し、再起動復旧、保持期限、Soniox照合を行う
 - Guild登録用語を永続化・一覧表示・完全一致削除し、version 1からの移行後も既存利用量を保つ
+- 話者言語をGuildごとに保存し、環境設定より優先し、「自動判定」で環境設定を無効化する
+- セッション作成時に話者言語を固定し、発話開始や参加者更新でSQLiteを読まない
 - セッション開始時の用語を固定し、途中の登録変更をSTTへ混ぜない
 - 登録用語のページ境界、表示文字数、入力補完、未認可時の候補非表示をコマンド境界で確認する
 - 状態表示、Thread権限、全履歴の確定字幕抽出、添付上限を公開コマンド境界で確認する
@@ -577,7 +588,8 @@ docker build --tag discord-translate:local .
 12. `/translate speed`が0.7〜1.3倍だけを受け付け、現在のセッションの次のTTSから反映する
 13. `/status`が現在の状態、参加者、経過時間、モード、読み上げ速度、音声、字幕スレッドを正しく表示する
 14. `/register add`の新規登録と更新が再起動後も残り、`list`の全件・言語ペア別表示、ページ操作、`delete`の入力補完と即時削除が正しい。登録と削除は次に開始するセッションだけへ反映される
-15. `/export`が対象Threadの確定字幕だけを時系列で出力し、権限不足と添付上限超過を拒否する
+15. `/language`が自分と管理者による他の利用者の設定を正しく認可し、保存、再起動、次のセッション、言語ペア外の自動判定を正しく処理する
+16. `/export`が対象Threadの確定字幕だけを時系列で出力し、権限不足と添付上限超過を拒否する
 
 翻訳品質、遅延、メモリ増加量、ローカル台帳と実請求額の差には、まだ合格閾値がない。運営者が試験前に閾値を決める。結果を見た後に基準を変えず、閾値のない項目を受入済みにしない。
 

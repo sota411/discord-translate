@@ -8,6 +8,7 @@ import {
 
 import { TranslationCommandService } from "./commands/translation-command-service.js";
 import { loadConfig } from "./config.js";
+import { SpeakerLanguageSettings } from "./config/speaker-language-settings.js";
 import { TranslationTermCatalog } from "./config/translation-term-catalog.js";
 import { loadTranslationTerms } from "./config/translation-terms.js";
 import { DiscordBotController } from "./discord/bot-controller.js";
@@ -63,6 +64,10 @@ export async function startApplication(
   let client: Client | undefined;
   let reconciliationTimer: NodeJS.Timeout | undefined;
   try {
+    const speakerLanguages = new SpeakerLanguageSettings(
+      config.discord.speakerLanguageHints,
+      ledger,
+    );
     const terms = new TranslationTermCatalog(
       staticTerms,
       ledger,
@@ -132,6 +137,7 @@ export async function startApplication(
     const driver = new DiscordTranslationDriver({
       client: discordClient,
       config,
+      speakerLanguages,
       ledger,
       sttFactory,
       tts,
@@ -180,6 +186,7 @@ export async function startApplication(
       defaultTtsSpeed: config.soniox.ttsSpeed,
       sessions,
       terms,
+      speakerLanguages,
     });
     const controller = new DiscordBotController({
       client: discordClient,

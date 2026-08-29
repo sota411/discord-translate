@@ -8,6 +8,12 @@ import type {
   TranslationTermStore,
 } from "../config/translation-term-catalog.js";
 import type { TranslationTerm } from "../config/translation-terms.js";
+import {
+  isSpeakerLanguageMode,
+  type SpeakerLanguageMode,
+  type SpeakerLanguageSettingInput,
+  type SpeakerLanguageSettingStore,
+} from "../config/speaker-language-settings.js";
 import { ApplicationError } from "../domain/application-error.js";
 import type { LanguagePair } from "../domain/language-pair.js";
 import type { UsageGate } from "../session/session-manager.js";
@@ -100,7 +106,7 @@ type ProviderContextRow = {
   reconciled_cost_microusd: number | null;
 };
 
-const schemaVersion = 2;
+const schemaVersion = 3;
 const millisecondsPerHour = 3_600_000n;
 const charactersPerMillion = 1_000_000n;
 
@@ -281,11 +287,26 @@ function migrate(database: Database.Database): void {
         );
       `);
     }
+    if (currentVersion < 3) {
+      database.exec(`
+        CREATE TABLE speaker_language_setting (
+          guild_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          mode TEXT NOT NULL CHECK (mode IN ('auto', 'ja', 'ko', 'en')),
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (guild_id, user_id)
+        );
+      `);
+    }
     database.pragma(`user_version = ${String(schemaVersion)}`);
   })();
 }
 
-export class UsageLedger implements UsageGate, TranslationTermStore {
+export class UsageLedger implements
+  UsageGate,
+  TranslationTermStore,
+  SpeakerLanguageSettingStore
+{
   readonly #database: Database.Database;
   readonly #pricing: Pricing;
   readonly #limits: UsageLimits;
@@ -355,6 +376,38 @@ export class UsageLedger implements UsageGate, TranslationTermStore {
       WHERE guild_id = ? AND pair = ? AND source = ?
     `).run(guildId, pair, source);
     return result.changes === 1;
+  }
+
+  public getStoredSpeakerLanguageMode(
+    guildId: string,
+    userId: string,
+  ): SpeakerLanguageMode | undefined {
+    const row = this.#database.prepare(`
+      SELECT mode
+      FROM speaker_language_setting
+      WHERE guild_id = ? AND user_id = ?
+    `).get(guildId, userId) as { mode: string } | undefined;
+    if (row === undefined) return undefined;
+    if (!isSpeakerLanguageMode(row.mode)) {
+      throw new Error("保存済みの話者言語設定が不正です");
+    }
+    return row.mode;
+  }
+
+  public upsertStoredSpeakerLanguageMode(input: SpeakerLanguageSettingInput): void {
+    this.#database.prepare(`
+      INSERT INTO speaker_language_setting (
+        guild_id, user_id, mode, updated_at
+      ) VALUES (?, ?, ?, ?)
+      ON CONFLICT(guild_id, user_id) DO UPDATE SET
+        mode = excluded.mode,
+        updated_at = excluded.updated_at
+    `).run(
+      input.guildId,
+      input.userId,
+      input.mode,
+      input.updatedAt.toISOString(),
+    );
   }
 
   public createSession(input: CreateSessionInput): void {
