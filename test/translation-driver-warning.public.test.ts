@@ -63,6 +63,7 @@ void test("RuntimeのSTT resultから警告送信失敗を非致命ログへ渡�
   let deleted = 0;
   let discordUnavailable = true;
   const failures: string[] = [];
+  const sttCreateCalls: unknown[][] = [];
   const observedWarning = Promise.withResolvers<{
     guildId: string;
     operation: string;
@@ -132,6 +133,7 @@ void test("RuntimeのSTT resultから警告送信失敗を非致命ログへ渡�
       destroy: () => undefined,
     },
     config: loadConfig(validEnv({ SONIOX_REGION: "jp" })),
+    speakerLanguageHints: new Map([[userId, "ko"]]),
     ledger: {
       openProviderRequest: () => undefined,
       recordProviderUsage: () => undefined,
@@ -139,7 +141,10 @@ void test("RuntimeのSTT resultから警告送信失敗を非致命ログへ渡�
       finishSession: () => undefined,
     },
     sttFactory: {
-      create: () => ({ session: stt, initialTextCharacterCount: 0 }),
+      create: (...args: unknown[]) => {
+        sttCreateCalls.push(args);
+        return { session: stt, initialTextCharacterCount: 0 };
+      },
     },
     tts: {},
     latency: {
@@ -156,6 +161,10 @@ void test("RuntimeのSTT resultから警告送信失敗を非致命ログへ渡�
 
   try {
     speaking.emit("start", userId);
+    assert.deepEqual(sttCreateCalls[0]?.[3], {
+      language: "ko",
+      strict: false,
+    });
     stt.emit("result", unsupportedResult);
 
     const warning = await observedWarning.promise;
@@ -300,6 +309,7 @@ void test("Discord音声受信streamの一時エラーは再購読してセッ�
       destroy: () => undefined,
     },
     config: loadConfig(validEnv({ SONIOX_REGION: "jp" })),
+    speakerLanguageHints: new Map(),
     ledger: {
       openProviderRequest: () => undefined,
       recordProviderUsage: () => undefined,

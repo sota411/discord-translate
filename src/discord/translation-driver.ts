@@ -34,6 +34,10 @@ import {
   type SttBoundaryKind,
 } from "../audio/stt-turn-finalizer.js";
 import { ApplicationError } from "../domain/application-error.js";
+import {
+  languagesForPair,
+  type Language,
+} from "../domain/language-pair.js";
 import type { TranslationLatencyRecorder } from "../observability/translation-latency.js";
 import {
   createTranslationQualityObservation,
@@ -166,6 +170,14 @@ function mapSttError(error: unknown): ApplicationError {
       );
 }
 
+function speakerLanguageHint(
+  language: Language | undefined,
+  pair: SessionDescriptor["pair"],
+): { language: ReturnType<typeof languagesForPair>[number]; strict: false } | undefined {
+  if (language === undefined || !languagesForPair(pair).includes(language)) return undefined;
+  return { language, strict: false };
+}
+
 export class DiscordTranslationDriver implements TranslationSessionDriver {
   readonly #client: Client;
   readonly #config: AppConfig;
@@ -202,6 +214,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
     participantIds: readonly string[],
     signal: AbortSignal,
     translationTerms: readonly TranslationTerm[],
+    speakerLanguageHints: ReadonlyMap<string, Language>,
   ): Promise<SessionRuntime> {
     signal.throwIfAborted();
     const guild = this.#client.guilds.cache.get(session.guildId);
@@ -270,6 +283,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
         presentation,
         connection,
         config: this.#config,
+        speakerLanguageHints,
         ledger: this.#ledger,
         sttFactory: this.#sttFactory,
         translationTerms,
@@ -324,6 +338,7 @@ export type TranslationRuntimeOptions = {
   presentation: DiscordSessionPresentation;
   connection: VoiceConnection;
   config: AppConfig;
+  speakerLanguageHints: ReadonlyMap<string, Language>;
   ledger: UsageLedger;
   sttFactory: SonioxSttFactory;
   translationTerms: readonly TranslationTerm[];
@@ -346,6 +361,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
   readonly #presentation: DiscordSessionPresentation;
   readonly #connection: VoiceConnection;
   readonly #config: AppConfig;
+  readonly #speakerLanguageHints: ReadonlyMap<string, Language>;
   readonly #ledger: UsageLedger;
   readonly #sttFactory: SonioxSttFactory;
   readonly #translationTerms: readonly TranslationTerm[];
@@ -375,6 +391,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
   public constructor(options: TranslationRuntimeOptions) {
     this.captionThreadId = options.presentation.threadId;
     this.#session = options.session;
+    this.#speakerLanguageHints = new Map(options.speakerLanguageHints);
     this.#guild = options.guild;
     this.#voiceChannel = options.voiceChannel;
     this.#presentation = options.presentation;
@@ -589,10 +606,15 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       end: { behavior: EndBehaviorType.Manual },
     });
     const requestRef = randomUUID();
+    const languageHint = speakerLanguageHint(
+      this.#speakerLanguageHints.get(userId),
+      this.#session.pair,
+    );
     const stt = this.#sttFactory.create(
       this.#session.pair,
       requestRef,
       this.#translationTerms,
+      languageHint,
     );
     const turnFinalizer = new SttTurnFinalizer({
       session: stt.session,

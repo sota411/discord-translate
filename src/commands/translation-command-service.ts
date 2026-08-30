@@ -7,6 +7,10 @@ import type {
   TranslationTermCatalog,
 } from "../config/translation-term-catalog.js";
 import {
+  speakerLanguageModeLabels,
+  type SpeakerLanguageSettings,
+} from "../config/speaker-language-settings.js";
+import {
   isLanguagePair,
 } from "../domain/language-pair.js";
 import type { SessionManager } from "../session/session-manager.js";
@@ -105,6 +109,23 @@ export type ExportCommandInput = {
   actorId: string;
 };
 
+type LanguageCommandCommonInput = {
+  kind: "language";
+  guildId: string | undefined;
+  actorId: string;
+  targetUserId: string;
+};
+
+export type LanguageCommandInput = LanguageCommandCommonInput & (
+  | {
+      action: "show";
+    }
+  | {
+      action: "set";
+      language: string;
+    }
+);
+
 type RegisterCommandCommonInput = {
   kind: "register";
   guildId: string | undefined;
@@ -136,6 +157,7 @@ export type TranslationCommandInput =
   | SessionControlInput
   | StatusCommandInput
   | ExportCommandInput
+  | LanguageCommandInput
   | RegisterCommandInput;
 
 export type CommandResult = {
@@ -161,6 +183,7 @@ type TranslationCommandServiceDependencies = {
     TranslationTermCatalog,
     "snapshot" | "register" | "listRegisteredTerms" | "delete"
   >;
+  speakerLanguages: Pick<SpeakerLanguageSettings, "selection" | "set" | "snapshot">;
   now?: () => Date;
 };
 
@@ -185,6 +208,10 @@ export class TranslationCommandService {
     TranslationTermCatalog,
     "snapshot" | "register" | "listRegisteredTerms" | "delete"
   >;
+  readonly #speakerLanguages: Pick<
+    SpeakerLanguageSettings,
+    "selection" | "set" | "snapshot"
+  >;
   readonly #now: () => Date;
 
   public constructor(dependencies: TranslationCommandServiceDependencies) {
@@ -194,6 +221,7 @@ export class TranslationCommandService {
     this.#defaultTtsSpeed = dependencies.defaultTtsSpeed;
     this.#sessions = dependencies.sessions;
     this.#terms = dependencies.terms;
+    this.#speakerLanguages = dependencies.speakerLanguages;
     this.#now = dependencies.now ?? (() => new Date());
   }
 
@@ -205,6 +233,7 @@ export class TranslationCommandService {
       if (input.kind === "control") return await this.#control(input);
       if (input.kind === "status") return this.#status(input);
       if (input.kind === "register") return this.#register(input);
+      if (input.kind === "language") return this.#language(input);
       return this.#authorizeExport(input);
     } catch (error) {
       if (!(error instanceof ApplicationError)) {
@@ -319,6 +348,11 @@ export class TranslationCommandService {
       ? "conversation"
       : this.#requirePlaybackMode(input.mode);
     const translationTerms = this.#terms.snapshot(guildId, input.pair);
+    const speakerLanguageHints = this.#speakerLanguages.snapshot(
+      guildId,
+      this.#allowedUserIds,
+      input.pair,
+    );
 
     await this.#sessions.start({
       guildId,
@@ -335,6 +369,7 @@ export class TranslationCommandService {
       captionFailurePolicy: "continue_audio",
       requiredSttStreams: this.#maxSpeakersPerSession,
       translationTerms,
+      speakerLanguageHints,
     });
 
     return {
@@ -417,6 +452,49 @@ export class TranslationCommandService {
       interactionMessage: result === "created"
         ? "翻訳用語を登録しました。次に開始する翻訳セッションから反映されます。"
         : "登録済みの翻訳用語を更新しました。次に開始する翻訳セッションから反映されます。",
+    };
+  }
+
+  #language(input: LanguageCommandInput): CommandResult {
+    const guildId = this.#requireAllowedGuild(input.guildId);
+    this.#requireAllowedUser(input.actorId);
+    if (!this.#allowedUserIds.has(input.targetUserId)) {
+      throw new ApplicationError(
+        "SPEAKER_LANGUAGE_NOT_ALLOWED",
+        "対象の利用者は、このBotの許可リストに含まれていません。",
+      );
+    }
+    const showSubject = input.targetUserId === input.actorId
+      ? "現在の音声認識言語"
+      : "指定した利用者の音声認識言語";
+    if (input.action === "show") {
+      const selection = this.#speakerLanguages.selection(guildId, input.targetUserId);
+      const source = selection.source === "environment" ? "（環境設定）" : "";
+      return {
+        ok: true,
+        ephemeral: true,
+        interactionMessage:
+          `${showSubject}は${speakerLanguageModeLabels[selection.mode]}${source}です。`,
+      };
+    }
+
+    const mode = this.#speakerLanguages.set({
+      guildId,
+      userId: input.targetUserId,
+      mode: input.language,
+      at: this.#now(),
+    });
+    const setSubject = input.targetUserId === input.actorId
+      ? "音声認識言語"
+      : "指定した利用者の音声認識言語";
+    const timing = mode === "auto"
+      ? "次に開始する翻訳セッションから2言語の自動判定を使います。"
+      : "次に開始する翻訳セッションがこの言語を含む場合に反映されます。";
+    return {
+      ok: true,
+      ephemeral: true,
+      interactionMessage:
+        `${setSubject}を${speakerLanguageModeLabels[mode]}に設定しました。${timing}`,
     };
   }
 

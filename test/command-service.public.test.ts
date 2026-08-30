@@ -7,8 +7,12 @@ import {
 } from "../src/commands/translation-command-service.js";
 import type { TranslationTerm } from "../src/config/translation-terms.js";
 import type { RegisteredTranslationTerm } from "../src/config/translation-term-catalog.js";
+import type {
+  SpeakerLanguageMode,
+  SpeakerLanguageSelection,
+} from "../src/config/speaker-language-settings.js";
 import { ApplicationError } from "../src/domain/application-error.js";
-import type { LanguagePair } from "../src/domain/language-pair.js";
+import type { Language, LanguagePair } from "../src/domain/language-pair.js";
 import {
   SessionManager,
   type CapacityGate,
@@ -23,8 +27,58 @@ type Harness = {
   usageGate: RecordingUsageGate;
   capacityGate: RecordingCapacityGate;
   terms: RecordingTermCatalog;
+  speakerLanguages: RecordingSpeakerLanguageSettings;
   reconciliation: { calls: number };
 };
+
+class RecordingSpeakerLanguageSettings {
+  public selectionResult: SpeakerLanguageSelection = {
+    mode: "auto",
+    source: "automatic",
+  };
+  public readonly selections: { guildId: string; userId: string }[] = [];
+  public readonly updates: {
+    guildId: string;
+    userId: string;
+    mode: SpeakerLanguageMode;
+    at: Date;
+  }[] = [];
+  public readonly snapshots: {
+    guildId: string;
+    userIds: readonly string[];
+    pair: LanguagePair;
+  }[] = [];
+
+  public selection(guildId: string, userId: string) {
+    this.selections.push({ guildId, userId });
+    return { ...this.selectionResult };
+  }
+
+  public set(input: {
+    guildId: string;
+    userId: string;
+    mode: SpeakerLanguageMode;
+    at: Date;
+  }): SpeakerLanguageMode {
+    this.updates.push({ ...input });
+    this.selectionResult = {
+      mode: input.mode,
+      source: "guild",
+    };
+    return input.mode;
+  }
+
+  public snapshot(
+    guildId: string,
+    userIds: ReadonlySet<string>,
+    pair: LanguagePair,
+  ): ReadonlyMap<string, Language> {
+    this.snapshots.push({ guildId, userIds: [...userIds], pair });
+    const mode = this.selectionResult.mode;
+    if (mode === "auto") return new Map();
+    return new Map([...userIds].map((userId) => [userId, mode]));
+  }
+}
 
 class RecordingTermCatalog {
   public snapshotResult: readonly TranslationTerm[] = [];
@@ -159,6 +213,7 @@ class RecordingDriver implements TranslationSessionDriver {
     guildId: string;
     participantIds: readonly string[];
     translationTerms: readonly TranslationTerm[];
+    speakerLanguageHints: ReadonlyMap<string, Language>;
   }[] = [];
   public readonly runtimes: RecordingRuntime[] = [];
   public readonly signals: AbortSignal[] = [];
@@ -169,11 +224,13 @@ class RecordingDriver implements TranslationSessionDriver {
     participantIds: readonly string[],
     signal: AbortSignal,
     translationTerms: readonly TranslationTerm[],
+    speakerLanguageHints: ReadonlyMap<string, Language>,
   ): Promise<SessionRuntime> {
     this.starts.push({
       guildId: session.guildId,
       participantIds: [...participantIds],
       translationTerms: translationTerms.map((term) => ({ ...term })),
+      speakerLanguageHints: new Map(speakerLanguageHints),
     });
     this.signals.push(signal);
     await this.wait;
@@ -191,6 +248,7 @@ function createHarness(options: {
   const usageGate = new RecordingUsageGate();
   const capacityGate = new RecordingCapacityGate();
   const terms = new RecordingTermCatalog();
+  const speakerLanguages = new RecordingSpeakerLanguageSettings();
   const reconciliation = { calls: 0 };
   const sessions = new SessionManager({
     driver,
@@ -213,8 +271,18 @@ function createHarness(options: {
     defaultTtsSpeed: 1.15,
     sessions,
     terms,
+    speakerLanguages,
+    now: () => new Date("2026-08-15T03:00:00Z"),
   });
-  return { service, driver, usageGate, capacityGate, terms, reconciliation };
+  return {
+    service,
+    driver,
+    usageGate,
+    capacityGate,
+    terms,
+    speakerLanguages,
+    reconciliation,
+  };
 }
 
 function validStart(overrides: Partial<StartCommandInput> = {}): StartCommandInput {
@@ -813,6 +881,149 @@ void test("register listとdeleteは同じ認可を使い、削除を次回セ�
   assert.equal(denied.ok, false);
   assert.equal(denied.code, "USER_NOT_ALLOWED");
   assert.equal(harness.terms.lists.length, 1);
+});
+
+void test("language setは本人の選択を保存し、次回セッションからの反映を通知する", async () => {
+  const harness = createHarness();
+
+  const result = await harness.service.execute({
+    kind: "language",
+    action: "set",
+    language: "ko",
+    guildId: "223456789012345678",
+    actorId: "323456789012345678",
+    targetUserId: "323456789012345678",
+  });
+
+  assert.equal(result.ok, true);
+  assert.match(result.interactionMessage, /韓国語/u);
+  assert.match(result.interactionMessage, /次に開始/u);
+  assert.deepEqual(harness.speakerLanguages.updates, [{
+    guildId: "223456789012345678",
+    userId: "323456789012345678",
+    mode: "ko",
+    at: new Date("2026-08-15T03:00:00Z"),
+  }]);
+});
+
+void test("開始処理中のlanguage変更は開始要求時に固定したセッションへ混ぜない", async () => {
+  const harness = createHarness();
+  harness.speakerLanguages.selectionResult = {
+    mode: "ja",
+    source: "guild",
+  };
+  const usageGate = Promise.withResolvers<undefined>();
+  harness.usageGate.wait = usageGate.promise;
+
+  const starting = harness.service.execute(validStart());
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(harness.service.getSession("223456789012345678")?.state, "AUTHORIZING");
+
+  const changed = await harness.service.execute({
+    kind: "language",
+    action: "set",
+    language: "ko",
+    guildId: "223456789012345678",
+    actorId: "323456789012345678",
+    targetUserId: "323456789012345678",
+  });
+  assert.equal(changed.ok, true);
+  usageGate.resolve(undefined);
+  assert.equal((await starting).ok, true);
+
+  assert.deepEqual(
+    [...(harness.driver.starts[0]?.speakerLanguageHints ?? new Map())],
+    [
+      ["323456789012345678", "ja"],
+      ["423456789012345678", "ja"],
+    ],
+  );
+  assert.deepEqual(harness.speakerLanguages.snapshots, [{
+    guildId: "223456789012345678",
+    userIds: ["323456789012345678", "423456789012345678"],
+    pair: "ja-ko",
+  }]);
+});
+
+void test("languageは許可済み利用者同士で他人の設定を確認・変更できる", async () => {
+  const harness = createHarness();
+  harness.speakerLanguages.selectionResult = {
+    mode: "ja",
+    source: "environment",
+  };
+
+  const own = await harness.service.execute({
+    kind: "language",
+    action: "show",
+    guildId: "223456789012345678",
+    actorId: "323456789012345678",
+    targetUserId: "323456789012345678",
+  });
+  assert.equal(own.ok, true);
+  assert.match(own.interactionMessage, /日本語/u);
+  assert.match(own.interactionMessage, /環境設定/u);
+
+  const other = await harness.service.execute({
+    kind: "language",
+    action: "show",
+    guildId: "223456789012345678",
+    actorId: "323456789012345678",
+    targetUserId: "423456789012345678",
+  });
+  assert.equal(other.ok, true);
+  assert.match(other.interactionMessage, /指定した利用者/u);
+
+  const changed = await harness.service.execute({
+    kind: "language",
+    action: "set",
+    language: "ko",
+    guildId: "223456789012345678",
+    actorId: "323456789012345678",
+    targetUserId: "423456789012345678",
+  });
+  assert.equal(changed.ok, true);
+  assert.equal(harness.speakerLanguages.updates.length, 1);
+  assert.equal(harness.speakerLanguages.updates[0]?.userId, "423456789012345678");
+});
+
+void test("languageは未許可Userを対象にできず、autoを有効な選択として保存する", async () => {
+  const harness = createHarness();
+
+  const untrustedActor = await harness.service.execute({
+    kind: "language",
+    action: "set",
+    language: "ja",
+    guildId: "223456789012345678",
+    actorId: "999999999999999999",
+    targetUserId: "423456789012345678",
+  });
+  assert.equal(untrustedActor.ok, false);
+  assert.equal(untrustedActor.code, "USER_NOT_ALLOWED");
+  assert.equal(harness.speakerLanguages.updates.length, 0);
+
+  const denied = await harness.service.execute({
+    kind: "language",
+    action: "set",
+    language: "ja",
+    guildId: "223456789012345678",
+    actorId: "323456789012345678",
+    targetUserId: "999999999999999999",
+  });
+  assert.equal(denied.ok, false);
+  assert.equal(denied.code, "SPEAKER_LANGUAGE_NOT_ALLOWED");
+  assert.equal(harness.speakerLanguages.updates.length, 0);
+
+  const automatic = await harness.service.execute({
+    kind: "language",
+    action: "set",
+    language: "auto",
+    guildId: "223456789012345678",
+    actorId: "323456789012345678",
+    targetUserId: "323456789012345678",
+  });
+  assert.equal(automatic.ok, true);
+  assert.match(automatic.interactionMessage, /自動判定/u);
+  assert.equal(harness.speakerLanguages.updates[0]?.mode, "auto");
 });
 
 void test("export認可は未許可利用者をDiscord履歴取得前に拒否する", async () => {

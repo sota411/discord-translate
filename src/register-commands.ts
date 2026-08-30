@@ -2,10 +2,7 @@ import { REST, Routes } from "discord.js";
 
 import { loadConfig } from "./config.js";
 import {
-  exportCommand,
-  registerCommand,
-  statusCommand,
-  translateCommand,
+  guildCommands,
 } from "./discord/command-definition.js";
 import { createSafeLogger } from "./observability/logger.js";
 
@@ -17,12 +14,7 @@ for (const guildId of config.discord.allowedGuildIds) {
   await rest.put(
     Routes.applicationGuildCommands(config.discord.applicationId, guildId),
     {
-      body: [
-        translateCommand.toJSON(),
-        statusCommand.toJSON(),
-        exportCommand.toJSON(),
-        registerCommand.toJSON(),
-      ],
+      body: guildCommands.map((command) => command.toJSON()),
     },
   );
   logger.info("guild_commands_registered", {

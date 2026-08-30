@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { TranslationTerm } from "../config/translation-terms.js";
 import { ApplicationError } from "../domain/application-error.js";
-import type { LanguagePair } from "../domain/language-pair.js";
+import type { Language, LanguagePair } from "../domain/language-pair.js";
 import type {
   CaptionFailurePolicy,
   PlaybackMode,
@@ -40,6 +40,7 @@ export type StartSessionInput = Omit<
 > & {
   requiredSttStreams: number;
   translationTerms: readonly TranslationTerm[];
+  speakerLanguageHints: ReadonlyMap<string, Language>;
 };
 
 export type UsageGate = {
@@ -74,12 +75,14 @@ export type TranslationSessionDriver = {
     participantIds: readonly string[],
     signal: AbortSignal,
     translationTerms: readonly TranslationTerm[],
+    speakerLanguageHints: ReadonlyMap<string, Language>,
   ): Promise<SessionRuntime>;
 };
 
 type ManagedSession = SessionDescriptor & {
   runtime?: SessionRuntime;
   translationTerms: readonly TranslationTerm[];
+  speakerLanguageHints: ReadonlyMap<string, Language>;
   participantRevision: number;
   startController: AbortController;
 };
@@ -123,7 +126,12 @@ export class SessionManager {
       );
     }
 
-    const { requiredSttStreams, translationTerms, ...descriptor } = input;
+    const {
+      requiredSttStreams,
+      translationTerms,
+      speakerLanguageHints,
+      ...descriptor
+    } = input;
     const startedAt = this.#now();
     const session: ManagedSession = {
       ...descriptor,
@@ -132,6 +140,7 @@ export class SessionManager {
       state: "AUTHORIZING",
       startedAt,
       translationTerms: translationTerms.map((term) => ({ ...term })),
+      speakerLanguageHints: new Map(speakerLanguageHints),
       participantRevision: 0,
       startController: new AbortController(),
     };
@@ -156,6 +165,7 @@ export class SessionManager {
         session.participantIds,
         session.startController.signal,
         session.translationTerms,
+        session.speakerLanguageHints,
       );
       if (session.runtime.captionThreadId) {
         session.captionThreadId = session.runtime.captionThreadId;

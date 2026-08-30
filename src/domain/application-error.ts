@@ -32,6 +32,8 @@ export const errorCodes = [
   "TRANSLATION_TERM_NOT_FOUND",
   "TRANSLATION_TERM_LIMIT_REACHED",
   "TRANSLATION_TERM_STORE_UNAVAILABLE",
+  "SPEAKER_LANGUAGE_NOT_ALLOWED",
+  "SPEAKER_LANGUAGE_STORE_UNAVAILABLE",
 ] as const;
 
 export type ErrorCode = (typeof errorCodes)[number];

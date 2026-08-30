@@ -7,6 +7,8 @@ import {
 
 import {
   exportCommand,
+  guildCommands,
+  languageCommand,
   registerCommand,
   statusCommand,
   translateCommand,
@@ -63,6 +65,55 @@ void test("translateコマンドはGuild専用で既定権限なし、言語ペ�
   assert.equal(rate.required, true);
   assert.equal("min_value" in rate ? rate.min_value : undefined, 0.7);
   assert.equal("max_value" in rate ? rate.max_value : undefined, 1.3);
+});
+
+void test("languageは本人を既定対象にし、言語コードを手入力させない", () => {
+  const language = languageCommand.toJSON();
+
+  assert.equal(language.name, "language");
+  assert.deepEqual(language.contexts, [0]);
+  assert.equal(language.default_member_permissions, undefined);
+
+  const show = language.options?.find((option) => option.name === "show");
+  const set = language.options?.find((option) => option.name === "set");
+  assert.ok(show);
+  assert.ok(set);
+  assert.equal(show.type, 1);
+  assert.equal(set.type, 1);
+
+  const showUser = "options" in show
+    ? show.options?.find((option) => option.name === "user")
+    : undefined;
+  const setUser = "options" in set
+    ? set.options?.find((option) => option.name === "user")
+    : undefined;
+  const setting = "options" in set
+    ? set.options?.find((option) => option.name === "language")
+    : undefined;
+  assert.ok(showUser);
+  assert.ok(setUser);
+  assert.ok(setting);
+  assert.equal(showUser.required, false);
+  assert.equal(setUser.required, false);
+  assert.equal(setting.required, true);
+  assert.deepEqual(
+    "choices" in setting
+      ? setting.choices?.map((choice) => [choice.name, choice.value])
+      : [],
+    [
+      ["自動判定", "auto"],
+      ["日本語", "ja"],
+      ["韓国語", "ko"],
+      ["英語", "en"],
+    ],
+  );
+});
+
+void test("Guild登録対象はlanguageを含む全コマンドを1つの一覧から生成する", () => {
+  assert.deepEqual(
+    guildCommands.map((command) => command.toJSON().name),
+    ["translate", "status", "export", "register", "language"],
+  );
 });
 
 void test("status・export・registerはGuild全員へ表示し、用語管理を3サブコマンドで公開する", () => {

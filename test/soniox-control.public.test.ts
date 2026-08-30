@@ -74,6 +74,71 @@ void test("3言語ペアをSonioxの双方向翻訳設定へ正しく変換す�
   }
 });
 
+void test("単言語話者hintは対象言語だけをSonioxへ送り、翻訳と自動言語識別を維持する", () => {
+  const received: Record<string, unknown>[] = [];
+  const factory = new SonioxSttFactory(
+    {
+      realtime: {
+        stt: (input: Record<string, unknown>) => {
+          received.push(input);
+          return {};
+        },
+      },
+    } as never,
+    "stt-rt-v5",
+  );
+
+  factory.create("ja-ko", "hint", [], {
+    language: "ko",
+    strict: false,
+  });
+  factory.create("ja-ko", "strict", [], {
+    language: "ko",
+    strict: true,
+  });
+
+  assert.equal(received.length, 2);
+  const [hintRequest, strictRequest] = received;
+  assert.ok(hintRequest);
+  assert.ok(strictRequest);
+  assert.deepEqual(hintRequest.language_hints, ["ko"]);
+  assert.equal("language_hints_strict" in hintRequest, false);
+  assert.deepEqual(strictRequest.language_hints, ["ko"]);
+  assert.equal(strictRequest.language_hints_strict, true);
+  for (const request of received) {
+    assert.equal(request.enable_language_identification, true);
+    assert.deepEqual(request.translation, {
+      type: "two_way",
+      language_a: "ja",
+      language_b: "ko",
+    });
+  }
+});
+
+void test("単言語話者hintが選択中の言語ペア外なら接続前に拒否する", () => {
+  let requestCount = 0;
+  const factory = new SonioxSttFactory(
+    {
+      realtime: {
+        stt: () => {
+          requestCount += 1;
+          return {};
+        },
+      },
+    } as never,
+    "stt-rt-v5",
+  );
+
+  assert.throws(
+    () => factory.create("ja-ko", "invalid", [], {
+      language: "en",
+      strict: true,
+    }),
+    /言語ペア/u,
+  );
+  assert.equal(requestCount, 0);
+});
+
 void test("セッション開始時に固定した翻訳用語だけをSTT contextへ渡す", () => {
   const received: Record<string, unknown>[] = [];
   const factory = new SonioxSttFactory(
