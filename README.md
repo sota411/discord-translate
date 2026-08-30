@@ -199,6 +199,52 @@ Raspberry PiではPi上でimageをbuildせず、CIで検証してGHCRへ配布�
 
 エクスポートしたMarkdownには会話本文が含まれる。Discordの公開スレッドと同じ情報として扱い、保存先と共有範囲を参加者と決めてから出力する。
 
+## Discord受信音声を診断するときだけ
+
+`STT_PRIVATE_CAPTURE_DIRECTORY`は通常運用では空のままにする。明示的に設定した診断セッションだけ、Sonioxより前の次のデータを話者番号別に保存する。
+
+- Discordから受信したOpus packetと受信時刻
+- Opus復号直後の48 kHz・signed 16-bit・stereo PCM
+- stereoから変換した復号後mono PCM
+- 終端用の無音を含め、Sonioxへ実際に渡した48 kHz・signed 16-bit・mono PCM
+- 発話開始・終了、復号失敗、受信stream復旧、採用した`endpoint`と`finalized`
+- Sonioxが返した原文tokenと翻訳tokenを分けた結果
+
+通常経路では無効であり、追加buffer、再文字起こし、二段階処理を行わない。有効時も同じmono PCMをそのままSonioxへ送り、保存完了を待って字幕や読み上げを遅らせない。ただし、診断用のdisk I/O自体は発生するため、改善候補の遅延比較はこの設定を無効にして行う。
+
+保存内容には私的な音声と会話本文が含まれる。参加者全員の同意を得た一回の診断だけで有効にし、通常ログ、Git、Issue、PRへ入れない。保存先は既存の絶対pathかつ権限`0700`でなければ起動を拒否する。repository内ではGit管理外の`.data/stt-eval`配下だけを許可し、生成するdirectoryは`0700`、fileは`0600`とする。Guild ID、User ID、表示名は保存しない。字幕・TTS・遅延記録と同じ発話を照合するため、Discord識別子を含まないランダムな発話trace IDは保存する。
+
+ローカルで直接診断する場合は、保存先を作って絶対pathを設定する。
+
+```bash
+install -d -m 700 .data/stt-eval
+realpath .data/stt-eval
+```
+
+出力された絶対pathを`.env.local`の`STT_PRIVATE_CAPTURE_DIRECTORY`へ設定し、Botを起動する。一つの短い診断セッションを停止したら、この設定を空へ戻してBotを再起動する。作成された`capture-<UUID>`を指定すると、会話本文を標準出力へ出さずに音声経路を解析できる。
+
+```bash
+pnpm stt:capture:analyze -- /absolute/path/.data/stt-eval/capture-<UUID>
+```
+
+Docker Composeでは、名前付きvolume内へ保存先を一度だけ作り、`.env.local`へ`STT_PRIVATE_CAPTURE_DIRECTORY=/data/stt-eval`を設定する。解析はセッション停止後、Bot containerが動いている間に実行する。
+
+```bash
+docker compose --env-file .env.local run --rm --no-deps --entrypoint sh bot -c 'install -d -m 700 /data/stt-eval'
+docker compose --env-file .env.local exec -T bot node dist/analyze-private-stt-capture.js /data/stt-eval/capture-<UUID>
+```
+
+解析結果には次の指標が含まれる。
+
+- 各音声fileのSHA-256、長さ、RMS、peak、clipping、20 ms単位の低energy率
+- 左右channel相関とmono化との一致
+- Opus packet間隔、受信から復号までの時間、復号失敗、受信stream復旧時間
+- 発話区間数、STTの`endpoint`数と`finalized`数、原文・翻訳token数
+
+復号後monoとSoniox実送信PCMを別々に集計するため、終端用無音を含む実送信PCMのSHA-256も確認できる。この数値だけでは聞き取れた文や翻訳の正否を判定できないため、private file内の音声・tokenと人手の正解データを照合する。
+
+診断が終わったら、対象の`capture-<UUID>`を確認して削除する。削除後は復元できないため、比較結果に必要なSHA-256と数値を先に記録する。音声やtoken本文は記録しない。
+
 ## 最小確認
 
 1. ログに`application_ready`があることを確認する。

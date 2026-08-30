@@ -12,6 +12,7 @@ type SttTurnFinalizerOptions = {
   transcriptInactivityMs: number;
   maxTurnMs: number;
   trailingSilenceMs: number;
+  onTrailingSilenceSent?: (audio: Buffer) => void;
   onFinalize?: (reason: SttFinalizeReason) => void;
   onError?: (error: unknown) => void;
 };
@@ -26,6 +27,7 @@ export class SttTurnFinalizer {
   readonly #maxTurnMs: number;
   readonly #trailingSilenceMs: number;
   readonly #silence: Buffer;
+  readonly #onTrailingSilenceSent: ((audio: Buffer) => void) | undefined;
   readonly #onFinalize: (reason: SttFinalizeReason) => void;
   readonly #onError: (error: unknown) => void;
   #speakingEndTimer: NodeJS.Timeout | undefined;
@@ -48,6 +50,7 @@ export class SttTurnFinalizer {
     this.#silence = Buffer.alloc(
       Math.round(pcmSampleRate * pcmBytesPerSample * options.trailingSilenceMs / 1_000),
     );
+    this.#onTrailingSilenceSent = options.onTrailingSilenceSent;
     this.#onFinalize = options.onFinalize ?? (() => undefined);
     this.#onError = options.onError ?? (() => undefined);
   }
@@ -141,6 +144,7 @@ export class SttTurnFinalizer {
     this.#clearTimers();
     try {
       this.#session.sendAudio(this.#silence);
+      this.#onTrailingSilenceSent?.(this.#silence);
       this.#session.finalize({ trailing_silence_ms: this.#trailingSilenceMs });
       this.#manualFinalizeRequested = true;
       this.#onFinalize(reason);

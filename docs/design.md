@@ -41,7 +41,7 @@ Discordでは、Botが音声チャンネルへ流した音声を参加者ごと�
 - 会話優先と正確さ優先の2モード
 - 実行中のセッションごとに0.7〜1.3倍の読み上げ速度を変更
 - User・Guild・Globalの月間利用上限
-- 音声、字幕本文、表示名をBotの永続ストレージとログへ保存しない
+- 通常運用では、音声、字幕本文、表示名をBotの永続ストレージとログへ保存しない
 - Docker Composeを標準の配置経路とする
 
 ### 対象外
@@ -49,7 +49,7 @@ Discordでは、Botが音声チャンネルへ流した音声を参加者ごと�
 - 不特定多数が追加できる公開Bot
 - 4人以上、3言語以上、または日韓英以外の会話
 - 参加者ごとに異なる翻訳音声を聞かせること
-- 音声録音、字幕検索、Bot独自の会話履歴保存
+- 通常機能としての音声録音、字幕検索、Bot独自の会話履歴保存
 - 話者の自動登録、課金、管理画面、利用者によるAPI Key登録
 - 非公開スレッドやDMへの字幕配信
 - 完全な同時通訳、または再生開始300 ms以内の保証
@@ -197,6 +197,10 @@ Discord Voice
 
 Discordの発話開始イベントを受けると、TTS接続を先にウォームアップし、発話者別のOpusパケットを購読する。OpusはDiscord音声の圧縮形式である。これを48 kHz・16 bit・stereoの非圧縮音声データ（PCM）へ戻し、1チャンネルのmonoへ変換してSoniox STTへ送る。
 
+通常は音声を保存しない。`STT_PRIVATE_CAPTURE_DIRECTORY`を明示した診断時だけ、所有者専用directoryへ保存する。保存対象は、受信Opusと、復号直後のstereo PCMおよびmono PCMである。終端用無音を含むSoniox実送信PCMと音声経路eventも保存する。Sonioxの原文tokenと翻訳tokenは分けて保存する。
+
+話者ごとの保存先には、Discord識別子を含まない話者番号を使う。同じmono PCMを待たずにSonioxへ送り、追加buffer、再文字起こし、二段階処理は行わない。保存後の解析は別CLIで実行し、通常処理のevent loopで全sampleを走査しない。字幕・TTS・遅延記録との照合には、Discord識別子を入力にしないランダムな発話trace IDを使う。
+
 STTには次を指定する。
 
 - 選択した2言語と言語識別
@@ -281,7 +285,7 @@ SQLiteは利用量、運用メタデータ、Guild登録用語、話者言語設
 | `registered_translation_term` | Guild ID、言語ペア、翻訳前の用語、希望する翻訳、更新時刻 |
 | `speaker_language_setting` | Guild ID、User ID、音声認識言語、自動判定、更新時刻 |
 
-音声、会話の原文・翻訳文、表示名は保存しない。`/register add`へ入力された翻訳前の用語と希望する翻訳は、設定データとして保存する。`/register list`はこのテーブルを読み、`/register delete`は指定した主キーの行だけを削除する。`/language set`はGuildとUserの設定を保存する。Discord IDとChannel IDは運用メタデータとして保存する。SQLite schema version 2では、version 1の利用量データを保ったまま`registered_translation_term`を追加した。`speaker_language_setting`は旧version 2実装が無視できる互換的な追加であるため、`user_version`を上げない。候補版が付けたversion 3も、同じテーブルを保持したままversion 2へ正規化し、直前のimageへ巻き戻せるようにする。起動時には、未完了の`provider_request`を`failed`へ変更し、未完了の`session_usage`を`PROCESS_RESTART`で終了する。
+通常運用では、音声、会話の原文・翻訳文、表示名は保存しない。例外は、全参加者が同意し、`STT_PRIVATE_CAPTURE_DIRECTORY`を明示した診断セッションだけである。診断保存先には私的な音声とtoken本文が入るため、通常ログやrepositoryへ転記せず、診断後に明示的に削除する。`/register add`へ入力された翻訳前の用語と希望する翻訳は、設定データとして保存する。`/register list`はこのテーブルを読み、`/register delete`は指定した主キーの行だけを削除する。`/language set`はGuildとUserの設定を保存する。Discord IDとChannel IDは運用メタデータとして保存する。SQLite schema version 2では、version 1の利用量データを保ったまま`registered_translation_term`を追加した。`speaker_language_setting`は旧version 2実装が無視できる互換的な追加であるため、`user_version`を上げない。候補版が付けたversion 3も、同じテーブルを保持したままversion 2へ正規化し、直前のimageへ巻き戻せるようにする。起動時には、未完了の`provider_request`を`failed`へ変更し、未完了の`session_usage`を`PROCESS_RESTART`で終了する。
 
 月の境界は`Asia/Tokyo`で計算する。セッション、紐づくSoniox要求、User・Guildの月次集計は当月と前月を保持する。Globalの月次集計は当月を含む12か月を保持する。登録用語は利用量の保持期限では削除しない。Discord上のスレッドと字幕もSQLiteの保持処理に含まれず、Botが終了時にアーカイブしてもDiscordへ残る。
 
@@ -313,6 +317,8 @@ User上限は新規参加、Guild上限は新規セッション、Global上限�
 | 運用者→設定 | `.env.local`と実運用の翻訳用語をGit・Dockerコンテキストから除外し、起動時に検証 |
 
 Discord Token、Soniox API Key、ログ仮名化用のHMAC Keyは環境変数から読む。通常ログには例外メッセージとスタックを出さず、固定コードまたはエラー名を記録する。Guild・User IDは、秘密鍵を使うHMAC-SHA-256で仮名化する。発話本文、字幕本文、表示名、Token、API Keyはログへ出さない。
+
+private STT captureは通常ログと分離し、Guild・User ID・表示名を含めず、既存の`0700`絶対directoryだけを許可する。発話trace IDはランダムに生成し、Discord識別子を含めない。repository内ではGit管理外の`.data/stt-eval`配下に限定し、symbolic linkを拒否する。保存失敗時は不完全な診断を黙って続けず、対象セッションを停止する。
 
 運用者向けの`pnpm config:check`だけは、設定を直せるように通常のエラーメッセージを端末へ出す。翻訳用語の値やファイルパスが含まれる場合があるため、出力を公開ログや問い合わせ先へ貼らない。
 
@@ -422,6 +428,7 @@ Sonioxの401・403は認証失敗、402は予算到達、429は同時実行上�
 | `ALLOWED_GUILD_IDS` | 空 | 17〜20桁のIDを1件以上 |
 | `ALLOWED_USER_IDS` | 空 | 全発話者のIDを1件以上 |
 | `SPEAKER_LANGUAGE_HINTS` | 空 | 任意。`User ID:ja|ko|en`をカンマ区切りで指定し、Userは許可リストに含める |
+| `STT_PRIVATE_CAPTURE_DIRECTORY` | 空 | 通常は無効。診断時だけ既存の絶対pathを指定する。directoryは`0700`、生成fileは`0600` |
 | `SONIOX_API_KEY` | 空 | Bot専用ProjectのKey |
 | `SONIOX_REGION` | `us` | `us`、`eu`、`jp`。Projectのリージョンと一致させる |
 | `LOG_ID_HMAC_KEY` | 空 | 32文字以上。他用途と共有しない |

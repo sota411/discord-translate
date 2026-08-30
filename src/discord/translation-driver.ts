@@ -27,13 +27,21 @@ import {
 
 import type { AppConfig } from "../config.js";
 import type { TranslationTerm } from "../config/translation-terms.js";
-import { decodeDiscordOpusPacketToMono } from "../audio/pcm.js";
+import {
+  decodeDiscordOpusPacket,
+  decodeDiscordOpusPacketToMono,
+} from "../audio/pcm.js";
 import { OpusStartupBuffer } from "../audio/opus-startup-buffer.js";
 import {
   SttTurnFinalizer,
   type SttBoundaryKind,
 } from "../audio/stt-turn-finalizer.js";
 import { ApplicationError } from "../domain/application-error.js";
+import type {
+  PrivateSttCaptureFactory,
+  PrivateSttCaptureSession,
+  PrivateSttCaptureSpeaker,
+} from "../diagnostics/private-stt-capture.js";
 import {
   languagesForPair,
   type Language,
@@ -96,6 +104,7 @@ type DiscordTranslationDriverOptions = {
   observeQuality?: (observation: TranslationQualityObservation) => void;
   observeCaptionDelivery?: (observation: CaptionDeliveryObservation) => void;
   observeSttResult?: () => void;
+  privateCaptureFactory?: PrivateSttCaptureFactory;
   onFailure: RuntimeFailureHandler;
   onWarning?: (guildId: string, operation: string, cause: unknown) => void;
 };
@@ -125,6 +134,7 @@ type SpeakerStream = {
   receiveRecoveryAttempts: number;
   lastTranscriptFingerprint?: string;
   closed: boolean;
+  privateCapture?: PrivateSttCaptureSpeaker;
 };
 
 function transcriptFingerprint(result: RealtimeResult): string | undefined {
@@ -189,6 +199,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
   readonly #observeQuality: (observation: TranslationQualityObservation) => void;
   readonly #observeCaptionDelivery: (observation: CaptionDeliveryObservation) => void;
   readonly #observeSttResult: () => void;
+  readonly #privateCaptureFactory: PrivateSttCaptureFactory | undefined;
   readonly #onFailure: RuntimeFailureHandler;
   readonly #onWarning: (guildId: string, operation: string, cause: unknown) => void;
 
@@ -203,6 +214,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
     this.#observeQuality = options.observeQuality ?? (() => undefined);
     this.#observeCaptionDelivery = options.observeCaptionDelivery ?? (() => undefined);
     this.#observeSttResult = options.observeSttResult ?? (() => undefined);
+    this.#privateCaptureFactory = options.privateCaptureFactory;
     this.#onFailure = (guildId, reason, publicMessage, cause) => {
       options.onFailure(guildId, reason, publicMessage, cause);
     };
@@ -244,6 +256,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
 
     let connection: VoiceConnection | undefined;
     let presentation: DiscordSessionPresentation | undefined;
+    let privateCapture: PrivateSttCaptureSession | undefined;
     try {
       signal.throwIfAborted();
       connection = joinVoiceChannel({
@@ -275,6 +288,19 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
         },
       });
       signal.throwIfAborted();
+      privateCapture = await this.#privateCaptureFactory?.createSession({
+        pair: session.pair,
+        startedAtMonotonicMs: performance.now(),
+        onError: (error) => {
+          this.#onFailure(
+            session.guildId,
+            "PRIVATE_CAPTURE_FAILED",
+            "診断用音声を安全に保存できないため翻訳を停止しました。",
+            error,
+          );
+        },
+      });
+      signal.throwIfAborted();
       return new DiscordTranslationRuntime({
         session,
         participantIds,
@@ -284,6 +310,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
         connection,
         config: this.#config,
         speakerLanguageHints,
+        ...(privateCapture === undefined ? {} : { privateCapture }),
         ledger: this.#ledger,
         sttFactory: this.#sttFactory,
         translationTerms,
@@ -297,9 +324,23 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
         onWarning: this.#onWarning,
       });
     } catch (error) {
-      await presentation?.close("START_ABORTED");
+      const cleanupResults = await Promise.allSettled([
+        presentation?.close("START_ABORTED"),
+        privateCapture?.close(),
+      ].filter((operation): operation is Promise<void> => operation !== undefined));
       connection?.destroy();
       this.#ledger.finishSession(session.sessionId, "START_FAILED", new Date());
+      const cleanupFailures: unknown[] = [];
+      for (const result of cleanupResults) {
+        if (result.status === "rejected") cleanupFailures.push(result.reason as unknown);
+      }
+      if (cleanupFailures.length > 0) {
+        throw new AggregateError(
+          [error, ...cleanupFailures],
+          "翻訳セッションの開始失敗後に診断用音声を終了できませんでした",
+          { cause: error },
+        );
+      }
       throw error;
     }
   }
@@ -339,6 +380,7 @@ export type TranslationRuntimeOptions = {
   connection: VoiceConnection;
   config: AppConfig;
   speakerLanguageHints: ReadonlyMap<string, Language>;
+  privateCapture?: PrivateSttCaptureSession;
   ledger: UsageLedger;
   sttFactory: SonioxSttFactory;
   translationTerms: readonly TranslationTerm[];
@@ -362,6 +404,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
   readonly #connection: VoiceConnection;
   readonly #config: AppConfig;
   readonly #speakerLanguageHints: ReadonlyMap<string, Language>;
+  readonly #privateCapture: PrivateSttCaptureSession | undefined;
   readonly #ledger: UsageLedger;
   readonly #sttFactory: SonioxSttFactory;
   readonly #translationTerms: readonly TranslationTerm[];
@@ -392,6 +435,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     this.captionThreadId = options.presentation.threadId;
     this.#session = options.session;
     this.#speakerLanguageHints = new Map(options.speakerLanguageHints);
+    this.#privateCapture = options.privateCapture;
     this.#guild = options.guild;
     this.#voiceChannel = options.voiceChannel;
     this.#presentation = options.presentation;
@@ -576,6 +620,11 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     } catch (error) {
       cleanupErrors.push(error);
     }
+    try {
+      await this.#privateCapture?.close();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
     await this.#presentation.close(reason);
     if (cleanupErrors.length > 0) {
       throw new AggregateError(cleanupErrors, "翻訳セッションの停止処理に失敗しました");
@@ -599,6 +648,10 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     if (existing) {
       existing.turnFinalizer.speakingStarted();
       existing.burstHasPacket = false;
+      existing.privateCapture?.speakingStarted({
+        turnId: existing.turnId,
+        atMonotonicMs: performance.now(),
+      });
       return;
     }
 
@@ -622,8 +675,25 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       transcriptInactivityMs: transcriptInactivityFinalizeMs,
       maxTurnMs: this.#config.limits.utteranceMaxSourceSeconds * 1_000,
       trailingSilenceMs: manualFinalizeTrailingSilenceMs,
+      ...(this.#privateCapture === undefined
+        ? {}
+        : {
+            onTrailingSilenceSent: (monoPcm: Buffer) => {
+              speaker.privateCapture?.recordSonioxAudio({
+                kind: "trailing_silence",
+                turnId: speaker.turnId,
+                atMonotonicMs: performance.now(),
+                monoPcm,
+              });
+            },
+          }),
       onFinalize: (reason) => {
         this.#observeFlow(sttFinalizeFlowStage(reason));
+        speaker.privateCapture?.recordFinalizeRequested({
+          reason,
+          turnId: speaker.turnId,
+          atMonotonicMs: performance.now(),
+        });
       },
       onError: (error) => {
         const mapped = mapSttError(error);
@@ -655,8 +725,15 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       startupBufferOverflowed: false,
       receiveRecoveryAttempts: 0,
       closed: false,
+      ...(this.#privateCapture === undefined
+        ? {}
+        : { privateCapture: this.#privateCapture.createSpeaker() }),
     };
     this.#speakers.set(userId, speaker);
+    speaker.privateCapture?.speakingStarted({
+      turnId: speaker.turnId,
+      atMonotonicMs: performance.now(),
+    });
     this.#attachSpeakerAudio(speaker, opus);
     void this.#connectSpeaker(speaker).catch((error: unknown) => {
       const mapped = mapSttError(error);
@@ -670,13 +747,31 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     stream.on("data", (packet: Buffer) => {
       if (speaker.closed || speaker.opus !== stream) return;
       speaker.receiveRecoveryAttempts = 0;
-      this.#handleOpusPacket(speaker, packet);
+      const privateCapture = speaker.privateCapture;
+      if (privateCapture === undefined) {
+        this.#handleOpusPacket(speaker, packet);
+        return;
+      }
+      const receivedAtMonotonicMs = performance.now();
+      const captureSequence = privateCapture.recordOpusPacket({
+        turnId: speaker.turnId,
+        atMonotonicMs: receivedAtMonotonicMs,
+        packet,
+      });
+      this.#handleOpusPacket(speaker, packet, {
+        captureSequence,
+      });
     });
     stream.once("error", (error) => {
       streamError = error;
     });
     stream.once("close", () => {
       if (this.#stopping || speaker.closed || speaker.opus !== stream) return;
+      speaker.privateCapture?.recordReceiveEvent({
+        kind: "receive_stream_closed",
+        turnId: speaker.turnId,
+        atMonotonicMs: performance.now(),
+      });
       this.#recoverSpeakerAudio(
         speaker,
         stream,
@@ -704,6 +799,11 @@ export class DiscordTranslationRuntime implements SessionRuntime {
           end: { behavior: EndBehaviorType.Manual },
         });
         this.#attachSpeakerAudio(speaker, nextStream);
+        speaker.privateCapture?.recordReceiveEvent({
+          kind: "receive_stream_recovered",
+          turnId: speaker.turnId,
+          atMonotonicMs: performance.now(),
+        });
       } catch (error) {
         this.#fail("VOICE_CONNECTION_LOST", "Discordの音声受信を再開できませんでした。", error);
       }
@@ -739,8 +839,8 @@ export class DiscordTranslationRuntime implements SessionRuntime {
 
     speaker.lastUsageAtMonotonic = performance.now();
     speaker.sttConnected = true;
-    for (const packet of speaker.startupOpus.drain()) {
-      this.#handleOpusPacket(speaker, packet);
+    for (const entry of speaker.startupOpus.drainEntries()) {
+      this.#handleOpusPacket(speaker, entry.packet, entry.metadata);
     }
     speaker.keepaliveTimer = setInterval(() => {
       if (!speaker.closed) {
@@ -763,7 +863,11 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     speaker.usageTimer.unref();
   }
 
-  #handleOpusPacket(speaker: SpeakerStream, packet: Buffer): void {
+  #handleOpusPacket(
+    speaker: SpeakerStream,
+    packet: Buffer,
+    metadata?: import("../audio/opus-startup-buffer.js").OpusStartupPacketMetadata,
+  ): void {
     try {
       if (
         this.#stopping ||
@@ -775,7 +879,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
         return;
       }
       if (!speaker.sttConnected) {
-        if (!speaker.startupOpus.enqueue(packet)) {
+        if (!speaker.startupOpus.enqueue(packet, metadata)) {
           speaker.startupBufferOverflowed = true;
           speaker.startupOpus.clear();
           this.#observeFlow("voice_startup_buffer_overflow");
@@ -786,12 +890,42 @@ export class DiscordTranslationRuntime implements SessionRuntime {
         }
         return;
       }
-      const monoPcm = decodeDiscordOpusPacketToMono(speaker.decoder, packet);
+      const captureSequence = metadata?.captureSequence;
+      let monoPcm: Buffer | undefined;
+      if (captureSequence === undefined) {
+        monoPcm = decodeDiscordOpusPacketToMono(speaker.decoder, packet);
+      } else {
+        const decoded = decodeDiscordOpusPacket(speaker.decoder, packet);
+        monoPcm = decoded?.monoPcm;
+        if (decoded) {
+          speaker.privateCapture?.recordDecodedPacket({
+            packetSequence: captureSequence,
+            atMonotonicMs: performance.now(),
+            stereoPcm: decoded.stereoPcm,
+            monoPcm: decoded.monoPcm,
+          });
+        }
+      }
       if (!monoPcm) {
+        if (captureSequence !== undefined) {
+          speaker.privateCapture?.recordDroppedPacket({
+            packetSequence: captureSequence,
+            atMonotonicMs: performance.now(),
+          });
+        }
         this.#observeFlow("voice_packet_dropped");
         return;
       }
       speaker.stt.sendAudio(monoPcm);
+      if (captureSequence !== undefined) {
+        speaker.privateCapture?.recordSonioxAudio({
+          kind: "decoded_packet",
+          packetSequence: captureSequence,
+          turnId: speaker.turnId,
+          atMonotonicMs: performance.now(),
+          monoPcm,
+        });
+      }
       speaker.turnFinalizer.audioReceived();
       if (!speaker.burstHasPacket) {
         speaker.burstHasPacket = true;
@@ -809,6 +943,10 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     const speaker = this.#speakers.get(userId);
     if (!speaker) return;
     this.#observeFlow("voice_speaking_ended");
+    speaker.privateCapture?.speakingEnded({
+      turnId: speaker.turnId,
+      atMonotonicMs: performance.now(),
+    });
     speaker.turnFinalizer.speakingEnded();
   }
 
@@ -821,6 +959,11 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       return;
     }
     this.#observeSttResult();
+    speaker.privateCapture?.recordSttResult({
+      turnId: speaker.turnId,
+      atMonotonicMs: performance.now(),
+      tokens: result.tokens,
+    });
     try {
       const fingerprint = transcriptFingerprint(result);
       if (fingerprint !== undefined && fingerprint !== speaker.lastTranscriptFingerprint) {
@@ -848,6 +991,11 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       return;
     }
     if (!speaker.turnFinalizer.boundaryReceived(kind)) return;
+    speaker.privateCapture?.recordSttBoundary({
+      kind,
+      turnId: speaker.turnId,
+      atMonotonicMs: performance.now(),
+    });
     delete speaker.lastTranscriptFingerprint;
     this.#handleEndpoint(speaker);
   }

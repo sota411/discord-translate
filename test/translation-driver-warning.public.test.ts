@@ -12,6 +12,10 @@ import {
   DiscordTranslationRuntime,
   type TranslationRuntimeOptions,
 } from "../src/discord/translation-driver.js";
+import type {
+  PrivateSttCaptureSession,
+  PrivateSttCaptureSpeaker,
+} from "../src/diagnostics/private-stt-capture.js";
 import { validEnv } from "./helpers/valid-env.js";
 
 class FakeSttSession extends EventEmitter {
@@ -256,6 +260,39 @@ void test("Discord音声受信streamの一時エラーは再購読してセッ�
   const warnings: string[] = [];
   const connectionEvents = new EventEmitter();
   let subscriptions = 0;
+  const capturedOpus: Buffer[] = [];
+  const capturedPcm: { stereoBytes: number; monoBytes: number }[] = [];
+  const capturedSonioxAudio: { kind: string; monoBytes: number }[] = [];
+  const capturedResults: RealtimeResult["tokens"][] = [];
+  const captureReceiveEvents: string[] = [];
+  const capturedBoundaries: string[] = [];
+  let captureClosed = false;
+  const captureSpeaker: PrivateSttCaptureSpeaker = {
+    speakingStarted: () => undefined,
+    speakingEnded: () => undefined,
+    recordOpusPacket: ({ packet }) => {
+      capturedOpus.push(Buffer.from(packet));
+      return capturedOpus.length - 1;
+    },
+    recordDecodedPacket: ({ stereoPcm, monoPcm }) => {
+      capturedPcm.push({ stereoBytes: stereoPcm.length, monoBytes: monoPcm.length });
+    },
+    recordSonioxAudio: ({ kind, monoPcm }) => {
+      capturedSonioxAudio.push({ kind, monoBytes: monoPcm.length });
+    },
+    recordDroppedPacket: () => undefined,
+    recordReceiveEvent: ({ kind }) => captureReceiveEvents.push(kind),
+    recordSttBoundary: ({ kind }) => capturedBoundaries.push(kind),
+    recordFinalizeRequested: () => undefined,
+    recordSttResult: ({ tokens }) => capturedResults.push([...tokens]),
+  };
+  const privateCapture: PrivateSttCaptureSession = {
+    createSpeaker: () => captureSpeaker,
+    close: () => {
+      captureClosed = true;
+      return Promise.resolve();
+    },
+  };
   const runtime = new DiscordTranslationRuntime({
     session: {
       sessionId: "session-voice-recovery",
@@ -310,6 +347,7 @@ void test("Discord音声受信streamの一時エラーは再購読してセッ�
     },
     config: loadConfig(validEnv({ SONIOX_REGION: "jp" })),
     speakerLanguageHints: new Map(),
+    privateCapture,
     ledger: {
       openProviderRequest: () => undefined,
       recordProviderUsage: () => undefined,
@@ -339,11 +377,37 @@ void test("Discord音声受信streamの一時エラーは再購読してセッ�
     assert.equal(subscriptions, 2);
     opusStreams[1]?.write(Buffer.from([0x00]));
     await new Promise<void>((resolve) => setImmediate(resolve));
+    stt.emit("result", unsupportedResult);
+    stt.emit("endpoint");
+    await new Promise<void>((resolve) => setImmediate(resolve));
 
-    assert.equal(stt.audioWrites, 1);
+    speaking.emit("start", userId);
+    opusStreams[1]?.write(Buffer.from([0x00]));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    speaking.emit("end", userId);
+    await new Promise<void>((resolve) => setTimeout(resolve, 120));
+
+    assert.equal(stt.audioWrites, 3);
+    assert.deepEqual(capturedOpus, [Buffer.from([0x00]), Buffer.from([0x00])]);
+    assert.deepEqual(capturedPcm, [
+      { stereoBytes: 1_920, monoBytes: 960 },
+      { stereoBytes: 1_920, monoBytes: 960 },
+    ]);
+    assert.deepEqual(capturedSonioxAudio, [
+      { kind: "decoded_packet", monoBytes: 960 },
+      { kind: "decoded_packet", monoBytes: 960 },
+      { kind: "trailing_silence", monoBytes: 19_200 },
+    ]);
+    assert.deepEqual(capturedResults, [unsupportedResult.tokens]);
+    assert.deepEqual(capturedBoundaries, ["endpoint"]);
+    assert.deepEqual(captureReceiveEvents, [
+      "receive_stream_closed",
+      "receive_stream_recovered",
+    ]);
     assert.deepEqual(failures, []);
     assert.deepEqual(warnings, ["voice_receive_stream_recovering"]);
   } finally {
     await runtime.stop("TEST_COMPLETE");
   }
+  assert.equal(captureClosed, true);
 });

@@ -24,6 +24,7 @@ const rawConfigSchema = z.object({
   ALLOWED_GUILD_IDS: requiredString,
   ALLOWED_USER_IDS: requiredString,
   SPEAKER_LANGUAGE_HINTS: z.string().optional(),
+  STT_PRIVATE_CAPTURE_DIRECTORY: z.string().optional(),
   SONIOX_API_KEY: requiredString,
   SONIOX_REGION: requiredString,
   SESSION_MAX_MINUTES: positiveInteger,
@@ -114,6 +115,9 @@ export type AppConfig = {
   storage: {
     sqlitePath: string;
     translationTermsPath?: string;
+  };
+  diagnostics: {
+    privateSttCaptureDirectory?: string;
   };
   logIdHmacKey: string;
 };
@@ -268,6 +272,12 @@ export function loadConfig(
   if (raw.TRANSLATION_TERMS_PATH && !path.isAbsolute(raw.TRANSLATION_TERMS_PATH)) {
     issues.push("TRANSLATION_TERMS_PATH: 指定する場合は絶対パスにしてください");
   }
+  if (
+    raw.STT_PRIVATE_CAPTURE_DIRECTORY &&
+    !path.isAbsolute(raw.STT_PRIVATE_CAPTURE_DIRECTORY)
+  ) {
+    issues.push("STT_PRIVATE_CAPTURE_DIRECTORY: 指定する場合は絶対パスにしてください");
+  }
 
   const pricingConfirmedAt = new Date(`${raw.PRICING_CONFIRMED_AT}T00:00:00Z`);
   if (
@@ -339,6 +349,11 @@ export function loadConfig(
       sqlitePath: raw.SQLITE_PATH,
       ...(raw.TRANSLATION_TERMS_PATH
         ? { translationTermsPath: raw.TRANSLATION_TERMS_PATH }
+        : {}),
+    },
+    diagnostics: {
+      ...(raw.STT_PRIVATE_CAPTURE_DIRECTORY
+        ? { privateSttCaptureDirectory: raw.STT_PRIVATE_CAPTURE_DIRECTORY }
         : {}),
     },
     logIdHmacKey: raw.LOG_ID_HMAC_KEY,
