@@ -6,6 +6,7 @@ import opus from "@discordjs/opus";
 
 import {
   MonoToStereoTransform,
+  decodeDiscordOpusPacket,
   decodeDiscordOpusPacketToMono,
   downmixStereoS16leToMono,
 } from "../src/audio/pcm.js";
@@ -374,6 +375,23 @@ void test("Discord stereo PCMをmonoへ平均し、TTS mono PCMをstereoへ複�
     Buffer.concat(output),
     Buffer.from([0xd0, 0x07, 0xd0, 0x07, 0x18, 0xfc, 0x18, 0xfc]),
   );
+});
+
+void test("Discord Opusの復号直後stereoとSoniox送信前monoを同時に観測できる", () => {
+  const stereo = Buffer.alloc(8);
+  stereo.writeInt16LE(3_000, 0);
+  stereo.writeInt16LE(1_000, 2);
+  stereo.writeInt16LE(-2_000, 4);
+  stereo.writeInt16LE(2_000, 6);
+
+  const decoded = decodeDiscordOpusPacket(
+    { decode: () => stereo },
+    Buffer.from([0x01]),
+  );
+
+  assert.ok(decoded);
+  assert.deepEqual(decoded.stereoPcm, stereo);
+  assert.deepEqual(decoded.monoPcm, Buffer.from([0xd0, 0x07, 0x00, 0x00]));
 });
 
 void test("破損したDiscord Opus packetはそのpacketだけを破棄する", () => {

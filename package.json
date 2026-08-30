@@ -28,6 +28,7 @@
     "soniox:inspect": "node --env-file-if-exists=.env.local --import tsx src/inspect-soniox.ts",
     "smoke:runtime": "node scripts/smoke-runtime.mjs",
     "start": "node --env-file-if-exists=.env.local dist/index.js",
+    "stt:capture:analyze": "node --import tsx src/analyze-private-stt-capture.ts",
     "test": "tsx --test test/**/*.test.ts",
     "typecheck": "tsc --noEmit",
     "verify": "pnpm check && pnpm build && pnpm smoke:runtime && pnpm diagrams:check"

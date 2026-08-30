@@ -6,7 +6,12 @@ type OpusPacketDecoder = {
   decode(packet: Buffer): Buffer;
 };
 
-export function decodeDiscordOpusPacketToMono(
+export type DecodedDiscordOpusPacket = {
+  stereoPcm: Buffer;
+  monoPcm: Buffer;
+};
+
+function decodeDiscordOpusStereo(
   decoder: OpusPacketDecoder,
   packet: Buffer,
 ): Buffer | undefined {
@@ -25,7 +30,27 @@ export function decodeDiscordOpusPacketToMono(
     }
     throw error;
   }
-  return downmixStereoS16leToMono(stereo);
+  return stereo;
+}
+
+export function decodeDiscordOpusPacket(
+  decoder: OpusPacketDecoder,
+  packet: Buffer,
+): DecodedDiscordOpusPacket | undefined {
+  const stereoPcm = decodeDiscordOpusStereo(decoder, packet);
+  if (!stereoPcm) return undefined;
+  return {
+    stereoPcm,
+    monoPcm: downmixStereoS16leToMono(stereoPcm),
+  };
+}
+
+export function decodeDiscordOpusPacketToMono(
+  decoder: OpusPacketDecoder,
+  packet: Buffer,
+): Buffer | undefined {
+  const stereoPcm = decodeDiscordOpusStereo(decoder, packet);
+  return stereoPcm === undefined ? undefined : downmixStereoS16leToMono(stereoPcm);
 }
 
 export function downmixStereoS16leToMono(stereo: Buffer): Buffer {

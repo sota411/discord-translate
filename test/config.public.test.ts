@@ -95,6 +95,30 @@ void test("単言語話者hintの不正形式、重複、許可外User IDを起�
   }
 });
 
+void test("private STT captureは絶対pathを明示した診断時だけ有効にする", () => {
+  assert.equal(
+    loadConfig(
+      validEnv({ STT_PRIVATE_CAPTURE_DIRECTORY: undefined }),
+      new Date("2026-08-15T00:00:00Z"),
+    ).diagnostics.privateSttCaptureDirectory,
+    undefined,
+  );
+  assert.equal(
+    loadConfig(
+      validEnv({ STT_PRIVATE_CAPTURE_DIRECTORY: "/private/stt-capture" }),
+      new Date("2026-08-15T00:00:00Z"),
+    ).diagnostics.privateSttCaptureDirectory,
+    "/private/stt-capture",
+  );
+  assert.throws(
+    () => loadConfig(
+      validEnv({ STT_PRIVATE_CAPTURE_DIRECTORY: ".data/stt-capture" }),
+      new Date("2026-08-15T00:00:00Z"),
+    ),
+    /STT_PRIVATE_CAPTURE_DIRECTORY/u,
+  );
+});
+
 void test("同時話者数を3人に設定できる", () => {
   const config = loadConfig(
     validEnv({ MAX_SPEAKERS_PER_SESSION: "3" }),

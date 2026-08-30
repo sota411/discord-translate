@@ -13,6 +13,7 @@ import { TranslationTermCatalog } from "./config/translation-term-catalog.js";
 import { loadTranslationTerms } from "./config/translation-terms.js";
 import { DiscordBotController } from "./discord/bot-controller.js";
 import { DiscordTranslationDriver } from "./discord/translation-driver.js";
+import { openPrivateSttCaptureFactory } from "./diagnostics/private-stt-capture.js";
 import { safeDiscordRateLimitFields } from "./observability/discord-rate-limit.js";
 import { createSafeLogger, type SafeLogger } from "./observability/logger.js";
 import {
@@ -67,6 +68,9 @@ export async function startApplication(
     const speakerLanguages = new SpeakerLanguageSettings(
       config.discord.speakerLanguageHints,
       ledger,
+    );
+    const privateCaptureFactory = await openPrivateSttCaptureFactory(
+      config.diagnostics.privateSttCaptureDirectory,
     );
     const terms = new TranslationTermCatalog(
       staticTerms,
@@ -152,6 +156,7 @@ export async function startApplication(
         logger.info("caption_delivery", observation);
       },
       observeSttResult: () => runtimeHealth.recordSttResult(),
+      ...(privateCaptureFactory === undefined ? {} : { privateCaptureFactory }),
       onFailure: (guildId, reason, publicMessage, cause) => {
         void controllerReference.current?.handleRuntimeFailure(
           guildId,

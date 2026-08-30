@@ -24,12 +24,14 @@ function recordingSession(calls: FinalizeCall[]) {
 void test("Discordの発話再開時は確定を取り消し、終了後200ms相当の無音を送って確定する", (context) => {
   context.mock.timers.enable({ apis: ["setTimeout"] });
   const calls: FinalizeCall[] = [];
+  const capturedTrailingSilence: Buffer[] = [];
   const finalizer = new SttTurnFinalizer({
     session: recordingSession(calls),
     speakingEndDelayMs: 100,
     transcriptInactivityMs: 3_000,
     maxTurnMs: 30_000,
     trailingSilenceMs: 200,
+    onTrailingSilenceSent: (audio) => capturedTrailingSilence.push(Buffer.from(audio)),
   });
 
   finalizer.audioReceived();
@@ -47,6 +49,7 @@ void test("Discordの発話再開時は確定を取り消し、終了後200ms相
   assert.ok(audioCall?.kind === "audio");
   assert.equal(audioCall.audio.length, 48_000 * 2 * 0.2);
   assert.ok(audioCall.audio.every((sample) => sample === 0));
+  assert.deepEqual(capturedTrailingSilence, [audioCall.audio]);
   assert.deepEqual(calls[1], { kind: "finalize", trailingSilenceMs: 200 });
   assert.equal(finalizer.boundaryReceived("finalized"), true);
   finalizer.close();
