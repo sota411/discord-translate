@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { ComponentType, MessageFlags } from "discord.js";
+import { ComponentType, MessageFlags, REST } from "discord.js";
 
 import {
   DiscordCaptionGateway,
@@ -119,6 +119,12 @@ void test("仮字幕を同じメッセージへ間引き更新し、確定時に
     originalText: "明日の夜って空いてる？",
     translatedText: "내일 저녁에 시간 있어?",
   });
+  await captions.preview({
+    utteranceId: "turn-1",
+    speakerDisplayName: "Sota",
+    originalText: "明日の夜って空いてる？",
+    translatedText: "내일 저녁에 시간 있어?",
+  });
   const reference = await captions.post({
     utteranceId: "turn-1",
     sessionId: "s1",
@@ -148,6 +154,289 @@ void test("仮字幕を同じメッセージへ間引き更新し、確定時に
   assert.match(textContents(updatedInterimMessage).join("\n"), /空いてる/u);
   assert.match(textContents(finalMessage).join("\n"), /再生待ち/u);
   assert.equal(reference, 1);
+});
+
+for (const speakerCount of [1, 3]) {
+  void test(`${String(speakerCount)}人の長い発話をDiscordの残り枠で配分し、同じメッセージへ更新を続ける`, async (context) => {
+    context.mock.timers.enable({ apis: ["Date", "setTimeout"] });
+    const channelId = "111111111111111111";
+    const route = `/channels/${channelId}/messages` as const;
+    const requests: { at: number; method: string; body: string }[] = [];
+    let resetAt = 0;
+    let remaining = 0;
+    let rateLimited = 0;
+    // Discordの固定仕様ではなく、5秒に5回という応答を返すテスト条件。
+    const rest = new REST({
+      offset: 0,
+      makeRequest: (_url, options) => {
+        assert.ok(typeof options.body === "string");
+        requests.push({ at: Date.now(), method: options.method ?? "GET", body: options.body });
+        const headers = new Headers({ "Content-Type": "application/json" });
+        let status = 200;
+        if (options.method === "PATCH") {
+          if (Date.now() >= resetAt) {
+            resetAt = Date.now() + 5_000;
+            remaining = 5;
+          }
+          if (remaining > 0) {
+            remaining -= 1;
+          } else {
+            status = 429;
+            rateLimited += 1;
+            headers.set("Retry-After", String((resetAt - Date.now()) / 1_000));
+          }
+          headers.set("X-RateLimit-Bucket", "caption-test");
+          headers.set("X-RateLimit-Limit", "5");
+          headers.set("X-RateLimit-Remaining", String(remaining));
+          headers.set("X-RateLimit-Reset-After", String((resetAt - Date.now()) / 1_000));
+        }
+        return Promise.resolve({
+          status, statusText: "test", ok: status === 200, headers, body: null, bodyUsed: false,
+          json: () => Promise.resolve({}),
+          text: () => Promise.resolve("{}"),
+          arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+        });
+      },
+    }).setToken("caption-test-token");
+    let messageId = 222222222222222222n;
+    const captions = new DiscordCaptionGateway({
+      async send(payload) {
+        await rest.post(route, { body: payload });
+        const messageRoute = `${route}/${String(messageId++)}` as const;
+        return {
+          edit: (next) => rest.patch(messageRoute, { body: next }),
+          delete: () => rest.delete(messageRoute),
+        };
+      },
+    }, { rateLimits: { rest, channelId } });
+    context.after(() => {
+      void captions.close();
+      rest.clearHashSweeper();
+      rest.clearHandlerSweeper();
+    });
+    const preview = (index: number, speaker = 0) => captions.preview({
+      utteranceId: `long-turn-${String(speaker)}`,
+      speakerDisplayName: `話者${String(speaker)}`,
+      originalText: `長い発話の途中${String(index)}`,
+      translatedText: "인식 중",
+    });
+    const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+    for (let speaker = 0; speaker < speakerCount; speaker += 1) await preview(0, speaker);
+    context.mock.timers.tick(500);
+    await preview(1);
+    for (let index = 2; index <= 40; index += 1) {
+      context.mock.timers.tick(500);
+      for (let speaker = 0; speaker < speakerCount; speaker += 1) void preview(index, speaker);
+      await flush();
+      if (index === 2) assert.equal(requests.length, speakerCount + 1, "残り枠に合わせて編集を待つ");
+    }
+    assert.equal(rateLimited, 0);
+    const edits = requests.filter((request) => request.method === "PATCH");
+    assert.ok(edits.length >= 10 && edits.length < 20);
+    for (let speaker = 0; speaker < speakerCount; speaker += 1) {
+      const speakerEdits = edits.filter((edit) => edit.body.includes(`話者${String(speaker)}`));
+      assert.ok(speakerEdits.length >= 3);
+      let previous: (typeof speakerEdits)[number] | undefined;
+      for (const edit of speakerEdits) {
+        if (previous) {
+          assert.ok(edit.at - previous.at <= 2_000 * speakerCount, "全話者の後半も継続的に更新する");
+        }
+        previous = edit;
+      }
+      assert.ok(previous);
+      const match = /長い発話の途中(\d+)/u.exec(previous.body);
+      assert.ok(match?.[1]);
+      const latest = Number(match[1]);
+      assert.ok(latest >= 40 - 4 * speakerCount, "古い更新を溜めず最新の途中字幕へ追いつく");
+    }
+    context.diagnostic(`20秒間・${String(speakerCount)}人: 途中編集${String(edits.length)}回、429応答${String(rateLimited)}回`);
+
+    const final = captions.post({
+      utteranceId: "long-turn-0", sessionId: "s1", speakerUserId: "user1",
+      speakerDisplayName: "話者0", voiceId: "speaker-test-voice",
+      sourceLanguage: "ja", targetLanguage: "ko",
+      originalText: "長い発話の確定結果", translatedText: "확정 결과",
+      sourceDurationMs: 20_000, state: "captions_only",
+    });
+    await flush();
+    const finalRequest = requests.at(-1);
+    assert.ok(finalRequest);
+    assert.equal(finalRequest.at, Date.now(), "確定字幕は仮字幕の待機を追い越す");
+    assert.match(finalRequest.body, /長い発話の確定結果/u);
+    assert.equal(await final, 1);
+    assert.equal(rateLimited, 0);
+    assert.equal(requests.filter((request) => request.method === "POST").length, speakerCount);
+    const completedCount = requests.length;
+    if (speakerCount > 1) await captions.close();
+    context.mock.timers.tick(10_000);
+    await flush();
+    assert.equal(requests.length, completedCount, "確定・停止後は待機中の仮字幕を送らない");
+    await captions.close();
+    assert.equal(rest.listenerCount("response"), 0);
+    assert.equal(rest.listenerCount("rateLimited"), 0);
+  });
+}
+
+for (const [headerState, rateLimitHeaders] of [
+  ["RemainingとReset-Afterが空の", {
+    "X-RateLimit-Bucket": "caption-test",
+    "X-RateLimit-Remaining": "",
+    "X-RateLimit-Reset-After": "",
+  }],
+  ["RemainingとReset-Afterが欠損した", { "X-RateLimit-Bucket": "caption-test" }],
+  ["Bucketが空の", {
+    "X-RateLimit-Bucket": " ",
+    "X-RateLimit-Remaining": "1",
+    "X-RateLimit-Reset-After": "1",
+  }],
+  ["Bucketが欠損した", {
+    "X-RateLimit-Remaining": "1",
+    "X-RateLimit-Reset-After": "1",
+  }],
+] as const) void test(`${headerState}Discordレート制限ヘッダーを拒否して編集を保留する`, async (context) => {
+  context.mock.timers.enable({ apis: ["Date", "setTimeout"] });
+  const channelId = "111111111111111111";
+  const route = `/channels/${channelId}/messages` as const;
+  const warnings: string[] = [];
+  let requests = 0;
+  let recovered = false;
+  const rest = new REST({
+    offset: 0,
+    makeRequest: () => {
+      requests += 1;
+      const headers = new Headers({
+        "Content-Type": "application/json",
+        ...(recovered ? {
+          "X-RateLimit-Bucket": "caption-test",
+          "X-RateLimit-Remaining": "1",
+          "X-RateLimit-Reset-After": "1",
+        } : rateLimitHeaders),
+      });
+      return Promise.resolve({
+        status: 200, statusText: "test", ok: true, headers, body: null, bodyUsed: false,
+        json: () => Promise.resolve({}),
+        text: () => Promise.resolve("{}"),
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+    },
+  }).setToken("caption-test-token");
+  const captions = new DiscordCaptionGateway({
+    async send(payload) {
+      await rest.post(route, { body: payload });
+      return {
+        edit: (next) => rest.patch(`${route}/222222222222222222`, { body: next }),
+        delete: () => rest.delete(`${route}/222222222222222222`),
+      };
+    },
+  }, {
+    rateLimits: { rest, channelId },
+    onWarning: (operation) => warnings.push(operation),
+  });
+
+  try {
+    await captions.preview({
+      utteranceId: "blank-header-turn", speakerDisplayName: "Sota",
+      originalText: "最初", translatedText: "처음",
+    });
+    await captions.preview({
+      utteranceId: "blank-header-turn", speakerDisplayName: "Sota",
+      originalText: "更新", translatedText: "갱신",
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.deepEqual(warnings, ["caption_preview"]);
+
+    const delayed = captions.preview({
+      utteranceId: "blank-header-turn", speakerDisplayName: "Sota",
+      originalText: "さらに更新", translatedText: "다시 갱신",
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(requests, 2);
+    context.mock.timers.tick(10_000);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(requests, 2);
+    recovered = true;
+    await rest.patch(`${route}/333333333333333333`, { body: {} });
+    assert.equal(requests, 3);
+    context.mock.timers.tick(1_000);
+    await delayed;
+    assert.equal(requests, 4);
+  } finally {
+    await captions.close();
+    rest.clearHashSweeper();
+    rest.clearHandlerSweeper();
+  }
+});
+
+void test("他スレッドの制限は混ぜず、全体制限中は最新字幕を保持して破棄時に待機を解除する", async (context) => {
+  context.mock.timers.enable({ apis: ["Date", "setTimeout"] });
+  const rest = new REST();
+  const edits: CaptionMessagePayload[] = [];
+  let deleted = 0;
+  const captions = new DiscordCaptionGateway({
+    send: () => Promise.resolve({
+      edit: (payload) => {
+        edits.push(payload);
+        return Promise.resolve();
+      },
+      delete: () => { deleted += 1; return Promise.resolve(); },
+    }),
+  }, { rateLimits: { rest, channelId: "caption-thread" } });
+  context.after(() => {
+    void captions.close();
+    rest.clearHashSweeper();
+    rest.clearHandlerSweeper();
+  });
+  const preview = (text: string) => captions.preview({
+    utteranceId: "turn", speakerDisplayName: "Sota", originalText: text, translatedText: "",
+  });
+  const limit = {
+    global: false, hash: "test", limit: 5, majorParameter: "other-thread",
+    method: "PATCH", route: "/channels/:id/messages/:id", url: "https://example.invalid/",
+    retryAfter: 2_000, sublimitTimeout: 0, timeToReset: 2_000, scope: "user" as const,
+  };
+  await preview("最初");
+  rest.emit("rateLimited", limit);
+  await preview("他スレッドの制限中も更新");
+  assert.equal(edits.length, 1);
+
+  rest.emit("rateLimited", {
+    ...limit, hash: "post", majorParameter: "caption-thread",
+    method: "POST", route: "/channels/:id/messages",
+  });
+  const afterPostLimit = preview("同じスレッドの別POST枠でも更新");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(edits.length, 2);
+  await afterPostLimit;
+
+  rest.emit("rateLimited", {
+    ...limit, hash: "reaction", majorParameter: "caption-thread",
+    method: "PUT", route: "/channels/:id/messages/:id/reactions/:emoji/@me",
+  });
+  const afterReactionLimit = preview("同じスレッドのリアクション枠でも更新");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(edits.length, 3);
+  await afterReactionLimit;
+
+  rest.emit("rateLimited", { ...limit, global: true });
+  const old = preview("古い途中字幕");
+  const latest = preview("最新の途中字幕");
+  await old;
+  context.mock.timers.tick(1_999);
+  assert.equal(edits.length, 3);
+  context.mock.timers.tick(1);
+  await latest;
+  const latestEdit = edits[3];
+  assert.ok(latestEdit);
+  assert.match(textContents(latestEdit).join("\n"), /最新の途中字幕/u);
+
+  rest.emit("rateLimited", { ...limit, majorParameter: "caption-thread" });
+  const discarded = preview("破棄する途中字幕");
+  await captions.discardPreview("turn");
+  await discarded;
+  context.mock.timers.tick(2_000);
+  assert.equal(deleted, 1);
+  assert.equal(edits.length, 4);
 });
 
 void test("遅い仮字幕は実行中1件と最新1件だけにまとめ、確定字幕を優先する", async () => {

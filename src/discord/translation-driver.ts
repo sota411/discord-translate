@@ -441,6 +441,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     this.#presentation = options.presentation;
     this.#onWarning = options.onWarning;
     this.#captions = new DiscordCaptionGateway(options.presentation.captionChannel, {
+      rateLimits: { rest: options.guild.client.rest, channelId: this.captionThreadId },
       failurePolicy: options.session.captionFailurePolicy,
       onWarning: (operation, cause) => {
         this.#onWarning(options.session.guildId, operation, cause);

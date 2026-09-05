@@ -1,5 +1,7 @@
 import { performance } from "node:perf_hooks";
 
+import type { APIRequest, RateLimitData, REST, ResponseLike } from "discord.js";
+
 import { ApplicationError } from "../domain/application-error.js";
 import type {
   CaptionGateway,
@@ -85,6 +87,8 @@ type CaptionWorker = {
   running: boolean;
   activePreview?: PreviewWork;
   pendingPreview?: PreviewWork;
+  previewTimer?: NodeJS.Timeout;
+  lastPreview?: InterimCaptionInput;
   terminal?: TerminalWork;
   previewRequested: number;
   previewSent: number;
@@ -102,6 +106,7 @@ function createDeferred<T>(): Deferred<T> {
 }
 
 type DiscordCaptionGatewayOptions = {
+  rateLimits?: { rest: REST; channelId: string };
   failurePolicy?: CaptionFailurePolicy;
   onWarning?: (operation: CaptionWarningOperation, error: unknown) => void;
   onClosedOperationSettled?: () => void;
@@ -116,6 +121,11 @@ export class DiscordCaptionGateway implements CaptionGateway {
   readonly #onWarning: (operation: CaptionWarningOperation, error: unknown) => void;
   readonly #onClosedOperationSettled: () => void;
   readonly #observeDelivery: (observation: CaptionDeliveryObservation) => void;
+  readonly #unsubscribeRateLimits?: () => void;
+  #nextPreviewEditAt = 0;
+  #previewEditIntervalMs = 0;
+  #previewEditResetAt = 0;
+  #previewEditsBlocked = false;
   #failurePolicy: CaptionFailurePolicy;
   #nextReference = 1;
   #closed = false;
@@ -129,6 +139,67 @@ export class DiscordCaptionGateway implements CaptionGateway {
     this.#onWarning = options.onWarning ?? (() => undefined);
     this.#onClosedOperationSettled = options.onClosedOperationSettled ?? (() => undefined);
     this.#observeDelivery = options.observeDelivery ?? (() => undefined);
+    if (options.rateLimits) {
+      const { rest, channelId } = options.rateLimits;
+      let editBucket: string | undefined;
+      const onResponse = (request: APIRequest, response: ResponseLike): void => {
+        if (!request.path.startsWith(`/channels/${channelId}/messages`)) return;
+        const bucket = response.headers.get("X-RateLimit-Bucket")?.trim();
+        if (request.method !== "PATCH" && (editBucket === undefined || bucket !== editBucket)) {
+          return;
+        }
+        const remainingText = response.headers.get("X-RateLimit-Remaining")?.trim();
+        const resetText = response.headers.get("X-RateLimit-Reset-After")?.trim();
+        const remaining = Number(remainingText);
+        const resetMs = Number(resetText) * 1_000;
+        if (!bucket || remainingText === undefined || resetText === undefined ||
+          !/^\d+$/u.test(remainingText) || !/^\d+(?:\.\d+)?$/u.test(resetText) ||
+          !Number.isSafeInteger(remaining) || !Number.isFinite(resetMs)) {
+          this.#onWarning("caption_preview", new Error("Discordの字幕編集制限ヘッダーが不正です。"));
+          this.#previewEditsBlocked = true;
+          return;
+        }
+        if (request.method === "PATCH") editBucket = bucket;
+        const offset = typeof rest.options.offset === "function"
+          ? rest.options.offset(request.route)
+          : rest.options.offset;
+        // Spread previews over the remaining window, leaving room for the final edit.
+        this.#previewEditIntervalMs = Math.ceil((resetMs + offset) / Math.max(1, remaining));
+        this.#previewEditResetAt = Date.now() + resetMs + offset;
+        this.#nextPreviewEditAt = Math.max(
+          this.#nextPreviewEditAt,
+          Date.now() + this.#previewEditIntervalMs,
+        );
+        const resumeBlockedPreviews = this.#previewEditsBlocked;
+        this.#previewEditsBlocked = false;
+        if (resumeBlockedPreviews) {
+          for (const worker of this.#workers.values()) {
+            if (worker.running || worker.previewTimer || worker.terminal || !worker.pendingPreview) continue;
+            const pending = worker.pendingPreview;
+            delete worker.pendingPreview;
+            this.#startPreview(worker, pending);
+          }
+        }
+      };
+      const onRateLimited = (data: RateLimitData): void => {
+        const messageRoute = data.route === "/channels/:id/messages" ||
+          data.route === "/channels/:id/messages/:id";
+        const appliesToEdits = data.majorParameter === channelId && messageRoute && (
+          editBucket === undefined
+            ? data.method === "PATCH" && data.route === "/channels/:id/messages/:id"
+            : data.hash === editBucket
+        );
+        if (data.global || appliesToEdits) {
+          this.#nextPreviewEditAt = Math.max(this.#nextPreviewEditAt, Date.now() + data.retryAfter);
+        }
+      };
+      rest.on("response", onResponse);
+      rest.on("rateLimited", onRateLimited);
+      this.#unsubscribeRateLimits = () => {
+        rest.off("response", onResponse);
+        rest.off("rateLimited", onRateLimited);
+      };
+    }
   }
 
   public setFailurePolicy(policy: CaptionFailurePolicy): void {
@@ -150,7 +221,7 @@ export class DiscordCaptionGateway implements CaptionGateway {
       work.deferred.resolve(undefined);
       return work.deferred.promise;
     }
-    if (!worker.running) {
+    if (!worker.running && !worker.previewTimer && !worker.pendingPreview) {
       this.#startPreview(worker, work);
       return work.deferred.promise;
     }
@@ -230,9 +301,11 @@ export class DiscordCaptionGateway implements CaptionGateway {
 
   public close(): Promise<void> {
     this.#closed = true;
+    this.#unsubscribeRateLimits?.();
     this.#interimMessages.clear();
     this.#entries.clear();
     for (const worker of this.#workers.values()) {
+      if (worker.previewTimer) clearTimeout(worker.previewTimer);
       worker.activePreview?.deferred.resolve(undefined);
       delete worker.activePreview;
       worker.pendingPreview?.deferred.resolve(undefined);
@@ -265,11 +338,41 @@ export class DiscordCaptionGateway implements CaptionGateway {
   }
 
   #startPreview(worker: CaptionWorker, work: PreviewWork): void {
+    const last = worker.lastPreview;
+    if (last?.originalText === work.input.originalText &&
+      last.translatedText === work.input.translatedText &&
+      last.speakerDisplayName === work.input.speakerDisplayName) {
+      worker.previewCoalesced += 1;
+      work.deferred.resolve(undefined);
+      return;
+    }
+    if (this.#interimMessages.has(worker.utteranceId)) {
+      if (this.#previewEditsBlocked) {
+        worker.pendingPreview = work;
+        return;
+      }
+      const delayMs = this.#nextPreviewEditAt - Date.now();
+      if (delayMs > 0) {
+        worker.pendingPreview = work;
+        worker.previewTimer = setTimeout(() => {
+          delete worker.previewTimer;
+          this.#advance(worker);
+        }, delayMs);
+        worker.previewTimer.unref();
+        return;
+      }
+      this.#nextPreviewEditAt = Date.now() + (
+        Date.now() < this.#previewEditResetAt ? this.#previewEditIntervalMs : 0
+      );
+    }
     worker.running = true;
     worker.activePreview = work;
     void (async () => {
       try {
-        if (await this.#performPreview(work.input)) worker.previewSent += 1;
+        if (await this.#performPreview(work.input)) {
+          worker.previewSent += 1;
+          worker.lastPreview = work.input;
+        }
         work.deferred.resolve(undefined);
       } catch (error) {
         work.deferred.reject(error);
@@ -346,6 +449,10 @@ export class DiscordCaptionGateway implements CaptionGateway {
   }
 
   #dropPendingPreview(worker: CaptionWorker): void {
+    if (worker.previewTimer) {
+      clearTimeout(worker.previewTimer);
+      delete worker.previewTimer;
+    }
     if (!worker.pendingPreview) return;
     worker.previewCoalesced += 1;
     worker.pendingPreview.deferred.resolve(undefined);
