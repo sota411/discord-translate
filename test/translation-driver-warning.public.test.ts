@@ -4,7 +4,7 @@ import { PassThrough } from "node:stream";
 import { test } from "node:test";
 
 import type { RealtimeResult } from "@soniox/node";
-import { MessageFlags } from "discord.js";
+import { MessageFlags, REST } from "discord.js";
 
 import { loadConfig } from "../src/config.js";
 import type { CaptionMessagePayload } from "../src/discord/caption-gateway.js";
@@ -94,6 +94,7 @@ void test("RuntimeのSTT resultから警告送信失敗を非致命ログへ渡�
     participantIds: [userId],
     translationTerms: [],
     guild: {
+      client: { rest: new REST({ hashSweepInterval: 0, handlerSweepInterval: 0 }) },
       members: {
         cache: new Map([
           [userId, { displayName: "Sota" }],
@@ -313,6 +314,7 @@ void test("Discord音声受信streamの一時エラーは再購読してセッ�
     participantIds: [userId],
     translationTerms: [],
     guild: {
+      client: { rest: new REST({ hashSweepInterval: 0, handlerSweepInterval: 0 }) },
       members: {
         cache: new Map([[userId, { displayName: "Sota" }]]),
       },
