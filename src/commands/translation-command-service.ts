@@ -177,6 +177,7 @@ type TranslationCommandServiceDependencies = {
   allowedGuildIds: ReadonlySet<string>;
   allowedUserIds: ReadonlySet<string>;
   maxSpeakersPerSession: number;
+  localRefinementEnabled?: boolean;
   defaultTtsSpeed: number;
   sessions: SessionManager;
   terms: Pick<
@@ -202,6 +203,7 @@ export class TranslationCommandService {
   readonly #allowedGuildIds: ReadonlySet<string>;
   readonly #allowedUserIds: ReadonlySet<string>;
   readonly #maxSpeakersPerSession: number;
+  readonly #localRefinementEnabled: boolean;
   readonly #defaultTtsSpeed: number;
   readonly #sessions: SessionManager;
   readonly #terms: Pick<
@@ -218,6 +220,7 @@ export class TranslationCommandService {
     this.#allowedGuildIds = dependencies.allowedGuildIds;
     this.#allowedUserIds = dependencies.allowedUserIds;
     this.#maxSpeakersPerSession = dependencies.maxSpeakersPerSession;
+    this.#localRefinementEnabled = dependencies.localRefinementEnabled ?? false;
     this.#defaultTtsSpeed = dependencies.defaultTtsSpeed;
     this.#sessions = dependencies.sessions;
     this.#terms = dependencies.terms;
@@ -367,7 +370,7 @@ export class TranslationCommandService {
       ttsSpeed: this.#defaultTtsSpeed,
       audioEnabled: true,
       captionFailurePolicy: "continue_audio",
-      requiredSttStreams: this.#maxSpeakersPerSession,
+      requiredSttStreams: this.#maxSpeakersPerSession + (this.#localRefinementEnabled && input.pair === "ja-ko" ? 1 : 0),
       translationTerms,
       speakerLanguageHints,
     });

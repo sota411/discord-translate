@@ -1,3 +1,5 @@
+import { DolphinWorker } from "./audio/dolphin-worker.js";
+import { SpeechRefinement } from "./soniox/speech-refinement.js";
 import { once } from "node:events";
 
 import {
@@ -64,6 +66,7 @@ export async function startApplication(
     logger.info("runtime_health", fields);
   });
   let client: Client | undefined;
+  let localWorker: DolphinWorker | undefined;
   let reconciliationTimer: NodeJS.Timeout | undefined;
   try {
     const speakerLanguages = new SpeakerLanguageSettings(
@@ -131,6 +134,11 @@ export async function startApplication(
       config.soniox.generalContextEnabled,
       config.soniox.recognitionTerms,
     );
+    if (config.soniox.localRefinementEnabled) localWorker = await DolphinWorker.start();
+    const refinement = localWorker ? new SpeechRefinement({
+      worker: localWorker, factory: sttFactory, ledger, maxInputCharacters: config.limits.ttsMaxInputCharacters,
+    }) : undefined;
+    logger.info("local_stt_ready", { enabled: refinement !== undefined });
     const tts = new RawSonioxTtsGateway({
       url: config.soniox.ttsWebSocketUrl,
       apiKey: config.soniox.apiKey,
@@ -146,6 +154,7 @@ export async function startApplication(
       config,
       ledger,
       sttFactory,
+      ...(refinement ? { refinement } : {}),
       tts,
       latency,
       observeFlow: (stage) => logger.info("translation_flow", { stage }),
@@ -190,6 +199,7 @@ export async function startApplication(
       allowedGuildIds: config.discord.allowedGuildIds,
       allowedUserIds: config.discord.allowedUserIds,
       maxSpeakersPerSession: config.limits.maxSpeakersPerSession,
+      localRefinementEnabled: config.soniox.localRefinementEnabled,
       defaultTtsSpeed: config.soniox.ttsSpeed,
       sessions,
       terms,
@@ -239,6 +249,7 @@ export async function startApplication(
           ledger,
           reconciliationTimer: timer,
           runtimeHealth,
+          ...(localWorker ? { localWorker } : {}),
           waitForReconciliation: () => reconciliationQueue.wait(),
         });
         return shutdownPromise;
@@ -247,6 +258,7 @@ export async function startApplication(
   } catch (error) {
     if (reconciliationTimer) clearInterval(reconciliationTimer);
     runtimeHealth.stop();
+    await localWorker?.close();
     await client?.destroy();
     ledger.close();
     logger.error("application_start_failed", error);
@@ -269,6 +281,7 @@ async function shutdownApplication(input: {
   ledger: UsageLedger;
   reconciliationTimer: NodeJS.Timeout;
   runtimeHealth: RuntimeHealthMonitor;
+  localWorker?: DolphinWorker;
   waitForReconciliation: () => Promise<void>;
 }): Promise<void> {
   input.logger.info("application_shutdown_started", { reason: input.reason });
@@ -282,6 +295,7 @@ async function shutdownApplication(input: {
     input.controller.detach();
     await input.client.destroy();
     input.tts.close();
+    await input.localWorker?.close();
     input.ledger.close();
   }
   input.logger.info("application_shutdown_complete", { reason: input.reason });

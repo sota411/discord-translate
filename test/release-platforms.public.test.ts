@@ -164,7 +164,7 @@ void test("配備と巻き戻しはpull済みimageだけを検査し途中失敗
     "Pi配備はarm64以外のimageを拒否する",
   );
   assert.match(piDeploySection, /docker run --rm --pull never --platform linux\/arm64/);
-  assert.match(piDeploySection, /node scripts\/smoke-runtime\.mjs &&/);
+  assert.match(piDeploySection, /node scripts\/smoke-runtime\.mjs --dolphin &&/);
   assert.match(rollbackSection, /docker compose[^\n]*pull bot &&/);
   assert.match(piRollbackSection, /-f compose\.yaml -f compose\.pi\.yaml pull bot &&/);
   assert.match(piRollbackSection, /read -r reviewed_rollback_sha &&/);

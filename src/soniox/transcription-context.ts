@@ -53,8 +53,11 @@ export function buildSonioxTranscriptionContext(
   translationTerms: readonly TranslationTerm[],
   includeGeneral: boolean,
   recognitionTerms: readonly string[] = [],
+  text?: string,
 ): BuiltSonioxTranscriptionContext {
+  if (text !== undefined && !text.trim()) throw new TypeError("補助認識のtextが空です");
   const context: TranscriptionContext = {
+    ...(text === undefined ? {} : { text }),
     ...(includeGeneral ? { general: generalContext(pair) } : {}),
     ...(recognitionTerms.length > 0 ? { terms: [...recognitionTerms] } : {}),
     ...(translationTerms.length > 0

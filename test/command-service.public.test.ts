@@ -243,6 +243,7 @@ class RecordingDriver implements TranslationSessionDriver {
 function createHarness(options: {
   allowedUserIds?: readonly string[];
   maxSpeakersPerSession?: number;
+  localRefinementEnabled?: boolean;
 } = {}): Harness {
   const driver = new RecordingDriver();
   const usageGate = new RecordingUsageGate();
@@ -268,6 +269,7 @@ function createHarness(options: {
       "423456789012345678",
     ]),
     maxSpeakersPerSession: options.maxSpeakersPerSession ?? 2,
+    localRefinementEnabled: options.localRefinementEnabled ?? false,
     defaultTtsSpeed: 1.15,
     sessions,
     terms,
@@ -445,6 +447,17 @@ void test("上限3人なら許可済み3人で開始し、STT 3本分の容量�
   );
   assert.deepEqual(exceeded, { stopped: true, reason: "TOO_MANY_SPEAKERS" });
   assert.deepEqual(harness.driver.runtimes[0]?.stopReasons, ["TOO_MANY_SPEAKERS"]);
+});
+
+void test("補助認識のSTT追加枠は対応する日本語・韓国語ペアだけに確保する", async () => {
+  for (const pair of ["ja-ko", "ja-en", "ko-en"] as const) {
+    const harness = createHarness({ localRefinementEnabled: true });
+    const result = await harness.service.execute(validStart({ pair }));
+    assert.equal(result.ok, true);
+    assert.deepEqual(harness.capacityGate.inputs, [{
+      sttStreams: pair === "ja-ko" ? 3 : 2, ttsStreams: 1,
+    }]);
+  }
 });
 
 void test("上限3人なら実行中に許可済みの3人目を追加する", async () => {

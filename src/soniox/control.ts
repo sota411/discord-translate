@@ -223,6 +223,7 @@ export class SonioxSttFactory {
       language: Language;
       strict: boolean;
     },
+    recognitionText?: string,
   ): {
     session: RealtimeSttSession;
     initialTextCharacterCount: number;
@@ -242,6 +243,7 @@ export class SonioxSttFactory {
       translationTerms,
       this.#generalContextEnabled,
       this.#recognitionTerms[pair],
+      recognitionText,
     );
     const session = this.#client.realtime.stt({
       model: this.#model,
