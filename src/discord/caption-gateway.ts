@@ -531,7 +531,9 @@ export class DiscordCaptionGateway implements CaptionGateway {
     if (this.#closed) return undefined;
     const reference = this.#nextReference;
     this.#nextReference += 1;
-    this.#entries.set(reference, { message, utterance });
+    if (utterance.state === "pending") {
+      this.#entries.set(reference, { message, utterance });
+    }
     return reference;
   }
 

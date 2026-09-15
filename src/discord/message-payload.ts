@@ -75,6 +75,7 @@ const captionStateLabels: Readonly<Record<CaptionState, string>> = {
   skipped_delay: "⏭ 遅延回避のため音声省略",
   interrupted_for_conversation: "⏭ 新しい発話のため音声中断",
   captions_only: "📝 字幕のみ",
+  translation_unavailable: "⚠ 訳文なし・原文のみ保存",
 };
 
 export function isFinalCaptionStatus(content: string): boolean {
@@ -149,7 +150,9 @@ export function createCaptionMessagePayload(
   const target = languageCodes[utterance.targetLanguage];
   const header = `**${escapeCaptionMarkdown(utterance.speakerDisplayName)}** · ${inlineCode(`${source} → ${target}`)}`;
   const sourceText = `**${source}**\n${escapeCaptionMarkdown(utterance.originalText)}`;
-  const targetText = `**${target}**\n${escapeCaptionMarkdown(utterance.translatedText)}`;
+  const targetText = `**${target}**\n${state === "translation_unavailable"
+    ? "訳文を取得できませんでした。"
+    : escapeCaptionMarkdown(utterance.translatedText)}`;
   const status = `-# ${captionStateLabels[state]}`;
   const longestStatus = `-# ${longestCaptionStateLabel}`;
   assertCaptionLength([header, sourceText, targetText, longestStatus]);
