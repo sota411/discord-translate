@@ -21,6 +21,7 @@ import { validEnv } from "./helpers/valid-env.js";
 
 class FakeSttSession extends EventEmitter {
   public audioWrites = 0;
+  public finalizeCalls = 0;
 
   public connect(): Promise<void> {
     return Promise.resolve();
@@ -35,6 +36,7 @@ class FakeSttSession extends EventEmitter {
   }
 
   public finalize(): Promise<void> {
+    this.finalizeCalls += 1;
     return Promise.resolve();
   }
 
@@ -299,7 +301,7 @@ void test("Runtimeは警告失敗を非致命に扱い、訳文のない確定�
   }
 });
 
-void test("Discord音声受信streamの一時エラーは再購読してセッションを継続する", {
+void test("Runtimeは音声受信を復旧し、短い無音で再開した発話を分断せず送信する", {
   timeout: 2_000,
 }, async () => {
   const userId = "323456789012345678";
@@ -436,15 +438,25 @@ void test("Discord音声受信streamの一時エラーは再購読してセッ�
     opusStreams[1]?.write(Buffer.from([0x00]));
     await new Promise<void>((resolve) => setImmediate(resolve));
     speaking.emit("end", userId);
-    await new Promise<void>((resolve) => setTimeout(resolve, 120));
+    // A real packet trace resumed 117 ms after Discord's speaking_end event.
+    await new Promise<void>((resolve) => setTimeout(resolve, 117));
+    assert.equal(stt.audioWrites, 2, "do not insert silence inside a brief pause");
+    assert.equal(stt.finalizeCalls, 0, "keep the utterance open across a brief pause");
+    speaking.emit("start", userId);
+    opusStreams[1]?.write(Buffer.from([0x00]));
+    speaking.emit("end", userId);
+    await new Promise<void>((resolve) => setTimeout(resolve, 220));
 
-    assert.equal(stt.audioWrites, 3);
-    assert.deepEqual(capturedOpus, [Buffer.from([0x00]), Buffer.from([0x00])]);
+    assert.equal(stt.audioWrites, 4);
+    assert.equal(stt.finalizeCalls, 1);
+    assert.deepEqual(capturedOpus, [Buffer.from([0x00]), Buffer.from([0x00]), Buffer.from([0x00])]);
     assert.deepEqual(capturedPcm, [
+      { stereoBytes: 1_920, monoBytes: 960 },
       { stereoBytes: 1_920, monoBytes: 960 },
       { stereoBytes: 1_920, monoBytes: 960 },
     ]);
     assert.deepEqual(capturedSonioxAudio, [
+      { kind: "decoded_packet", monoBytes: 960 },
       { kind: "decoded_packet", monoBytes: 960 },
       { kind: "decoded_packet", monoBytes: 960 },
       { kind: "trailing_silence", monoBytes: 19_200 },

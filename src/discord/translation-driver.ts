@@ -79,7 +79,7 @@ import { UnsupportedLanguageWarning } from "./unsupported-language-warning.js";
 const { OpusEncoder } = opus;
 const maxStartupOpusPackets = 250;
 const maxStartupOpusBytes = 512 * 1024;
-const speakingEndFinalizeDelayMs = 100;
+const speakingEndFinalizeDelayMs = 200;
 const transcriptInactivityFinalizeMs = 3_000;
 const manualFinalizeTrailingSilenceMs = 200;
 const interimCaptionThrottleMs = 500;
