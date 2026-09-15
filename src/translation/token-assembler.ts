@@ -147,6 +147,10 @@ export class TranslationTokenAssembler {
 
   public flush(): FinalizedUtterance | undefined {
     const translation = this.#selectTranslation();
+    const sourceLanguage = translation?.sourceLanguage ?? [...this.#originalCharactersByLanguage]
+      .sort((left, right) => right[1] - left[1])[0]?.[0];
+    const targetLanguage = translation?.targetLanguage ?? [...this.#languages]
+      .find((language) => language !== sourceLanguage);
     const original = this.#original;
     const originalText = original.text.join("");
     const translatedText = translation?.text.join("") ?? "";
@@ -164,12 +168,12 @@ export class TranslationTokenAssembler {
       : undefined;
     this.#reset();
 
-    if (!translation || !originalText || !translatedText) {
+    if (!sourceLanguage || !targetLanguage || !originalText.trim()) {
       return undefined;
     }
     return {
-      sourceLanguage: translation.sourceLanguage,
-      targetLanguage: translation.targetLanguage,
+      sourceLanguage,
+      targetLanguage,
       originalText,
       translatedText,
       sourceDurationMs,

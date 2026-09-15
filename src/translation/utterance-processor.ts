@@ -17,6 +17,7 @@ export type CaptionState =
   | "partial_failure"
   | "skipped_delay"
   | "interrupted_for_conversation"
+  | "translation_unavailable"
   | "captions_only";
 
 type ControlledInterruptionState = Extract<

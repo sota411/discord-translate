@@ -4,7 +4,7 @@ import { PassThrough } from "node:stream";
 import { test } from "node:test";
 
 import type { RealtimeResult } from "@soniox/node";
-import { MessageFlags, REST } from "discord.js";
+import { Collection, MessageFlags, REST } from "discord.js";
 
 import { loadConfig } from "../src/config.js";
 import type { CaptionMessagePayload } from "../src/discord/caption-gateway.js";
@@ -16,6 +16,7 @@ import type {
   PrivateSttCaptureSession,
   PrivateSttCaptureSpeaker,
 } from "../src/diagnostics/private-stt-capture.js";
+import { exportThreadToMarkdown } from "../src/discord/thread-export.js";
 import { validEnv } from "./helpers/valid-env.js";
 
 class FakeSttSession extends EventEmitter {
@@ -54,7 +55,7 @@ const unsupportedResult: RealtimeResult = {
   total_audio_proc_ms: 500,
 };
 
-void test("RuntimeのSTT resultから警告送信失敗を非致命ログへ渡す", {
+void test("Runtimeは警告失敗を非致命に扱い、訳文のない確定原文も字幕とexportに残す", {
   timeout: 2_000,
 }, async () => {
   const userId = "323456789012345678";
@@ -65,6 +66,7 @@ void test("RuntimeのSTT resultから警告送信失敗を非致命ログへ渡�
   const sent: CaptionMessagePayload[] = [];
   const edited: CaptionMessagePayload[] = [];
   let deleted = 0;
+  let synthesisCalls = 0;
   let discordUnavailable = true;
   const failures: string[] = [];
   const sttCreateCalls: unknown[][] = [];
@@ -151,7 +153,12 @@ void test("RuntimeのSTT resultから警告送信失敗を非致命ログへ渡�
         return { session: stt, initialTextCharacterCount: 0 };
       },
     },
-    tts: {},
+    tts: {
+      synthesize: () => {
+        synthesisCalls += 1;
+        return Promise.reject(new Error("Unexpected TTS request"));
+      },
+    },
     latency: {
       start: () => undefined,
       mark: () => undefined,
@@ -217,6 +224,48 @@ void test("RuntimeのSTT resultから警告送信失敗を非致命ログへ渡�
     stt.emit("endpoint");
     await new Promise<void>((resolve) => setImmediate(resolve));
     assert.equal(deleted, 1);
+
+    for (const [language, original] of [["ja", "今日は晴れです。"], ["ko", "오늘은 맑아요."]] as const) {
+      stt.emit("result", {
+        tokens: [{ text: original, confidence: 0.95, is_final: true,
+          language, translation_status: "original", start_ms: 0, end_ms: 500 }],
+        final_audio_proc_ms: 500,
+        total_audio_proc_ms: 500,
+      } satisfies RealtimeResult);
+      stt.emit("endpoint");
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      // Audio remains enabled; source-only captions must bypass TTS.
+      const finalCaption = [...sent, ...edited].find((payload) => {
+        const json = JSON.stringify(payload);
+        return json.includes(original) && json.includes("訳文を取得できませんでした");
+      });
+      assert.ok(finalCaption, `${language}: the finalized original must remain visible`);
+      assert.equal(deleted, 1);
+      assert.equal(synthesisCalls, 0);
+      assert.deepEqual(failures, []);
+      const result = await exportThreadToMarkdown({
+        botUserId: "bot-user",
+        thread: {
+          id: "thread-1", name: "translation",
+          messages: { fetch: () => Promise.resolve(new Collection([["1", {
+            id: "1", author: { id: "bot-user" }, createdAt: new Date(),
+            components: finalCaption.components,
+          }]])) },
+        },
+      });
+      assert.ok(result.markdown.includes(original));
+      assert.match(result.markdown, /訳文を取得できませんでした/u);
+    }
+
+    await runtime.setAudioEnabled(false);
+    const complete = previewResult("次の発話です。", "다음 발화입니다.");
+    stt.emit("result", { ...complete, tokens: complete.tokens.map((token) => ({ ...token, is_final: true })) });
+    stt.emit("endpoint");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const nextCaption = [...sent, ...edited].find((payload) => JSON.stringify(payload).includes("📝 字幕のみ"));
+    assert.ok(nextCaption);
+    assert.match(JSON.stringify(nextCaption), /次の発話です/u);
+    assert.doesNotMatch(JSON.stringify(nextCaption), /今日は晴れ|오늘은 맑아요|訳文を取得できませんでした/u);
 
     await runtime.updateParticipants([replacementUserId]);
     stt.emit("result", {

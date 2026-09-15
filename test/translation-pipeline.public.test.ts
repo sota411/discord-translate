@@ -206,7 +206,10 @@ void test("途中トークンは表示用previewだけを置き換え、確定�
     originalText: "明日の夜は空いてる？",
     translatedText: "내일 저녁 시간 돼?",
   });
-  assert.equal(streaming.takeAtEndpoint(), undefined);
+  assert.deepEqual(streaming.takeAtEndpoint(), {
+    sourceLanguage: "ja", targetLanguage: "ko", originalText: "明日の",
+    translatedText: "", sourceDurationMs: 300,
+  });
 });
 
 void test("翻訳途中結果を待たず原文だけでも仮字幕を表示する", () => {

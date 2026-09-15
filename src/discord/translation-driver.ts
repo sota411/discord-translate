@@ -1041,18 +1041,30 @@ export class DiscordTranslationRuntime implements SessionRuntime {
           ? { originalConfidence: finalized.originalConfidence }
           : {}),
       }));
-      this.#latency.start(
-        utteranceId,
-        speaker.lastAudioAtMonotonic ?? performance.now(),
-      );
-      this.#processor.enqueue({
+      const utterance = {
         ...finalized,
         utteranceId,
         sessionId: this.#session.sessionId,
         speakerUserId: speaker.userId,
         speakerDisplayName: displayName,
         voiceId: this.#voiceAssignments.get(speaker.userId),
-      });
+      };
+      if (!finalized.translatedText.trim()) {
+        void this.#captions.post({ ...utterance, state: "translation_unavailable" })
+          .catch((error: unknown) => {
+            if (error instanceof ApplicationError && error.code === "CAPTION_SEND_FAILED") {
+              this.#fail(error.code, error.publicMessage, error);
+              return;
+            }
+            this.#onWarning(this.#session.guildId, "caption_post", error);
+          });
+        return;
+      }
+      this.#latency.start(
+        utteranceId,
+        speaker.lastAudioAtMonotonic ?? performance.now(),
+      );
+      this.#processor.enqueue(utterance);
     } catch (error) {
       const mapped = mapSttError(error);
       this.#fail(mapped.code, mapped.publicMessage, error);
