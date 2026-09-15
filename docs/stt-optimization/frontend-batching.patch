@@ -1,0 +1,27 @@
+--- a/core/transcriber.cpp
++++ b/core/transcriber.cpp
+@@ -1380,18 +1380,19 @@
+     // until it is re-exported. Any new binding or test that feeds arbitrary
+     // chunk sizes needs to do its own aligning here rather than assume the
+     // graph will.
+-    const int chunk_size = 1280;
++    const size_t chunk_size = 1280;
+     const size_t chunk_count = new_audio_length / chunk_size;
+-
+-    for (size_t chunk_index = 0; chunk_index < chunk_count; chunk_index++) {
+-      size_t offset = chunk_index * chunk_size;
++    const size_t aligned_samples = chunk_count * chunk_size;
++    for (size_t offset = 0; offset < aligned_samples;) {
++      const size_t grouped_samples = std::min<size_t>(8 * chunk_size, aligned_samples - offset);
+       int err = this->streaming_model->process_audio_chunk(
+-          &this->streaming_state, new_audio_data + offset, chunk_size, nullptr);
++          &this->streaming_state, new_audio_data + offset, grouped_samples, nullptr);
+       if (err != 0) {
+         LOGF("Failed to process audio chunk: %d", err);
+         throw std::runtime_error("Failed to process audio chunk: " +
+                                  std::to_string(err));
+       }
++      offset += grouped_samples;
+     }
+
+     int new_frames = 0;
