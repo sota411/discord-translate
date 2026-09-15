@@ -9,6 +9,8 @@ import {
 
 export const sonioxContextCharacterLimit = 10_000;
 
+export type RecognitionTerms = Readonly<Partial<Record<LanguagePair, readonly string[]>>>;
+
 const languageNames: Readonly<Record<Language, string>> = {
   ja: "Japanese",
   ko: "Korean",
@@ -50,17 +52,25 @@ export function buildSonioxTranscriptionContext(
   pair: LanguagePair,
   translationTerms: readonly TranslationTerm[],
   includeGeneral: boolean,
+  recognitionTerms: readonly string[] = [],
 ): BuiltSonioxTranscriptionContext {
   const context: TranscriptionContext = {
     ...(includeGeneral ? { general: generalContext(pair) } : {}),
+    ...(recognitionTerms.length > 0 ? { terms: [...recognitionTerms] } : {}),
     ...(translationTerms.length > 0
       ? { translation_terms: translationTerms.map((entry) => ({ ...entry })) }
       : {}),
   };
   if (Object.keys(context).length === 0) return { characterCount: 0 };
+  const characterCount = Array.from(JSON.stringify(context)).length;
+  if (characterCount > sonioxContextCharacterLimit) {
+    throw new Error(
+      `${pair}: Soniox contextの${sonioxContextCharacterLimit.toLocaleString("en-US")}文字上限を超えています`,
+    );
+  }
   return {
     context,
-    characterCount: Array.from(JSON.stringify(context)).length,
+    characterCount,
   };
 }
 
@@ -68,15 +78,12 @@ export function assertSonioxContextFits(
   pair: LanguagePair,
   translationTerms: readonly TranslationTerm[],
   includeGeneralContext: boolean,
+  recognitionTerms: readonly string[] = [],
 ): void {
-  const { characterCount } = buildSonioxTranscriptionContext(
+  buildSonioxTranscriptionContext(
     pair,
     translationTerms,
     includeGeneralContext,
+    recognitionTerms,
   );
-  if (characterCount > sonioxContextCharacterLimit) {
-    throw new Error(
-      `${pair}: Soniox contextの${sonioxContextCharacterLimit.toLocaleString("en-US")}文字上限を超えています`,
-    );
-  }
 }

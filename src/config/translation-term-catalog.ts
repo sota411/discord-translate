@@ -4,6 +4,7 @@ import {
   type TranslationTerms,
 } from "./translation-terms.js";
 import { ApplicationError } from "../domain/application-error.js";
+import type { RecognitionTerms } from "../soniox/transcription-context.js";
 import {
   languagePairs,
   type LanguagePair,
@@ -54,15 +55,18 @@ export class TranslationTermCatalog {
   readonly #staticTerms: TranslationTerms;
   readonly #store: TranslationTermStore;
   readonly #includeGeneralContext: boolean;
+  readonly #recognitionTerms: RecognitionTerms;
 
   public constructor(
     staticTerms: TranslationTerms,
     store: TranslationTermStore,
     includeGeneralContext: boolean,
+    recognitionTerms: RecognitionTerms = {},
   ) {
     this.#staticTerms = staticTerms;
     this.#store = store;
     this.#includeGeneralContext = includeGeneralContext;
+    this.#recognitionTerms = recognitionTerms;
   }
 
   public snapshot(guildId: string, pair: LanguagePair): readonly TranslationTerm[] {
@@ -84,6 +88,7 @@ export class TranslationTermCatalog {
         pair,
         merged,
         this.#includeGeneralContext,
+        this.#recognitionTerms[pair],
       );
     } catch (error) {
       throw new ApplicationError(
@@ -133,6 +138,7 @@ export class TranslationTermCatalog {
         input.pair,
         merged,
         this.#includeGeneralContext,
+        this.#recognitionTerms[input.pair],
       );
     } catch (error) {
       throw new ApplicationError(

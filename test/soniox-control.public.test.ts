@@ -7,7 +7,8 @@ import type {
   TtsModel,
 } from "@soniox/node";
 
-import { ConfigError } from "../src/config.js";
+import { ConfigError, loadConfig } from "../src/config.js";
+import { validEnv } from "./helpers/valid-env.js";
 import { ApplicationError } from "../src/domain/application-error.js";
 import {
   SonioxCapacityGate,
@@ -17,6 +18,32 @@ import {
   hasSonioxCapacity,
   verifySonioxConfiguration,
 } from "../src/soniox/control.js";
+
+void test("設定した認識用語彙を対象ペアのSTTにだけ送り、翻訳用語と話者hintを保つ", () => {
+  const config = loadConfig(validEnv({
+    SONIOX_RECOGNITION_TERMS_JSON: JSON.stringify({ "ja-ko": ["星見工房"] }),
+  }), new Date("2026-08-15T00:00:00Z"));
+  const received: Record<string, unknown>[] = [];
+  const factory = new SonioxSttFactory({
+    realtime: { stt: (input: Record<string, unknown>) => { received.push(input); return {}; } },
+  } as never, "stt-rt-v5", false, config.soniox.recognitionTerms);
+  const created = factory.create("ja-ko", "terms", [{ source: "工房", target: "workshop" }], {
+    language: "ja", strict: false,
+  });
+  factory.create("ja-en", "unconfigured", []);
+
+  const [configured, unconfigured] = received;
+  assert.ok(configured);
+  assert.ok(unconfigured);
+  assert.deepEqual(configured.context, {
+    terms: ["星見工房"],
+    translation_terms: [{ source: "工房", target: "workshop" }],
+  });
+  assert.deepEqual(configured.language_hints, ["ja"]);
+  assert.equal("language_hints_strict" in configured, false);
+  assert.equal(created.initialTextCharacterCount, Array.from(JSON.stringify(configured.context)).length);
+  assert.equal("context" in unconfigured, false);
+});
 
 void test("STTは認識精度を優先してendpoint調整をSoniox既定値へ委ねる", () => {
   let received: Record<string, unknown> | undefined;

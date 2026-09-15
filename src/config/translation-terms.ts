@@ -9,6 +9,7 @@ import {
 import {
   assertSonioxContextFits,
   sonioxContextCharacterLimit,
+  type RecognitionTerms,
 } from "../soniox/transcription-context.js";
 
 export type TranslationTerm = {
@@ -34,6 +35,7 @@ const termsSchema = z.object({
 export function parseTranslationTerms(
   json: string,
   includeGeneralContext: boolean,
+  recognitionTerms: RecognitionTerms = {},
 ): TranslationTerms {
   let value: unknown;
   try {
@@ -54,6 +56,7 @@ export function parseTranslationTerms(
       pair,
       result.data[pair],
       includeGeneralContext,
+      recognitionTerms[pair],
     );
   }
   return result.data;
@@ -69,6 +72,7 @@ export function assertTranslationTermsFitContext(
   pair: LanguagePair,
   entries: readonly TranslationTerm[],
   includeGeneralContext: boolean,
+  recognitionTerms: readonly string[] = [],
 ): void {
   const sources = new Set<string>();
   for (const entry of entries) {
@@ -80,12 +84,13 @@ export function assertTranslationTermsFitContext(
     }
     sources.add(entry.source);
   }
-  assertSonioxContextFits(pair, entries, includeGeneralContext);
+  assertSonioxContextFits(pair, entries, includeGeneralContext, recognitionTerms);
 }
 
 export function loadTranslationTerms(
   filePath: string | undefined,
   includeGeneralContext: boolean,
+  recognitionTerms: RecognitionTerms = {},
 ): TranslationTerms {
   if (!filePath) {
     return { "ja-ko": [], "ja-en": [], "ko-en": [] };
@@ -94,6 +99,7 @@ export function loadTranslationTerms(
     return parseTranslationTerms(
       readFileSync(filePath, "utf8"),
       includeGeneralContext,
+      recognitionTerms,
     );
   } catch (error) {
     const reason = error instanceof Error ? `: ${error.message}` : "";

@@ -2,8 +2,9 @@ import path from "node:path";
 
 import { z } from "zod";
 
-import type { Language } from "./domain/language-pair.js";
+import { languagePairs, type Language } from "./domain/language-pair.js";
 import { ttsSpeedMax, ttsSpeedMin } from "./session/session-settings.js";
+import { assertSonioxContextFits, type RecognitionTerms } from "./soniox/transcription-context.js";
 
 const snowflakePattern = /^\d{17,20}$/;
 
@@ -17,6 +18,10 @@ const ttsSpeed = z.coerce.number()
 const booleanString = z.enum(["true", "false"])
   .optional()
   .transform((value) => value === "true");
+const recognitionTermsSchema = z.partialRecord(
+  z.enum(languagePairs),
+  z.array(z.string().trim().min(1)),
+);
 
 const rawConfigSchema = z.object({
   DISCORD_TOKEN: requiredString,
@@ -54,6 +59,7 @@ const rawConfigSchema = z.object({
   SONIOX_TTS_MODEL: requiredString,
   SONIOX_TTS_SPEED: ttsSpeed.default(1.15),
   SONIOX_GENERAL_CONTEXT_ENABLED: booleanString,
+  SONIOX_RECOGNITION_TERMS_JSON: z.string().optional(),
   SONIOX_VOICE_JA: requiredString,
   SONIOX_VOICE_KO: requiredString,
   SONIOX_VOICE_EN: requiredString,
@@ -83,6 +89,7 @@ export type AppConfig = {
     ttsModel: string;
     ttsSpeed: number;
     generalContextEnabled: boolean;
+    recognitionTerms: RecognitionTerms;
     voices: Readonly<Record<"ja" | "ko" | "en", string>>;
     terminationTimeoutMs: number;
     projectMonthlyBudgetMicrousd: number;
@@ -220,6 +227,19 @@ export function loadConfig(
 
   const raw = parsed.data;
   const issues: string[] = [];
+  let recognitionTerms: RecognitionTerms = {};
+  if (raw.SONIOX_RECOGNITION_TERMS_JSON !== undefined) {
+    try {
+      recognitionTerms = recognitionTermsSchema.parse(JSON.parse(raw.SONIOX_RECOGNITION_TERMS_JSON));
+      for (const pair of languagePairs) {
+        assertSonioxContextFits(pair, [], raw.SONIOX_GENERAL_CONTEXT_ENABLED, recognitionTerms[pair]);
+      }
+    } catch {
+      issues.push(
+        "SONIOX_RECOGNITION_TERMS_JSON: ja-ko、ja-en、ko-enをキー、空でない文字列の配列を値とするJSONを指定し、会話説明を含むcontextを10,000文字以内にしてください",
+      );
+    }
+  }
   const allowedGuildIds = parseSnowflakeList(
     "ALLOWED_GUILD_IDS",
     raw.ALLOWED_GUILD_IDS,
@@ -311,6 +331,7 @@ export function loadConfig(
       ttsModel: raw.SONIOX_TTS_MODEL,
       ttsSpeed: raw.SONIOX_TTS_SPEED,
       generalContextEnabled: raw.SONIOX_GENERAL_CONTEXT_ENABLED,
+      recognitionTerms,
       voices: {
         ja: raw.SONIOX_VOICE_JA,
         ko: raw.SONIOX_VOICE_KO,

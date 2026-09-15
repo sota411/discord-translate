@@ -48,6 +48,7 @@ export async function startApplication(
   const staticTerms = loadTranslationTerms(
     config.storage.translationTermsPath,
     config.soniox.generalContextEnabled,
+    config.soniox.recognitionTerms,
   );
   const ledger = UsageLedger.open({
     databasePath: config.storage.sqlitePath,
@@ -76,6 +77,7 @@ export async function startApplication(
       staticTerms,
       ledger,
       config.soniox.generalContextEnabled,
+      config.soniox.recognitionTerms,
     );
     terms.assertGuildsValid(config.discord.allowedGuildIds);
     const recovered = ledger.recoverInterruptedWork(new Date());
@@ -127,6 +129,7 @@ export async function startApplication(
       soniox,
       config.soniox.sttModel,
       config.soniox.generalContextEnabled,
+      config.soniox.recognitionTerms,
     );
     const tts = new RawSonioxTtsGateway({
       url: config.soniox.ttsWebSocketUrl,
