@@ -272,6 +272,7 @@ docker compose --env-file .env.local exec -T bot node dist/analyze-private-stt-c
 - [開発・引き継ぎガイド](./CONTRIBUTING.md)
 - [配備・巻き戻し手順](./docs/operations.md)
 - [現行設計・図解・設定一覧・受入条件](./docs/design.md)
+- [補助音声認識の高速化検証・処理図（本番未導入）](./docs/stt-optimization/README.md)
 - [公開前セキュリティ監査](./security_best_practices_report.md)
 - [環境変数の配布例](./.env.example)
 - [翻訳用語の例](./config/translation-terms.example.json)

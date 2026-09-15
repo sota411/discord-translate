@@ -1,0 +1,14 @@
+--- a/core/ort-utils/ort-utils.cpp
++++ b/core/ort-utils/ort-utils.cpp
+@@ -137,6 +137,10 @@
+                     session_options, "session.use_env_allocators", "1"));
+   LOG_ORT_ERROR(ort_api,
+                 ort_api->AddSessionConfigEntry(
+-                    session_options, "session.disable_prepacking", "1"));
++                    session_options, "session.disable_prepacking", "0"));
++  LOG_ORT_ERROR(ort_api, ort_api->AddSessionConfigEntry(
++                            session_options, "session.intra_op.allow_spinning", "0"));
++  LOG_ORT_ERROR(ort_api, ort_api->AddSessionConfigEntry(
++                            session_options, "session.inter_op.allow_spinning", "0"));
+   LOG_ORT_ERROR(ort_api, ort_api->DisableCpuMemArena(session_options));
+ }

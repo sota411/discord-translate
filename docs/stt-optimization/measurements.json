@@ -1,0 +1,755 @@
+{
+  "measured_on": "2026-09-15",
+  "experimental": true,
+  "deployed_to_bot": false,
+  "hardware": {
+    "model": "Raspberry Pi 4 Model B rev 1.5",
+    "ram_kib": 3888056,
+    "runtime_arch": "linux/arm64"
+  },
+  "runtime": {
+    "moonshine_voice": "0.1.5",
+    "moonshine_commit": "234f60faa0eb388b01cdf7e60aca232af37aefda",
+    "onnxruntime": "1.23.2",
+    "model": "Japanese Small Streaming (ModelArch 4)",
+    "model_revision": "quantized_26_08_23"
+  },
+  "audio": {
+    "sample_id": "ja-short-01",
+    "duration_ms": 2320,
+    "sample_rate_hz": 48000,
+    "channels": 1,
+    "format": "pcm_s16le",
+    "local_asr_trailing_silence_ms": 160,
+    "all_source_pcm_retained": true
+  },
+  "batch": [
+    {
+      "variant": "prepack",
+      "elapsed_ms": [
+        1242.755,
+        1167.205,
+        1168.785
+      ],
+      "median_elapsed_ms": 1168.785,
+      "cpu_ms": [
+        4345.937,
+        4286.454,
+        4291.367
+      ],
+      "median_cpu_ms": 4291.367,
+      "max_rss_kib": 364460,
+      "matches_baseline_transcript": [
+        true,
+        true,
+        true
+      ],
+      "reference_concept_correct": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "variant": "thread-nospin",
+      "elapsed_ms": [
+        1150.817,
+        1059.815,
+        1059.075
+      ],
+      "median_elapsed_ms": 1059.815,
+      "cpu_ms": [
+        3305.533,
+        3219.505,
+        3216.332
+      ],
+      "median_cpu_ms": 3219.505,
+      "max_rss_kib": 365144,
+      "matches_baseline_transcript": [
+        true,
+        true,
+        true
+      ],
+      "reference_concept_correct": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "variant": "thread-stopspin",
+      "elapsed_ms": [
+        1208.86,
+        1084.089,
+        1034.171
+      ],
+      "median_elapsed_ms": 1084.089,
+      "cpu_ms": [
+        4027.801,
+        3840.34,
+        3692.528
+      ],
+      "median_cpu_ms": 3840.34,
+      "max_rss_kib": 367728,
+      "matches_baseline_transcript": [
+        true,
+        true,
+        true
+      ],
+      "reference_concept_correct": [
+        true,
+        true,
+        true
+      ]
+    }
+  ],
+  "streaming_plus_soniox": [
+    {
+      "variant": "prepack",
+      "runs": [
+        {
+          "iteration": 0,
+          "source_end_to_translation_ms": 2575.217,
+          "source_end_to_recheck_start_ms": 1071.361,
+          "recheck_start_to_translation_ms": 1503.856,
+          "source_reference_concept_correct": true,
+          "translation_reference_concept_correct": true
+        },
+        {
+          "iteration": 1,
+          "source_end_to_translation_ms": 2923.864,
+          "source_end_to_recheck_start_ms": 1537.301,
+          "recheck_start_to_translation_ms": 1386.564,
+          "source_reference_concept_correct": true,
+          "translation_reference_concept_correct": true
+        },
+        {
+          "iteration": 2,
+          "source_end_to_translation_ms": 2264.911,
+          "source_end_to_recheck_start_ms": 923.043,
+          "recheck_start_to_translation_ms": 1341.869,
+          "source_reference_concept_correct": true,
+          "translation_reference_concept_correct": true
+        }
+      ],
+      "median_source_end_to_translation_ms": 2575.217
+    },
+    {
+      "variant": "thread-nospin",
+      "runs": [
+        {
+          "iteration": 0,
+          "source_end_to_translation_ms": 2174.236,
+          "source_end_to_recheck_start_ms": 901.103,
+          "recheck_start_to_translation_ms": 1273.134,
+          "source_reference_concept_correct": true,
+          "translation_reference_concept_correct": true
+        },
+        {
+          "iteration": 1,
+          "source_end_to_translation_ms": 2238.58,
+          "source_end_to_recheck_start_ms": 956.53,
+          "recheck_start_to_translation_ms": 1282.05,
+          "source_reference_concept_correct": true,
+          "translation_reference_concept_correct": true
+        },
+        {
+          "iteration": 2,
+          "source_end_to_translation_ms": 2019.261,
+          "source_end_to_recheck_start_ms": 779.157,
+          "recheck_start_to_translation_ms": 1240.105,
+          "source_reference_concept_correct": true,
+          "translation_reference_concept_correct": true
+        }
+      ],
+      "median_source_end_to_translation_ms": 2174.236
+    }
+  ],
+  "limits": [
+    "One Japanese source clip; not a natural-conversation accuracy benchmark",
+    "Model loading excluded from timings",
+    "Batch runs reuse a model; streaming runs load a fresh model before starting the source replay",
+    "Uniformly paced 20 ms replay; actual Discord delivery and caption/audio playback excluded",
+    "Spinning settings do not change model weights; source and translation meaning checked separately",
+    "E2E runner RSS measures Node parent only and is not used as total memory evidence",
+    "Sequential groups of three; not randomized, network variability remains",
+    "Replay stops Moonshine at the known file end; Discord speaking-end notification and the 200 ms finalization grace period are excluded",
+    "Soniox uses end-of-stream, not the persistent production manual-finalize path"
+  ],
+  "reported_on": "2026-09-16",
+  "further_optimization": {
+    "measured_on": "2026-09-16",
+    "selected_variant": "group8-stream",
+    "frontend_chunk_max_samples": 10240,
+    "frontend_sample_rate_hz": 16000,
+    "frontend_alignment_samples": 1280,
+    "batch": [
+      {
+        "variant": "nospin-batch-confirm",
+        "elapsed_ms": [
+          1147.709,
+          1063.189,
+          1063.912
+        ],
+        "median_elapsed_ms": 1063.912,
+        "cpu_ms": [
+          3303.028,
+          3218.073,
+          3210.497
+        ],
+        "median_cpu_ms": 3218.073,
+        "max_rss_kib": 363748,
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ],
+        "frontend_calls_total": 90,
+        "frontend_calls_per_transcription": 30
+      },
+      {
+        "variant": "group2-batch",
+        "elapsed_ms": [
+          985.528,
+          903.848,
+          903.014
+        ],
+        "median_elapsed_ms": 903.848,
+        "cpu_ms": [
+          2692.152,
+          2626.045,
+          2624.046
+        ],
+        "median_cpu_ms": 2626.045,
+        "max_rss_kib": 368704,
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "group4-batch",
+        "elapsed_ms": [
+          927.449,
+          848.02,
+          843.823
+        ],
+        "median_elapsed_ms": 848.02,
+        "cpu_ms": [
+          2488.862,
+          2426.493,
+          2434.033
+        ],
+        "median_cpu_ms": 2434.033,
+        "max_rss_kib": 368952,
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "group8-batch",
+        "elapsed_ms": [
+          973.326,
+          818.14,
+          817.444
+        ],
+        "median_elapsed_ms": 818.14,
+        "cpu_ms": [
+          2505.092,
+          2340.645,
+          2339.368
+        ],
+        "median_cpu_ms": 2340.645,
+        "max_rss_kib": 367812,
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ],
+        "frontend_calls_total": 12,
+        "frontend_calls_per_transcription": 4
+      }
+    ],
+    "streaming_plus_soniox": [
+      {
+        "variant": "baseline",
+        "iteration": 0,
+        "source_end_to_final_ms": 2284.895,
+        "local_final_ms": 912.003,
+        "request_ms": 907.798,
+        "connected_ms": 798.753,
+        "remote_ms": 1377.097,
+        "source_correct": true,
+        "translation_correct": true,
+        "local_full_match": true
+      },
+      {
+        "variant": "grouped",
+        "iteration": 1,
+        "source_end_to_final_ms": 2153.541,
+        "local_final_ms": 868.831,
+        "request_ms": 868.912,
+        "connected_ms": 196.811,
+        "remote_ms": 1284.63,
+        "source_correct": true,
+        "translation_correct": true,
+        "local_full_match": true
+      },
+      {
+        "variant": "grouped",
+        "iteration": 2,
+        "source_end_to_final_ms": 2003.538,
+        "local_final_ms": 696.934,
+        "request_ms": 696.899,
+        "connected_ms": 250.708,
+        "remote_ms": 1306.638,
+        "source_correct": true,
+        "translation_correct": true,
+        "local_full_match": true
+      },
+      {
+        "variant": "baseline",
+        "iteration": 3,
+        "source_end_to_final_ms": 2063.821,
+        "local_final_ms": 769.395,
+        "request_ms": 769.445,
+        "connected_ms": 224.445,
+        "remote_ms": 1294.376,
+        "source_correct": true,
+        "translation_correct": true,
+        "local_full_match": true
+      },
+      {
+        "variant": "baseline",
+        "iteration": 4,
+        "source_end_to_final_ms": 2099.921,
+        "local_final_ms": 790.352,
+        "request_ms": 790.241,
+        "connected_ms": 232.099,
+        "remote_ms": 1309.68,
+        "source_correct": true,
+        "translation_correct": true,
+        "local_full_match": true
+      },
+      {
+        "variant": "grouped",
+        "iteration": 5,
+        "source_end_to_final_ms": 1993.71,
+        "local_final_ms": 705.079,
+        "request_ms": 705.058,
+        "connected_ms": 181.9,
+        "remote_ms": 1288.652,
+        "source_correct": true,
+        "translation_correct": true,
+        "local_full_match": true
+      }
+    ],
+    "replay_order": [
+      "baseline",
+      "grouped",
+      "grouped",
+      "baseline",
+      "baseline",
+      "grouped"
+    ],
+    "baseline_replay_options": {
+      "python_update_interval_s": 0.5,
+      "native_transcription_interval_s": 0.5,
+      "decode_incomplete_lines": false
+    },
+    "grouped_replay_options": {
+      "explicit_update_every_source_ms": 400,
+      "automatic_updates": false,
+      "native_transcription_interval_s": 0.01,
+      "decode_incomplete_lines": false,
+      "padding_triggers_nonfinal_update": false
+    },
+    "additional_japanese_clips": {
+      "rows": [
+        {
+          "id": "ja-check-01",
+          "baseline_ms": 950.456,
+          "grouped_ms": 727.573,
+          "full_transcript_match": true
+        },
+        {
+          "id": "ja-check-02",
+          "baseline_ms": 649.344,
+          "grouped_ms": 473.84,
+          "full_transcript_match": true
+        },
+        {
+          "id": "ja-check-03",
+          "baseline_ms": 8224.901,
+          "grouped_ms": 6358.916,
+          "full_transcript_match": true
+        },
+        {
+          "id": "ja-check-04",
+          "baseline_ms": 4199.543,
+          "grouped_ms": 3253.885,
+          "full_transcript_match": true
+        },
+        {
+          "id": "ja-check-05",
+          "baseline_ms": 1052.526,
+          "grouped_ms": 796.234,
+          "full_transcript_match": true
+        }
+      ],
+      "baseline_rss_kib": 808740,
+      "grouped_rss_kib": 519352
+    },
+    "screening": [
+      {
+        "variant": "batch-dynamic",
+        "metric": "elapsed_ms",
+        "values_ms": [
+          1173.041,
+          1093.816,
+          1092.253
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "batch-graphall",
+        "metric": "elapsed_ms",
+        "values_ms": [
+          1155.053,
+          1067.987,
+          1075.512
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "batch-t2",
+        "metric": "elapsed_ms",
+        "values_ms": [
+          1397.285,
+          1318.094,
+          1310.162
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "batch-t3",
+        "metric": "elapsed_ms",
+        "values_ms": [
+          1220.932,
+          1137.658,
+          1122.14
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "batch-t4",
+        "metric": "elapsed_ms",
+        "values_ms": [
+          1199.116,
+          1081.458,
+          1054.505
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "group2-batch",
+        "metric": "elapsed_ms",
+        "values_ms": [
+          985.528,
+          903.848,
+          903.014
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "group2-stream",
+        "metric": "source_end_to_final_ms",
+        "values_ms": [
+          689.214,
+          692.586,
+          685.706
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "group4-batch",
+        "metric": "elapsed_ms",
+        "values_ms": [
+          927.449,
+          848.02,
+          843.823
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "group4-stream",
+        "metric": "source_end_to_final_ms",
+        "values_ms": [
+          675.703,
+          691.622,
+          676.838
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "group8-batch",
+        "metric": "elapsed_ms",
+        "values_ms": [
+          973.326,
+          818.14,
+          817.444
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "group8-spec04",
+        "metric": "source_end_to_final_ms",
+        "values_ms": [
+          866.255,
+          843.936,
+          835.016
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "group8-spec08",
+        "metric": "source_end_to_final_ms",
+        "values_ms": [
+          762.072,
+          702.121,
+          700.814
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "group8-spec12",
+        "metric": "source_end_to_final_ms",
+        "values_ms": [
+          730.06,
+          720.863,
+          765.28
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "group8-stream",
+        "metric": "source_end_to_final_ms",
+        "values_ms": [
+          699.474,
+          663.477,
+          679.791
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "manual-final04",
+        "metric": "source_end_to_final_ms",
+        "values_ms": [
+          737.57,
+          714.384,
+          726.756
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "manual-final08",
+        "metric": "source_end_to_final_ms",
+        "values_ms": [
+          762.739,
+          753.483,
+          747.946
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "manual-final12",
+        "metric": "source_end_to_final_ms",
+        "values_ms": [
+          896.965,
+          829.277,
+          829.801
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "manual-spec08",
+        "metric": "source_end_to_final_ms",
+        "values_ms": [
+          821.334,
+          793.421,
+          782.056
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "manual-spec12",
+        "metric": "source_end_to_final_ms",
+        "values_ms": [
+          874.147,
+          868.172,
+          873.9
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "single05",
+        "metric": "source_end_to_final_ms",
+        "values_ms": [
+          2567.713,
+          2375.439,
+          2072.098
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "spec05",
+        "metric": "source_end_to_final_ms",
+        "values_ms": [
+          1040.198,
+          635.953,
+          1073.419
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "spec08",
+        "metric": "source_end_to_final_ms",
+        "values_ms": [
+          788.278,
+          790.862,
+          769.513
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "spec10",
+        "metric": "source_end_to_final_ms",
+        "values_ms": [
+          1124.738,
+          754.949,
+          1120.361
+        ],
+        "matches_baseline_transcript": [
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "variant": "final08",
+        "result": "rejected_empty_final_transcript",
+        "process_exit_code": 1
+      },
+      {
+        "variant": "final02",
+        "result": "rejected_empty_final_transcript",
+        "process_exit_code": 1
+      }
+    ],
+    "generated_signal_frontend_check": {
+      "duration_ms": 2400,
+      "sample_rate_hz": 16000,
+      "state_max_abs_difference": 3.57628e-07,
+      "threshold": 0.0001,
+      "private_audio_used": false
+    },
+    "limits": [
+      "Additional Japanese clips include overlapping sections from the same call; matching transcripts do not establish transcript correctness",
+      "Model-session medians exclude loading; standalone model RSS is not total bot memory",
+      "The new Soniox comparison interleaves variants but is not randomized",
+      "Frontend batching and explicit 400 ms scheduling both change in the grouped replay",
+      "Only the selected Japanese model revision is validated; full library rebuild and live Discord path remain untested"
+    ]
+  }
+}
