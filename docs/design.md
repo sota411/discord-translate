@@ -223,7 +223,7 @@ Sonioxから届く認識・翻訳結果について、各トークンが確定�
 | 確定経路 | 条件 |
 |---|---|
 | semantic endpoint | Sonioxが意味の区切りを検出し、`endpoint`を返す |
-| manual finalize | Discordの発話終了から100 ms後に、200 ms分の無音PCMとfinalizeを送る |
+| manual finalize | Discordの発話終了から200 ms待ち、発話が再開しなければ200 ms分の無音PCMとfinalizeを送る |
 | inactivity | STTの認識結果が3秒間更新されない |
 | maximum duration | 認識開始から`UTTERANCE_MAX_SOURCE_SECONDS`に達する |
 
