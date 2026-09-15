@@ -172,6 +172,7 @@
     "Uniformly paced 20 ms replay; actual Discord delivery and caption/audio playback excluded",
     "Spinning settings do not change model weights; source and translation meaning checked separately",
     "E2E runner RSS measures Node parent only and is not used as total memory evidence",
-    "Sequential groups of three; not randomized, network variability remains"
+    "Sequential groups of three; not randomized, network variability remains",
+    "Replay stops Moonshine at the known file end; Discord speaking-end notification and the 200 ms finalization grace period are excluded"
   ]
 }
