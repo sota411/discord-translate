@@ -203,7 +203,9 @@
           true,
           true,
           true
-        ]
+        ],
+        "frontend_calls_total": 90,
+        "frontend_calls_per_transcription": 30
       },
       {
         "variant": "group2-batch",
@@ -266,7 +268,9 @@
           true,
           true,
           true
-        ]
+        ],
+        "frontend_calls_total": 12,
+        "frontend_calls_per_transcription": 4
       }
     ],
     "streaming_plus_soniox": [
