@@ -1,5 +1,5 @@
 {
-  "measured_on": "2026-09-16",
+  "measured_on": "2026-09-15",
   "experimental": true,
   "deployed_to_bot": false,
   "hardware": {
@@ -173,6 +173,8 @@
     "Spinning settings do not change model weights; source and translation meaning checked separately",
     "E2E runner RSS measures Node parent only and is not used as total memory evidence",
     "Sequential groups of three; not randomized, network variability remains",
-    "Replay stops Moonshine at the known file end; Discord speaking-end notification and the 200 ms finalization grace period are excluded"
-  ]
+    "Replay stops Moonshine at the known file end; Discord speaking-end notification and the 200 ms finalization grace period are excluded",
+    "Soniox uses end-of-stream, not the persistent production manual-finalize path"
+  ],
+  "reported_on": "2026-09-16"
 }
