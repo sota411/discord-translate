@@ -3,7 +3,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["dist/**", "coverage/**", "docs/diagrams/**"],
+    ignores: ["dist/**", "coverage/**", "docs/diagrams/**", ".data/**"],
   },
   eslint.configs.recommended,
   ...tseslint.configs.strictTypeChecked,

@@ -20,7 +20,7 @@ import {
 import type { CapacityGate } from "../session/session-manager.js";
 import { ttsSpeedMax, ttsSpeedMin } from "../session/session-settings.js";
 import { usdDecimalToMicrousd } from "../usage/usage-ledger.js";
-import { buildSonioxTranscriptionContext } from "./transcription-context.js";
+import { buildSonioxTranscriptionContext, type RecognitionTerms } from "./transcription-context.js";
 
 type RequestDeadline = {
   signal: AbortSignal;
@@ -201,15 +201,18 @@ export class SonioxSttFactory {
   readonly #client: SonioxNodeClient;
   readonly #model: string;
   readonly #generalContextEnabled: boolean;
+  readonly #recognitionTerms: RecognitionTerms;
 
   public constructor(
     client: SonioxNodeClient,
     model: string,
     generalContextEnabled = false,
+    recognitionTerms: RecognitionTerms = {},
   ) {
     this.#client = client;
     this.#model = model;
     this.#generalContextEnabled = generalContextEnabled;
+    this.#recognitionTerms = recognitionTerms;
   }
 
   public create(
@@ -238,6 +241,7 @@ export class SonioxSttFactory {
       pair,
       translationTerms,
       this.#generalContextEnabled,
+      this.#recognitionTerms[pair],
     );
     const session = this.#client.realtime.stt({
       model: this.#model,

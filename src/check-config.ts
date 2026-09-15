@@ -6,6 +6,7 @@ try {
   loadTranslationTerms(
     config.storage.translationTermsPath,
     config.soniox.generalContextEnabled,
+    config.soniox.recognitionTerms,
   );
   console.log("設定は有効です。Botを起動できます。");
 } catch (error) {

@@ -212,7 +212,9 @@ STTには次を指定する。
 
 セッションを作るときに、許可された全利用者の話者言語をSQLiteと環境設定から1回だけ解決する。設定言語が選択中の言語ペアに含まれる場合は、STTの`language_hints`をその1言語に絞る。`language_hints_strict`は有効にせず、言語識別と双方向翻訳は維持する。設定が「自動判定」の場合や言語ペア外の場合は、従来どおり2言語を渡す。発話開始時のSQLite読み取り、音声の待機、音声前処理は追加しない。
 
-`SONIOX_GENERAL_CONTEXT_ENABLED=true`の場合は、個人間のDiscord会話であること、選択中の2言語、日常会話を想定する話題、話した言語をそのまま認識する方針、自然な口語訳を求める方針を`context.general`へ追加する。既定値は`false`である。用語は有効・無効にかかわらず`translation_terms`へ渡し、ASRの`terms`へ重複して渡さない。固定文脈と用語を含むcontext全体が10,000文字を超える設定は、起動前に拒否する。
+`SONIOX_GENERAL_CONTEXT_ENABLED=true`の場合は、個人間のDiscord会話であること、選択中の2言語、日常会話を想定する話題、話した言語をそのまま認識する方針、自然な口語訳を求める方針を`context.general`へ追加する。既定値は`false`である。翻訳用語は有効・無効にかかわらず`translation_terms`へ渡し、ASRの`terms`へ重複して渡さない。
+
+`SONIOX_RECOGNITION_TERMS_JSON`は、言語ペアをキー、認識候補となる単語・フレーズの配列を値とする任意のJSONである。指定されたペアの語彙だけを`context.terms`へ送り、既存の話者言語hintは変更しない。未指定時は空とし、未知のペア、空の単語、不正なJSONを起動前に拒否する。個人の用語はGit管理外の環境設定へ保存する。固定文脈・認識用語彙・翻訳用語を含むcontext全体の10,000文字上限は、共通のcontext生成処理で検査する。起動時の静的用語読込、Guild用語の検証・登録、STTセッション作成のいずれも同じ合算上限を使う。
 
 Sonioxから届く認識・翻訳結果について、各トークンが確定済みか、翻訳結果かを判定する。あわせて言語と翻訳元言語を検査し、発話を組み立てる。言語ペア外の言語を検出した場合は翻訳せず、スレッドへ英語の警告を出す。
 
@@ -476,6 +478,7 @@ Sonioxのモデルとvoiceは次の初期値を持つ。
 |---|---:|---|
 | `SONIOX_STT_MODEL` | `stt-rt-v5` | STTモデル |
 | `SONIOX_GENERAL_CONTEXT_ENABLED` | `false` | 固定した会話目的・話題・言語方針・翻訳方針を`context.general`へ追加する |
+| `SONIOX_RECOGNITION_TERMS_JSON` | `{}` | 任意。言語ペアごとの認識用語彙を`context.terms`へ渡す |
 | `SONIOX_TTS_MODEL` | `tts-rt-v2` | TTSモデル |
 | `SONIOX_TTS_SPEED` | `1.15` | セッション開始時の速度。許容範囲0.7〜1.3 |
 | `SONIOX_VOICE_JA` | `Kenji` | 話者枠1の多言語voice |

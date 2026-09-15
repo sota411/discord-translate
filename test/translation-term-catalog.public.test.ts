@@ -166,6 +166,19 @@ void test("用語登録はgeneral contextの有効時だけ固定文を上限へ
       error instanceof ApplicationError &&
       error.code === "TRANSLATION_TERM_LIMIT_REACHED",
   );
+  const recognitionStore = new MemoryTermStore();
+  const withRecognition = new TranslationTermCatalog(
+    nearLimitStaticTerms,
+    recognitionStore,
+    false,
+    { "ja-ko": ["x".repeat(600)] },
+  );
+  assert.throws(
+    () => withRecognition.register(input),
+    (error: unknown) => error instanceof ApplicationError &&
+      error.code === "TRANSLATION_TERM_LIMIT_REACHED",
+  );
+  assert.equal(recognitionStore.listRegisteredTranslationTerms("guild-1", "ja-ko").length, 0);
 });
 
 void test("Guild登録用語だけを全ペアまたは指定ペアで一覧化し、完全一致で削除する", () => {

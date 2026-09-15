@@ -1,10 +1,60 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { test } from "node:test";
 
 import { ConfigError, loadConfig } from "../src/config.js";
 import { parseTranslationTerms } from "../src/config/translation-terms.js";
 import { validEnv } from "./helpers/valid-env.js";
+
+void test("config:checkは不正な認識用語彙とcontext超過を本文を出さず拒否する", () => {
+  const privateTerm = "private-vocabulary-must-not-appear";
+  for (const json of [
+    privateTerm,
+    JSON.stringify({ "unknown-pair": [privateTerm] }),
+    JSON.stringify({ "ja-ko": [42] }),
+    JSON.stringify({ "ja-ko": [" "] }),
+    JSON.stringify({ "ja-ko": [privateTerm.repeat(400)] }),
+  ]) {
+    const result = spawnSync(process.execPath, ["--import", "tsx", "src/check-config.ts"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: validEnv({
+        SONIOX_RECOGNITION_TERMS_JSON: json,
+        PRICING_CONFIRMED_AT: new Date().toISOString().slice(0, 10),
+      }),
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /SONIOX_RECOGNITION_TERMS_JSON/u);
+    assert.doesNotMatch(result.stdout + result.stderr, new RegExp(privateTerm));
+  }
+});
+
+void test("config:checkは認識用語彙と翻訳用語ファイルの合算超過を拒否する", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "stt-context-"));
+  try {
+    const termsPath = path.join(directory, "terms.json");
+    writeFileSync(termsPath, JSON.stringify({
+      "ja-ko": [{ source: "baseline", target: "x".repeat(9_400) }],
+      "ja-en": [], "ko-en": [],
+    }));
+    const result = spawnSync(process.execPath, ["--import", "tsx", "src/check-config.ts"], {
+      cwd: process.cwd(), encoding: "utf8",
+      env: validEnv({
+        PRICING_CONFIRMED_AT: new Date().toISOString().slice(0, 10),
+        TRANSLATION_TERMS_PATH: termsPath,
+        SONIOX_RECOGNITION_TERMS_JSON: JSON.stringify({ "ja-ko": ["x".repeat(600)] }),
+      }),
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /ja-ko.*10,000/u);
+    assert.doesNotMatch(result.stdout, /Botを起動できます/u);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 void test("有効な環境変数を型付き設定と固定リージョンURLへ変換する", () => {
   const config = loadConfig(validEnv(), new Date("2026-08-15T00:00:00Z"));
@@ -293,6 +343,7 @@ void test("config:checkは存在しない翻訳用語ファイルを起動前に
       encoding: "utf8",
       env: validEnv({
         TRANSLATION_TERMS_PATH: "/nonexistent/discord-translate/terms.json",
+        PRICING_CONFIRMED_AT: new Date().toISOString().slice(0, 10),
       }),
     },
   );

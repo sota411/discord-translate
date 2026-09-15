@@ -137,7 +137,7 @@ void test("RuntimeのSTT resultから警告送信失敗を非致命ログへ渡�
       on: connectionEvents.on.bind(connectionEvents),
       destroy: () => undefined,
     },
-    config: loadConfig(validEnv({ SONIOX_REGION: "jp" })),
+    config: loadConfig(validEnv({ SONIOX_REGION: "jp" }), new Date("2026-08-15T00:00:00Z")),
     speakerLanguageHints: new Map([[userId, "ko"]]),
     ledger: {
       openProviderRequest: () => undefined,
@@ -347,7 +347,7 @@ void test("Discord音声受信streamの一時エラーは再購読してセッ�
       on: connectionEvents.on.bind(connectionEvents),
       destroy: () => undefined,
     },
-    config: loadConfig(validEnv({ SONIOX_REGION: "jp" })),
+    config: loadConfig(validEnv({ SONIOX_REGION: "jp" }), new Date("2026-08-15T00:00:00Z")),
     speakerLanguageHints: new Map(),
     privateCapture,
     ledger: {
