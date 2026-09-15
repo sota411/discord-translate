@@ -1,0 +1,1220 @@
+{
+  "evaluated_at": "2026-09-16",
+  "baseline_configuration": {
+    "model": "stt-rt-v5",
+    "region": "jp",
+    "general_context": true,
+    "recognition_terms_count": 6,
+    "translation_terms_count": 4
+  },
+  "production_replay_quality": [
+    {
+      "id": "current-ja-uncertain",
+      "variant": "production",
+      "source_pcm_sha256": "02fb11f3418344775ea5e7a60cde3b2021802b3bb2a554890eacdfb5b6d1a5a8",
+      "score": {
+        "cer": 1.4,
+        "character_edits": 7,
+        "reference_characters": 5,
+        "hypothesis_characters": 7,
+        "edit_counts": {
+          "substitutions": 5,
+          "deletions": 0,
+          "insertions": 2,
+          "total": 7
+        }
+      },
+      "target_terms_found": [],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 0
+    },
+    {
+      "id": "current-ja-uncertain",
+      "variant": "dolphin-prefix3",
+      "source_pcm_sha256": "02fb11f3418344775ea5e7a60cde3b2021802b3bb2a554890eacdfb5b6d1a5a8",
+      "score": {
+        "cer": 1,
+        "character_edits": 5,
+        "reference_characters": 5,
+        "hypothesis_characters": 5,
+        "edit_counts": {
+          "substitutions": 5,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 5
+        }
+      },
+      "target_terms_found": [],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 1.32
+    },
+    {
+      "id": "reported-ja-drink",
+      "variant": "dolphin-prefix3",
+      "source_pcm_sha256": "beb5f6b726070f2650801c01cd31654c60adceab920944b7597612cdf5c8c0fc",
+      "score": {
+        "cer": 0.14285714285714285,
+        "character_edits": 1,
+        "reference_characters": 7,
+        "hypothesis_characters": 7,
+        "edit_counts": {
+          "substitutions": 1,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 1
+        }
+      },
+      "target_terms_found": [
+        false
+      ],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 1.64
+    },
+    {
+      "id": "reported-ja-drink",
+      "variant": "production",
+      "source_pcm_sha256": "beb5f6b726070f2650801c01cd31654c60adceab920944b7597612cdf5c8c0fc",
+      "score": {
+        "cer": 0.14285714285714285,
+        "character_edits": 1,
+        "reference_characters": 7,
+        "hypothesis_characters": 7,
+        "edit_counts": {
+          "substitutions": 1,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 1
+        }
+      },
+      "target_terms_found": [
+        false
+      ],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 0
+    },
+    {
+      "id": "reported-ja-wallet",
+      "variant": "production",
+      "source_pcm_sha256": "03b2af2f15f5eb018a94e4e1698cf2b4f506563c09e99cc16e366ec771345d47",
+      "score": {
+        "cer": 0.3333333333333333,
+        "character_edits": 2,
+        "reference_characters": 6,
+        "hypothesis_characters": 8,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 2,
+          "total": 2
+        }
+      },
+      "target_terms_found": [
+        true
+      ],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 0
+    },
+    {
+      "id": "reported-ja-wallet",
+      "variant": "dolphin-prefix3",
+      "source_pcm_sha256": "03b2af2f15f5eb018a94e4e1698cf2b4f506563c09e99cc16e366ec771345d47",
+      "score": {
+        "cer": 0.3333333333333333,
+        "character_edits": 2,
+        "reference_characters": 6,
+        "hypothesis_characters": 8,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 2,
+          "total": 2
+        }
+      },
+      "target_terms_found": [
+        true
+      ],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 3
+    },
+    {
+      "id": "reported-ko-knee",
+      "variant": "dolphin-prefix3",
+      "source_pcm_sha256": "2a1ec2c83a579211472c2c9295cba6c25d6b24cb3d2e9d137512370f1280ba28",
+      "score": null,
+      "target_terms_found": [],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 3
+    },
+    {
+      "id": "reported-ko-knee",
+      "variant": "production",
+      "source_pcm_sha256": "2a1ec2c83a579211472c2c9295cba6c25d6b24cb3d2e9d137512370f1280ba28",
+      "score": null,
+      "target_terms_found": [],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 0
+    },
+    {
+      "id": "human-ko-selection",
+      "variant": "production",
+      "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+      "score": {
+        "cer": 0.0625,
+        "character_edits": 2,
+        "reference_characters": 32,
+        "hypothesis_characters": 31,
+        "edit_counts": {
+          "substitutions": 1,
+          "deletions": 1,
+          "insertions": 0,
+          "total": 2
+        }
+      },
+      "target_terms_found": [],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 0
+    },
+    {
+      "id": "human-ko-selection",
+      "variant": "dolphin-prefix3",
+      "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+      "score": {
+        "cer": 0,
+        "character_edits": 0,
+        "reference_characters": 32,
+        "hypothesis_characters": 32,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 0
+        }
+      },
+      "target_terms_found": [],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 3
+    },
+    {
+      "id": "human-ko-unseen-opening",
+      "variant": "dolphin-prefix3",
+      "source_pcm_sha256": "e923d68dbfd2fca7d0999a9be8d10f8afaaddb85a9a550152380611faf684463",
+      "score": {
+        "cer": 0,
+        "character_edits": 0,
+        "reference_characters": 90,
+        "hypothesis_characters": 90,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 0
+        }
+      },
+      "target_terms_found": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 3
+    },
+    {
+      "id": "human-ko-unseen-opening",
+      "variant": "production",
+      "source_pcm_sha256": "e923d68dbfd2fca7d0999a9be8d10f8afaaddb85a9a550152380611faf684463",
+      "score": {
+        "cer": 0,
+        "character_edits": 0,
+        "reference_characters": 90,
+        "hypothesis_characters": 90,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 0
+        }
+      },
+      "target_terms_found": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 0
+    },
+    {
+      "id": "human-ko-neutral",
+      "variant": "production",
+      "source_pcm_sha256": "04c6a943de60884878f29235c79099383ef6193053a2e2c0526487c698e44cd7",
+      "score": {
+        "cer": 0.02358490566037736,
+        "character_edits": 5,
+        "reference_characters": 212,
+        "hypothesis_characters": 212,
+        "edit_counts": {
+          "substitutions": 5,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 5
+        }
+      },
+      "target_terms_found": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false
+      ],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 0
+    },
+    {
+      "id": "human-ko-neutral",
+      "variant": "dolphin-prefix3",
+      "source_pcm_sha256": "04c6a943de60884878f29235c79099383ef6193053a2e2c0526487c698e44cd7",
+      "score": {
+        "cer": 0.02358490566037736,
+        "character_edits": 5,
+        "reference_characters": 212,
+        "hypothesis_characters": 212,
+        "edit_counts": {
+          "substitutions": 5,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 5
+        }
+      },
+      "target_terms_found": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false
+      ],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 3
+    },
+    {
+      "id": "current-ja-fragmented",
+      "variant": "production",
+      "source_pcm_sha256": "d2ca482179b5c6adfd458390de824008cf934847205503c1f5f44de31d1487c6",
+      "score": {
+        "cer": 0,
+        "character_edits": 0,
+        "reference_characters": 55,
+        "hypothesis_characters": 55,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 0
+        }
+      },
+      "target_terms_found": [],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 0
+    },
+    {
+      "id": "current-ja-fragmented",
+      "variant": "dolphin-prefix3",
+      "source_pcm_sha256": "d2ca482179b5c6adfd458390de824008cf934847205503c1f5f44de31d1487c6",
+      "score": {
+        "cer": 0,
+        "character_edits": 0,
+        "reference_characters": 55,
+        "hypothesis_characters": 55,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 0
+        }
+      },
+      "target_terms_found": [],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 3
+    },
+    {
+      "id": "current-ja-uncertain",
+      "variant": "production",
+      "source_pcm_sha256": "02fb11f3418344775ea5e7a60cde3b2021802b3bb2a554890eacdfb5b6d1a5a8",
+      "score": {
+        "cer": 1.4,
+        "character_edits": 7,
+        "reference_characters": 5,
+        "hypothesis_characters": 7,
+        "edit_counts": {
+          "substitutions": 5,
+          "deletions": 0,
+          "insertions": 2,
+          "total": 7
+        }
+      },
+      "target_terms_found": [],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 0
+    },
+    {
+      "id": "current-ja-uncertain",
+      "variant": "dolphin-prefix2.4",
+      "source_pcm_sha256": "02fb11f3418344775ea5e7a60cde3b2021802b3bb2a554890eacdfb5b6d1a5a8",
+      "score": {
+        "cer": 1,
+        "character_edits": 5,
+        "reference_characters": 5,
+        "hypothesis_characters": 5,
+        "edit_counts": {
+          "substitutions": 5,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 5
+        }
+      },
+      "target_terms_found": [],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 1.32
+    },
+    {
+      "id": "reported-ja-drink",
+      "variant": "dolphin-prefix2.4",
+      "source_pcm_sha256": "beb5f6b726070f2650801c01cd31654c60adceab920944b7597612cdf5c8c0fc",
+      "score": {
+        "cer": 0.14285714285714285,
+        "character_edits": 1,
+        "reference_characters": 7,
+        "hypothesis_characters": 7,
+        "edit_counts": {
+          "substitutions": 1,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 1
+        }
+      },
+      "target_terms_found": [
+        false
+      ],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 1.64
+    },
+    {
+      "id": "reported-ja-drink",
+      "variant": "production",
+      "source_pcm_sha256": "beb5f6b726070f2650801c01cd31654c60adceab920944b7597612cdf5c8c0fc",
+      "score": {
+        "cer": 0.14285714285714285,
+        "character_edits": 1,
+        "reference_characters": 7,
+        "hypothesis_characters": 7,
+        "edit_counts": {
+          "substitutions": 1,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 1
+        }
+      },
+      "target_terms_found": [
+        false
+      ],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 0
+    },
+    {
+      "id": "reported-ja-wallet",
+      "variant": "production",
+      "source_pcm_sha256": "03b2af2f15f5eb018a94e4e1698cf2b4f506563c09e99cc16e366ec771345d47",
+      "score": {
+        "cer": 0.3333333333333333,
+        "character_edits": 2,
+        "reference_characters": 6,
+        "hypothesis_characters": 8,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 2,
+          "total": 2
+        }
+      },
+      "target_terms_found": [
+        true
+      ],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 0
+    },
+    {
+      "id": "reported-ja-wallet",
+      "variant": "dolphin-prefix2.4",
+      "source_pcm_sha256": "03b2af2f15f5eb018a94e4e1698cf2b4f506563c09e99cc16e366ec771345d47",
+      "score": {
+        "cer": 0.3333333333333333,
+        "character_edits": 2,
+        "reference_characters": 6,
+        "hypothesis_characters": 8,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 2,
+          "total": 2
+        }
+      },
+      "target_terms_found": [
+        true
+      ],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 2.4
+    },
+    {
+      "id": "reported-ko-knee",
+      "variant": "dolphin-prefix2.4",
+      "source_pcm_sha256": "2a1ec2c83a579211472c2c9295cba6c25d6b24cb3d2e9d137512370f1280ba28",
+      "score": null,
+      "target_terms_found": [],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 2.4
+    },
+    {
+      "id": "reported-ko-knee",
+      "variant": "production",
+      "source_pcm_sha256": "2a1ec2c83a579211472c2c9295cba6c25d6b24cb3d2e9d137512370f1280ba28",
+      "score": null,
+      "target_terms_found": [],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 0
+    },
+    {
+      "id": "human-ko-selection",
+      "variant": "production",
+      "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+      "score": {
+        "cer": 0.0625,
+        "character_edits": 2,
+        "reference_characters": 32,
+        "hypothesis_characters": 31,
+        "edit_counts": {
+          "substitutions": 1,
+          "deletions": 1,
+          "insertions": 0,
+          "total": 2
+        }
+      },
+      "target_terms_found": [],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 0
+    },
+    {
+      "id": "human-ko-selection",
+      "variant": "dolphin-prefix2.4",
+      "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+      "score": {
+        "cer": 0.03125,
+        "character_edits": 1,
+        "reference_characters": 32,
+        "hypothesis_characters": 32,
+        "edit_counts": {
+          "substitutions": 1,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 1
+        }
+      },
+      "target_terms_found": [],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 2.4
+    },
+    {
+      "id": "human-ko-unseen-opening",
+      "variant": "dolphin-prefix2.4",
+      "source_pcm_sha256": "e923d68dbfd2fca7d0999a9be8d10f8afaaddb85a9a550152380611faf684463",
+      "score": {
+        "cer": 0,
+        "character_edits": 0,
+        "reference_characters": 90,
+        "hypothesis_characters": 90,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 0
+        }
+      },
+      "target_terms_found": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 2.4
+    },
+    {
+      "id": "human-ko-unseen-opening",
+      "variant": "production",
+      "source_pcm_sha256": "e923d68dbfd2fca7d0999a9be8d10f8afaaddb85a9a550152380611faf684463",
+      "score": {
+        "cer": 0,
+        "character_edits": 0,
+        "reference_characters": 90,
+        "hypothesis_characters": 90,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 0
+        }
+      },
+      "target_terms_found": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 0
+    },
+    {
+      "id": "human-ko-neutral",
+      "variant": "production",
+      "source_pcm_sha256": "04c6a943de60884878f29235c79099383ef6193053a2e2c0526487c698e44cd7",
+      "score": {
+        "cer": 0.02358490566037736,
+        "character_edits": 5,
+        "reference_characters": 212,
+        "hypothesis_characters": 212,
+        "edit_counts": {
+          "substitutions": 5,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 5
+        }
+      },
+      "target_terms_found": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false
+      ],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 0
+    },
+    {
+      "id": "human-ko-neutral",
+      "variant": "dolphin-prefix2.4",
+      "source_pcm_sha256": "04c6a943de60884878f29235c79099383ef6193053a2e2c0526487c698e44cd7",
+      "score": {
+        "cer": 0.02358490566037736,
+        "character_edits": 5,
+        "reference_characters": 212,
+        "hypothesis_characters": 212,
+        "edit_counts": {
+          "substitutions": 5,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 5
+        }
+      },
+      "target_terms_found": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false
+      ],
+      "knee_concept": false,
+      "uses_human_reference_as_input": false,
+      "hint_audio_seconds": 2.4
+    }
+  ],
+  "pi_websocket_screen": [
+    {
+      "index": 0,
+      "id": "human-ko-selection",
+      "variant": "primary",
+      "score": {
+        "cer": 0.0625,
+        "character_edits": 2,
+        "reference_characters": 32,
+        "hypothesis_characters": 31,
+        "edit_counts": {
+          "substitutions": 1,
+          "deletions": 1,
+          "insertions": 0,
+          "total": 2
+        }
+      },
+      "terms_found": [],
+      "endpoints": 1,
+      "after_speech_ms": 453.9818500000001
+    },
+    {
+      "index": 0,
+      "id": "human-ko-selection",
+      "variant": "candidate",
+      "score": {
+        "cer": 0,
+        "character_edits": 0,
+        "reference_characters": 32,
+        "hypothesis_characters": 32,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 0
+        }
+      },
+      "terms_found": [],
+      "endpoints": 1,
+      "after_speech_ms": 2368.6030840000003
+    },
+    {
+      "index": 1,
+      "id": "reported-ja-wallet",
+      "variant": "primary",
+      "score": {
+        "cer": 0.3333333333333333,
+        "character_edits": 2,
+        "reference_characters": 6,
+        "hypothesis_characters": 8,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 2,
+          "total": 2
+        }
+      },
+      "terms_found": [
+        true
+      ],
+      "endpoints": 1,
+      "after_speech_ms": 428.6796489999979
+    },
+    {
+      "index": 1,
+      "id": "reported-ja-wallet",
+      "variant": "candidate",
+      "score": {
+        "cer": 0.16666666666666666,
+        "character_edits": 1,
+        "reference_characters": 6,
+        "hypothesis_characters": 7,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 1,
+          "total": 1
+        }
+      },
+      "terms_found": [
+        true
+      ],
+      "endpoints": 1,
+      "after_speech_ms": 3174.8780939999997
+    },
+    {
+      "index": 2,
+      "id": "reported-ja-drink",
+      "variant": "primary",
+      "score": {
+        "cer": 0.14285714285714285,
+        "character_edits": 1,
+        "reference_characters": 7,
+        "hypothesis_characters": 7,
+        "edit_counts": {
+          "substitutions": 1,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 1
+        }
+      },
+      "terms_found": [
+        false
+      ],
+      "endpoints": 1,
+      "after_speech_ms": 361.90837100000135
+    },
+    {
+      "index": 2,
+      "id": "reported-ja-drink",
+      "variant": "candidate",
+      "score": {
+        "cer": 0.14285714285714285,
+        "character_edits": 1,
+        "reference_characters": 7,
+        "hypothesis_characters": 7,
+        "edit_counts": {
+          "substitutions": 1,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 1
+        }
+      },
+      "terms_found": [
+        false
+      ],
+      "endpoints": 1,
+      "after_speech_ms": 1861.8176850000018
+    },
+    {
+      "index": 3,
+      "id": "human-ko-selection",
+      "variant": "primary",
+      "score": {
+        "cer": 0.0625,
+        "character_edits": 2,
+        "reference_characters": 32,
+        "hypothesis_characters": 31,
+        "edit_counts": {
+          "substitutions": 1,
+          "deletions": 1,
+          "insertions": 0,
+          "total": 2
+        }
+      },
+      "terms_found": [],
+      "endpoints": 1,
+      "after_speech_ms": 463.8011469999983
+    },
+    {
+      "index": 3,
+      "id": "human-ko-selection",
+      "variant": "candidate",
+      "score": {
+        "cer": 0,
+        "character_edits": 0,
+        "reference_characters": 32,
+        "hypothesis_characters": 32,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 0
+        }
+      },
+      "terms_found": [],
+      "endpoints": 1,
+      "after_speech_ms": 2306.4995960000015
+    },
+    {
+      "index": 0,
+      "id": "reported-ja-wallet",
+      "variant": "primary",
+      "score": {
+        "cer": 0.3333333333333333,
+        "character_edits": 2,
+        "reference_characters": 6,
+        "hypothesis_characters": 8,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 2,
+          "total": 2
+        }
+      },
+      "terms_found": [
+        true
+      ],
+      "endpoints": 1,
+      "after_speech_ms": 430.0616020000007
+    },
+    {
+      "index": 0,
+      "id": "reported-ja-wallet",
+      "variant": "candidate",
+      "score": {
+        "cer": 0.3333333333333333,
+        "character_edits": 2,
+        "reference_characters": 6,
+        "hypothesis_characters": 8,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 2,
+          "total": 2
+        }
+      },
+      "terms_found": [
+        true
+      ],
+      "endpoints": 1,
+      "after_speech_ms": 2358.085733000001
+    },
+    {
+      "index": 1,
+      "id": "reported-ja-wallet",
+      "variant": "primary",
+      "score": {
+        "cer": 0.3333333333333333,
+        "character_edits": 2,
+        "reference_characters": 6,
+        "hypothesis_characters": 8,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 2,
+          "total": 2
+        }
+      },
+      "terms_found": [
+        true
+      ],
+      "endpoints": 1,
+      "after_speech_ms": 433.5174329999991
+    },
+    {
+      "index": 1,
+      "id": "reported-ja-wallet",
+      "variant": "candidate",
+      "score": {
+        "cer": 0.3333333333333333,
+        "character_edits": 2,
+        "reference_characters": 6,
+        "hypothesis_characters": 8,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 2,
+          "total": 2
+        }
+      },
+      "terms_found": [
+        true
+      ],
+      "endpoints": 1,
+      "after_speech_ms": 2300.5634819999996
+    }
+  ],
+  "limitations": [
+    "Korean neutral differences are numerical spelling differences, not five lexical mistakes.",
+    "Japanese sewing reference is a phrase, not a complete utterance; insertions are not necessarily recognition errors.",
+    "Knee case has no full reference; keyword presence is only a diagnostic.",
+    "These screening runs use recorded audio; they do not establish live Discord, caption, TTS, or population accuracy."
+  ],
+  "pi_production_path_replay": [
+    {
+      "index": 0,
+      "id": "human-ko-selection",
+      "variant": "primary",
+      "score": {
+        "cer": 0.0625,
+        "character_edits": 2,
+        "reference_characters": 32,
+        "hypothesis_characters": 31,
+        "edit_counts": {
+          "substitutions": 1,
+          "deletions": 1,
+          "insertions": 0,
+          "total": 2
+        }
+      },
+      "terms_found": [],
+      "boundaries": [
+        "endpoint",
+        "finalized"
+      ],
+      "outcomes": [
+        "completed"
+      ],
+      "after_speech_ms": 440.4676870000003
+    },
+    {
+      "index": 0,
+      "id": "human-ko-selection",
+      "variant": "result",
+      "score": {
+        "cer": 0,
+        "character_edits": 0,
+        "reference_characters": 32,
+        "hypothesis_characters": 32,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 0
+        }
+      },
+      "terms_found": [],
+      "boundaries": [
+        "endpoint",
+        "finalized"
+      ],
+      "outcomes": [
+        "completed"
+      ],
+      "after_speech_ms": 2366.313765000001
+    },
+    {
+      "index": 1,
+      "id": "reported-ja-wallet",
+      "variant": "primary",
+      "score": {
+        "cer": 0.3333333333333333,
+        "character_edits": 2,
+        "reference_characters": 6,
+        "hypothesis_characters": 8,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 2,
+          "total": 2
+        }
+      },
+      "terms_found": [
+        true
+      ],
+      "boundaries": [
+        "endpoint",
+        "finalized"
+      ],
+      "outcomes": [
+        "deadline"
+      ],
+      "after_speech_ms": 415.29373600000326
+    },
+    {
+      "index": 1,
+      "id": "reported-ja-wallet",
+      "variant": "result",
+      "score": {
+        "cer": 0.3333333333333333,
+        "character_edits": 2,
+        "reference_characters": 6,
+        "hypothesis_characters": 8,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 2,
+          "total": 2
+        }
+      },
+      "terms_found": [
+        true
+      ],
+      "boundaries": [
+        "endpoint",
+        "finalized"
+      ],
+      "outcomes": [
+        "deadline"
+      ],
+      "after_speech_ms": 2395.2688860000017
+    },
+    {
+      "index": 2,
+      "id": "reported-ja-drink",
+      "variant": "primary",
+      "score": {
+        "cer": 0.14285714285714285,
+        "character_edits": 1,
+        "reference_characters": 7,
+        "hypothesis_characters": 7,
+        "edit_counts": {
+          "substitutions": 1,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 1
+        }
+      },
+      "terms_found": [
+        false
+      ],
+      "boundaries": [
+        "endpoint",
+        "finalized"
+      ],
+      "outcomes": [
+        "completed"
+      ],
+      "after_speech_ms": 377.17789600000106
+    },
+    {
+      "index": 2,
+      "id": "reported-ja-drink",
+      "variant": "result",
+      "score": {
+        "cer": 0.14285714285714285,
+        "character_edits": 1,
+        "reference_characters": 7,
+        "hypothesis_characters": 7,
+        "edit_counts": {
+          "substitutions": 1,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 1
+        }
+      },
+      "terms_found": [
+        false
+      ],
+      "boundaries": [
+        "endpoint",
+        "finalized"
+      ],
+      "outcomes": [
+        "completed"
+      ],
+      "after_speech_ms": 2078.386888000001
+    },
+    {
+      "index": 3,
+      "id": "human-ko-selection",
+      "variant": "primary",
+      "score": {
+        "cer": 0.0625,
+        "character_edits": 2,
+        "reference_characters": 32,
+        "hypothesis_characters": 31,
+        "edit_counts": {
+          "substitutions": 1,
+          "deletions": 1,
+          "insertions": 0,
+          "total": 2
+        }
+      },
+      "terms_found": [],
+      "boundaries": [
+        "endpoint",
+        "finalized"
+      ],
+      "outcomes": [
+        "completed"
+      ],
+      "after_speech_ms": 452.87120100000175
+    },
+    {
+      "index": 3,
+      "id": "human-ko-selection",
+      "variant": "result",
+      "score": {
+        "cer": 0,
+        "character_edits": 0,
+        "reference_characters": 32,
+        "hypothesis_characters": 32,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 0,
+          "total": 0
+        }
+      },
+      "terms_found": [],
+      "boundaries": [
+        "endpoint",
+        "finalized"
+      ],
+      "outcomes": [
+        "completed"
+      ],
+      "after_speech_ms": 2337.0265340000005
+    },
+    {
+      "index": 4,
+      "id": "reported-ja-wallet",
+      "variant": "primary",
+      "score": {
+        "cer": 0.3333333333333333,
+        "character_edits": 2,
+        "reference_characters": 6,
+        "hypothesis_characters": 8,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 2,
+          "total": 2
+        }
+      },
+      "terms_found": [
+        true
+      ],
+      "boundaries": [
+        "endpoint",
+        "finalized"
+      ],
+      "outcomes": [
+        "completed"
+      ],
+      "after_speech_ms": 412.76127599999745
+    },
+    {
+      "index": 4,
+      "id": "reported-ja-wallet",
+      "variant": "result",
+      "score": {
+        "cer": 0.3333333333333333,
+        "character_edits": 2,
+        "reference_characters": 6,
+        "hypothesis_characters": 8,
+        "edit_counts": {
+          "substitutions": 0,
+          "deletions": 0,
+          "insertions": 2,
+          "total": 2
+        }
+      },
+      "terms_found": [
+        true
+      ],
+      "boundaries": [
+        "endpoint",
+        "finalized"
+      ],
+      "outcomes": [
+        "completed"
+      ],
+      "after_speech_ms": 2207.6115470000004
+    }
+  ],
+  "pi_production_path_conditions": {
+    "native_worker": "C API pipe, warmed with 3s synthetic silence before ready",
+    "primary": "actual SttTurnFinalizer 200ms end delay and 200ms silence; persistent primary with manual finalize",
+    "replay": "20ms chunks at recorded audio rate, no Discord transport/caption/TTS",
+    "warm_deadlines": 1,
+    "runs": 5,
+    "minimum_available_host_memory_kib": 2829112
+  }
+}

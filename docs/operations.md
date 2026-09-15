@@ -69,7 +69,7 @@ Piでは、以降の`docker compose`コマンドへ必ずPi用overrideを追加�
 docker compose --env-file .env.local -f compose.yaml -f compose.pi.yaml config -q
 ```
 
-`compose.pi.yaml`は`linux/arm64`、上記seccomp profile、10 MB×3世代のログrotationだけを追加する。ホストportは公開しない。64-bit OSへ移行して64-bit Docker Engineを導入した後は、このprofileが必要かを再検証し、不要ならPi用overrideから`security_opt`を削除する。
+`compose.pi.yaml`は`linux/arm64`、上記seccomp profile、10 MB×3世代のログrotationと、日本語・韓国語の[補助音声認識](stt-optimization/bilingual-refinement.md)を追加する。補助認識を止める場合は `STT_LOCAL_REFINEMENT_ENABLED=false` を明示する。ホストportは公開しない。64-bit OSへ移行して64-bit Docker Engineを導入した後は、このprofileが必要かを再検証し、不要ならPi用overrideから`security_opt`を削除する。
 
 ## publish成功後に同じcommitを配備する
 
@@ -123,7 +123,7 @@ if export CURRENT_DEPLOY_SHA="<現在配備中の40文字のcommit SHA>" &&
     docker image inspect "$BOT_IMAGE" --format 'architecture={{.Architecture}} digest={{range .RepoDigests}}{{println .}}{{end}}' &&
     docker run --rm --pull never --platform linux/arm64 --network none --read-only \
       --security-opt "seccomp=$BOT_SECCOMP_PROFILE" \
-      "$BOT_IMAGE" node scripts/smoke-runtime.mjs &&
+      "$BOT_IMAGE" node scripts/smoke-runtime.mjs --dolphin &&
     docker compose --env-file .env.local -f compose.yaml -f compose.pi.yaml \
       up --no-build --pull never -d bot &&
     docker compose --env-file .env.local -f compose.yaml -f compose.pi.yaml ps &&
@@ -135,7 +135,7 @@ else
 fi
 ```
 
-`architecture=arm64`、`{"sqlite":true,"opus":true}`、`application_ready`の3点がそろうまで、配備元のコンテナとvolumeは削除しない。
+`architecture=arm64`、`{"sqlite":true,"opus":true,"dolphin":true}`、`application_ready`の3点がそろうまで、配備元のコンテナとvolumeは削除しない。補助認識の有効化は `local_stt_ready` の `enabled: true` でも確認する。
 
 `.env.local`を`.env.example`で上書きしない。入力ゲートを通過した後もComposeの設定検査が失敗した場合は、Botを起動せず設定を修正する。
 

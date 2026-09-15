@@ -72,6 +72,12 @@ export class SttTurnFinalizer {
     this.#scheduleSpeakingEndFinalize();
   }
 
+  public requireFinalization(): void {
+    if (this.#closed) return;
+    this.#hasPendingAudio = true;
+    if (!this.#speaking) this.#scheduleSpeakingEndFinalize();
+  }
+
   #scheduleSpeakingEndFinalize(): void {
     if (this.#closed || !this.#hasPendingAudio || this.#manualFinalizeRequested) return;
     this.#clearSpeakingEndTimer();

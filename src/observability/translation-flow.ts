@@ -1,6 +1,11 @@
 import type { SttFinalizeReason } from "../audio/stt-turn-finalizer.js";
 
 export type TranslationFlowStage =
+  | "stt_refinement_completed"
+  | "stt_refinement_unchanged"
+  | "stt_refinement_busy"
+  | "stt_refinement_deadline"
+  | "stt_refinement_ineligible"
   | "voice_speaking_started"
   | "voice_first_packet_received"
   | "voice_packet_dropped"

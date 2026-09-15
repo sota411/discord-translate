@@ -576,3 +576,13 @@ void test("モデル事前確認と利用ログ照合は応答期限を超えて
     (error: unknown) => error instanceof DOMException && error.name === "TimeoutError",
   );
 });
+
+void test("補助認識のtextを既存contextと合成し、利用文字数へ含める", () => {
+  let request: Record<string, unknown> | undefined;
+  const factory = new SonioxSttFactory({ realtime: { stt: (input: Record<string, unknown>) => {
+    request = input; return {};
+  } } } as never, "stt-rt-v5", false, { "ja-ko": ["工房"] });
+  const created = factory.create("ja-ko", "refinement", [], undefined, "窓を開けました");
+  assert.deepEqual(request?.context, { terms: ["工房"], text: "窓を開けました" });
+  assert.equal(created.initialTextCharacterCount, Array.from(JSON.stringify(request.context)).length);
+});

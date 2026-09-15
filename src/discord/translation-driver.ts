@@ -1,3 +1,6 @@
+import type { FinalizedUtterance } from "../translation/token-assembler.js";
+import { RefinementFence } from "../audio/refinement-fence.js";
+import type { SpeechRefinement } from "../soniox/speech-refinement.js";
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 
@@ -98,6 +101,7 @@ type DiscordTranslationDriverOptions = {
   config: AppConfig;
   ledger: UsageLedger;
   sttFactory: SonioxSttFactory;
+  refinement?: SpeechRefinement;
   tts: TtsGateway;
   latency: TranslationLatencyRecorder;
   observeFlow?: TranslationFlowObserver;
@@ -116,6 +120,7 @@ type SpeakerStream = {
   decoder: InstanceType<typeof OpusEncoder>;
   stt: RealtimeSttSession;
   turnFinalizer: SttTurnFinalizer;
+  refinement?: RefinementFence;
   utterance: StreamingUtterance;
   turnId: string;
   pendingPreview?: InterimUtterance;
@@ -193,6 +198,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
   readonly #config: AppConfig;
   readonly #ledger: UsageLedger;
   readonly #sttFactory: SonioxSttFactory;
+  readonly #refinement: SpeechRefinement | undefined;
   readonly #tts: TtsGateway;
   readonly #latency: TranslationLatencyRecorder;
   readonly #observeFlow: TranslationFlowObserver;
@@ -208,6 +214,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
     this.#config = options.config;
     this.#ledger = options.ledger;
     this.#sttFactory = options.sttFactory;
+    this.#refinement = options.refinement;
     this.#tts = options.tts;
     this.#latency = options.latency;
     this.#observeFlow = options.observeFlow ?? (() => undefined);
@@ -313,6 +320,7 @@ export class DiscordTranslationDriver implements TranslationSessionDriver {
         ...(privateCapture === undefined ? {} : { privateCapture }),
         ledger: this.#ledger,
         sttFactory: this.#sttFactory,
+        ...(this.#refinement ? { refinement: this.#refinement } : {}),
         translationTerms,
         tts: this.#tts,
         latency: this.#latency,
@@ -383,6 +391,7 @@ export type TranslationRuntimeOptions = {
   privateCapture?: PrivateSttCaptureSession;
   ledger: UsageLedger;
   sttFactory: SonioxSttFactory;
+  refinement?: SpeechRefinement;
   translationTerms: readonly TranslationTerm[];
   tts: TtsGateway;
   latency: TranslationLatencyRecorder;
@@ -407,6 +416,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
   readonly #privateCapture: PrivateSttCaptureSession | undefined;
   readonly #ledger: UsageLedger;
   readonly #sttFactory: SonioxSttFactory;
+  readonly #refinement: SpeechRefinement | undefined;
   readonly #translationTerms: readonly TranslationTerm[];
   readonly #tts: TtsGateway;
   readonly #latency: TranslationLatencyRecorder;
@@ -455,6 +465,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     this.#config = options.config;
     this.#ledger = options.ledger;
     this.#sttFactory = options.sttFactory;
+    this.#refinement = options.refinement;
     this.#translationTerms = options.translationTerms.map((term) => ({ ...term }));
     this.#tts = options.tts;
     this.#latency = options.latency;
@@ -689,6 +700,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
             },
           }),
       onFinalize: (reason) => {
+        speaker.refinement?.finalizeRequested(reason);
         this.#observeFlow(sttFinalizeFlowStage(reason));
         speaker.privateCapture?.recordFinalizeRequested({
           reason,
@@ -730,6 +742,16 @@ export class DiscordTranslationRuntime implements SessionRuntime {
         ? {}
         : { privateCapture: this.#privateCapture.createSpeaker() }),
     };
+    if (this.#refinement) {
+      speaker.refinement = new RefinementFence(() => this.#refinement?.start({
+        session: this.#session, userId, hint: languageHint, terms: this.#translationTerms,
+        observe: (outcome) => this.#observeFlow(`stt_refinement_${outcome}`),
+        onError: (error) => {
+          const mapped = mapSttError(error);
+          this.#fail(mapped.code, mapped.publicMessage, error);
+        },
+      }));
+    }
     this.#speakers.set(userId, speaker);
     speaker.privateCapture?.speakingStarted({
       turnId: speaker.turnId,
@@ -918,6 +940,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
         return;
       }
       speaker.stt.sendAudio(monoPcm);
+      speaker.refinement?.push(monoPcm, performance.now());
       if (captureSequence !== undefined) {
         speaker.privateCapture?.recordSonioxAudio({
           kind: "decoded_packet",
@@ -971,6 +994,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
         speaker.lastTranscriptFingerprint = fingerprint;
         speaker.turnFinalizer.transcriptProgressed();
       }
+      speaker.refinement?.accept(result.tokens);
       for (const token of result.tokens) {
         speaker.pendingTextCharacters += Array.from(token.text).length;
       }
@@ -991,7 +1015,10 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     ) {
       return;
     }
-    if (!speaker.turnFinalizer.boundaryReceived(kind)) return;
+    if (!speaker.turnFinalizer.boundaryReceived(kind)) {
+      if (kind === "finalized") speaker.refinement?.finalized();
+      return;
+    }
     speaker.privateCapture?.recordSttBoundary({
       kind,
       turnId: speaker.turnId,
@@ -999,6 +1026,12 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     });
     delete speaker.lastTranscriptFingerprint;
     this.#handleEndpoint(speaker);
+    if (kind === "finalized") speaker.refinement?.finalized();
+    // A natural endpoint is not a PCM acknowledgment. Request a quiet manual
+    // barrier before allowing a later turn to start another refinement.
+    if (kind === "endpoint" && speaker.refinement?.needsAcknowledgment()) {
+      speaker.turnFinalizer.requireFinalization();
+    }
   }
 
   #handleEndpoint(speaker: SpeakerStream): void {
@@ -1017,20 +1050,33 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       delete speaker.pendingPreview;
       this.#flushSpeakerUsage(speaker);
       const finalized = speaker.utterance.takeAtEndpoint();
+      const utteranceId = speaker.turnId;
+      const lastAudioAt = speaker.lastAudioAtMonotonic ?? performance.now();
+      speaker.turnId = randomUUID();
+      const deliver = (value: FinalizedUtterance): void => {
+        this.#deliverFinalized(speaker, value, utteranceId, lastAudioAt);
+      };
+      if (speaker.refinement) speaker.refinement.boundary(finalized, deliver);
+      else if (finalized) deliver(finalized);
       if (!finalized) {
         this.#observeFlow("stt_endpoint_empty");
-        void this.#captions.discardPreview(speaker.turnId);
-        speaker.turnId = randomUUID();
-        return;
+        void this.#captions.discardPreview(utteranceId);
       }
+    } catch (error) {
+      const mapped = mapSttError(error);
+      this.#fail(mapped.code, mapped.publicMessage, error);
+    }
+  }
+
+  #deliverFinalized(speaker: SpeakerStream, finalized: FinalizedUtterance, utteranceId: string, lastAudioAt: number): void {
+    try {
+      if (this.#stopping || speaker.closed || !this.#participants.has(speaker.userId)) return;
       this.#observeFlow("stt_endpoint_finalized");
       const displayName = this.#guild.members.cache.get(speaker.userId)?.displayName;
       if (!displayName) {
         this.#fail("VOICE_CONNECTION_LOST", "発話者のDiscord情報を確認できませんでした。");
         return;
       }
-      const utteranceId = speaker.turnId;
-      speaker.turnId = randomUUID();
       this.#observeQuality(createTranslationQualityObservation({
         traceId: utteranceId,
         sourceLanguage: finalized.sourceLanguage,
@@ -1062,7 +1108,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       }
       this.#latency.start(
         utteranceId,
-        speaker.lastAudioAtMonotonic ?? performance.now(),
+        lastAudioAt,
       );
       this.#processor.enqueue(utterance);
     } catch (error) {
@@ -1098,6 +1144,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     speaker.startupOpus.clear();
     speaker.utterance.discard();
     speaker.turnFinalizer.close();
+    speaker.refinement?.close();
     const cleanupErrors: unknown[] = [];
     if (speaker.keepaliveTimer) clearInterval(speaker.keepaliveTimer);
     if (speaker.usageTimer) clearInterval(speaker.usageTimer);

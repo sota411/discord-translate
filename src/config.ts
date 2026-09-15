@@ -59,6 +59,7 @@ const rawConfigSchema = z.object({
   SONIOX_TTS_MODEL: requiredString,
   SONIOX_TTS_SPEED: ttsSpeed.default(1.15),
   SONIOX_GENERAL_CONTEXT_ENABLED: booleanString,
+  STT_LOCAL_REFINEMENT_ENABLED: booleanString,
   SONIOX_RECOGNITION_TERMS_JSON: z.string().optional(),
   SONIOX_VOICE_JA: requiredString,
   SONIOX_VOICE_KO: requiredString,
@@ -89,6 +90,7 @@ export type AppConfig = {
     ttsModel: string;
     ttsSpeed: number;
     generalContextEnabled: boolean;
+    localRefinementEnabled: boolean;
     recognitionTerms: RecognitionTerms;
     voices: Readonly<Record<"ja" | "ko" | "en", string>>;
     terminationTimeoutMs: number;
@@ -331,6 +333,7 @@ export function loadConfig(
       ttsModel: raw.SONIOX_TTS_MODEL,
       ttsSpeed: raw.SONIOX_TTS_SPEED,
       generalContextEnabled: raw.SONIOX_GENERAL_CONTEXT_ENABLED,
+      localRefinementEnabled: raw.STT_LOCAL_REFINEMENT_ENABLED,
       recognitionTerms,
       voices: {
         ja: raw.SONIOX_VOICE_JA,

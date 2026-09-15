@@ -474,3 +474,113 @@ void test("Runtimeは音声受信を復旧し、短い無音で再開した発�
   }
   assert.equal(captureClosed, true);
 });
+
+void test("RuntimeはJAと後から参加したKO話者の補助結果を正しい字幕へ送り、退出後は送らない", {
+  timeout: 3_000,
+}, async () => {
+  const ja = "323456789012345678", ko = "423456789012345678";
+  const speaking = new EventEmitter(), connection = new EventEmitter();
+  const streams = new Map([[ja, new PassThrough()], [ko, new PassThrough()]]);
+  const members = new Map([[ja, { user: { bot: false } }]]);
+  const providers: FakeSttSession[] = [];
+  const sent: CaptionMessagePayload[] = [];
+  const starts: { userId: string; hint: { language: string } }[] = [];
+  const failures: string[] = [];
+  let closed = 0;
+  const runtime = new DiscordTranslationRuntime({
+    session: { sessionId: "refinement", guildId: "223456789012345678", voiceChannelId: "voice",
+      voiceChannelName: "General", textChannelId: "text", textChannelName: "translation",
+      startedByUserId: ja, pair: "ja-ko", state: "ACTIVE", startedAt: new Date(),
+      participantIds: [ja], playbackMode: "conversation", audioEnabled: false,
+      captionFailurePolicy: "continue_audio" },
+    participantIds: [ja], translationTerms: [],
+    guild: { client: { rest: new REST({ hashSweepInterval: 0, handlerSweepInterval: 0 }) },
+      members: { cache: new Map([[ja, { displayName: "Sota" }], [ko, { displayName: "Minji" }]]) } },
+    voiceChannel: { members },
+    presentation: { threadId: "refined-thread", captionChannel: { send: (payload: CaptionMessagePayload) => {
+      sent.push(payload); return Promise.resolve({ edit: () => Promise.resolve(), delete: () => Promise.resolve() });
+    } }, update: () => Promise.resolve(), close: () => Promise.resolve() },
+    connection: { receiver: { speaking, subscribe: (id: string) => streams.get(id) },
+      subscribe: () => undefined, on: connection.on.bind(connection), destroy: () => undefined },
+    config: loadConfig(validEnv({ SONIOX_REGION: "jp", ALLOWED_USER_IDS: `${ja},${ko}` }), new Date("2026-08-15T00:00:00Z")),
+    speakerLanguageHints: new Map([[ja, "ja"], [ko, "ko"]]),
+    ledger: { openProviderRequest: () => undefined, recordProviderUsage: () => undefined,
+      finishProviderRequest: () => undefined, finishSession: () => undefined },
+    sttFactory: { create: () => { const provider = new FakeSttSession(); providers.push(provider);
+      return { session: provider, initialTextCharacterCount: 0 }; } },
+    refinement: { start: (input: { userId: string; hint: { language: string } }) => {
+      starts.push(input);
+      return { push: () => undefined, finish: () => undefined, cancel: () => undefined,
+        close: () => { closed += 1; },
+        choose: (primary: import("../src/translation/token-assembler.js").FinalizedUtterance,
+          deliver: (value: import("../src/translation/token-assembler.js").FinalizedUtterance) => void) => {
+          deliver({ ...primary, originalText: "補助認識済み", translatedText: "再認識の訳文" });
+        } };
+    } },
+    tts: { synthesize: () => Promise.reject(new Error("Captions-only must not call TTS")) },
+    latency: { start: () => undefined, mark: () => undefined, finish: () => undefined },
+    observeFlow: () => undefined,
+    onFailure: (_guild: string, reason: string, _message: string, cause: unknown) => failures.push(`${reason}: ${_message}: ${String(cause instanceof Error ? cause.stack : cause)}`),
+    onWarning: () => undefined,
+  } as unknown as TranslationRuntimeOptions);
+  const result: RealtimeResult = { tokens: [
+    { text: "通常の原文", confidence: 0.5, is_final: true, language: "ko", translation_status: "original" },
+    { text: "通常の訳文", confidence: 0.5, is_final: true, language: "ja", source_language: "ko", translation_status: "translation" },
+  ], final_audio_proc_ms: 10, total_audio_proc_ms: 10 };
+  const startTurn = async (id: string): Promise<void> => {
+    speaking.emit("start", id);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    streams.get(id)?.write(Buffer.from([0x00]));
+    speaking.emit("end", id);
+    await new Promise<void>((resolve) => setTimeout(resolve, 220));
+  };
+  try {
+    await runtime.setAudioEnabled(false);
+    speaking.emit("start", ja);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    streams.get(ja)?.write(Buffer.from([0x00]));
+    speaking.emit("end", ja);
+    const primary = providers[0];
+    assert.ok(primary);
+    primary.emit("result", result);
+    primary.emit("endpoint");
+    await new Promise<void>((resolve) => setTimeout(resolve, 220));
+    assert.equal(primary.finalizeCalls, 1, "request an acknowledgment after an early natural endpoint");
+    primary.emit("finalized");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(sent.length, 1);
+    sent.length = 0;
+    starts.length = 0;
+    await startTurn(ja);
+    primary.emit("result", result);
+    primary.emit("endpoint");
+    assert.equal(sent.length, 0);
+    primary.emit("finalized");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(sent.length, 1);
+    assert.match(JSON.stringify(sent[0]), /補助認識済み/u);
+    assert.match(JSON.stringify(sent[0]), /再認識の訳文/u);
+    members.set(ko, { user: { bot: false } });
+    await runtime.updateParticipants([ja, ko]);
+    await startTurn(ko);
+    providers[1]?.emit("result", result);
+    providers[1]?.emit("endpoint");
+    providers[1]?.emit("finalized");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(sent.length, 2);
+    assert.match(JSON.stringify(sent[1]), /Minji/u);
+    assert.deepEqual(starts.map(({ userId, hint }) => [userId, hint.language]), [[ja, "ja"], [ko, "ko"]]);
+    await startTurn(ko);
+    providers[1]?.emit("result", result);
+    providers[1]?.emit("endpoint");
+    members.delete(ko);
+    await runtime.updateParticipants([ja]);
+    providers[1]?.emit("finalized");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(sent.length, 2);
+    assert.ok(closed > 0);
+    speaking.emit("start", "523456789012345678");
+    assert.equal(providers.length, 2);
+    assert.deepEqual(failures, []);
+  } finally { await runtime.stop("TEST_COMPLETE"); }
+});
