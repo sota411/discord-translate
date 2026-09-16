@@ -22,6 +22,7 @@ type Start = {
   session: Pick<SessionDescriptor, "sessionId" | "guildId" | "pair">;
   userId: string;
   hint: { language: Language; strict: boolean } | undefined;
+  priorAudio?: Buffer;
   terms: readonly TranslationTerm[];
   observe: (outcome: RefinementOutcome) => void;
   onError: (error: unknown) => void;
@@ -37,10 +38,15 @@ export class SpeechRefinement {
 
   public start(input: Start): RefinementWork | undefined {
     if (input.session.pair !== "ja-ko") return undefined;
+    const priorAudio = input.hint?.language === "ja" ? input.priorAudio : undefined;
+    if (!priorAudio && input.hint?.language !== "ko") return undefined;
+    if (priorAudio && (!priorAudio.length || priorAudio.length % 2 || priorAudio.length > 230_400)) {
+      throw new TypeError("音声文脈のPCM長が不正です");
+    }
     if (this.#busy) { input.observe("busy"); return undefined; }
     this.#busy = true;
     const { worker, factory, ledger, maxInputCharacters } = this.#options;
-    const prefixBytes = input.hint?.language === "ja" ? 230_400 : 288_000;
+    const prefixBytes = 230_400;
     let chunks: Buffer[] = [];
     let bytes = 0;
     let sentBytes = 0;
@@ -126,41 +132,58 @@ export class SpeechRefinement {
       if (local || stopped) return;
       const pcm = Buffer.concat(chunks, bytes).subarray(0, prefixBytes);
       local = (async () => {
-        const text = await worker.transcribe(pcm);
-        if (isStopped()) return;
-        if (!text.trim()) { stop(); return; }
+        let text: string | undefined;
+        if (!priorAudio) {
+          const decoded = await worker.transcribe(pcm);
+          // A prefix can end within a Korean word; exclude its last word from the hint.
+          text = decoded.trimEnd().replace(/\s*\S+$/u, "");
+          if (isStopped()) return;
+          if (!text.trim()) { stop(); return; }
+        }
         await ledger.assertCanStart({ guildId: input.session.guildId, userIds: [input.userId], at: new Date() });
         if (isStopped()) return;
         const ref = randomUUID();
-        const created = factory.create(input.session.pair, ref, input.terms, input.hint, text);
+        const created = factory.create(input.session.pair, ref, input.terms, priorAudio ? undefined : input.hint, text);
         characters = created.initialTextCharacterCount;
         ledger.openProviderRequest({ requestRef: ref, sessionId: input.session.sessionId,
           userId: input.userId, kind: "stt", startedAt: new Date() });
         request = { ref, session: created.session };
         const current = request;
         current.session.on("error", fail);
-        current.session.on("endpoint", () => { boundaries += 1; });
+        current.session.on("endpoint", () => { if (ready) boundaries += 1; });
         current.session.on("result", (response) => {
           if (isStopped()) return;
           try {
             for (const token of response.tokens) {
               characters += Array.from(token.text).length;
-              if (token.is_final && token.translation_status === "original" && token.language && token.text.trim()) {
+              if (ready && token.is_final && token.translation_status === "original" && token.language && token.text.trim()) {
                 sourceLanguages.add(token.language);
               }
             }
-            utterance.accept(response.tokens);
+            if (ready) utterance.accept(response.tokens);
           } catch (error) { fail(error); }
         });
         await current.session.connect();
         if (isStopped()) { current.session.close(); return; }
         connectedAt = performance.now();
-        ready = true;
-        const buffered = Buffer.concat(chunks, bytes);
-        current.session.sendAudio(buffered);
-        sentBytes += buffered.length;
-        chunks = [];
-        completeCloud();
+        const sendTarget = (): void => {
+          if (isStopped()) return;
+          ready = true;
+          const buffered = Buffer.concat(chunks, bytes);
+          current.session.sendAudio(buffered);
+          sentBytes += buffered.length;
+          chunks = [];
+          completeCloud();
+        };
+        if (priorAudio) {
+          // Keep the other speaker out of the target transcript and its endpoint count.
+          current.session.once("finalized", () => {
+            try { sendTarget(); } catch (error) { fail(error); }
+          });
+          current.session.sendAudio(priorAudio);
+          sentBytes += priorAudio.length;
+          current.session.finalize();
+        } else sendTarget();
       })().catch(fail);
     };
     return {
@@ -171,18 +194,19 @@ export class SpeechRefinement {
         if (bytes > 768_000) { stop(); return; }
         if (ready && request) { request.session.sendAudio(audio); sentBytes += audio.length; }
         else chunks.push(Buffer.from(audio));
-        if (bytes >= prefixBytes) begin();
+        if (priorAudio || bytes >= prefixBytes) begin();
       },
       finish: (lastAudioAt) => {
         if (stopped || finished) return;
         finished = true;
+        // Short Korean turns have no validated local benefit; free the next speaker's slot.
+        if (!local) { stop(); return; }
         const remaining = lastAudioAt + 2_390 - performance.now();
         if (remaining <= 0) { outcome = "deadline"; stop(); return; }
         deadline = setTimeout(() => {
           outcome = "deadline";
           try { stop(); } catch (error) { input.onError(error); }
         }, remaining);
-        begin();
         completeCloud();
       },
       choose: (primary, send) => {

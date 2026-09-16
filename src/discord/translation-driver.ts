@@ -121,6 +121,9 @@ type SpeakerStream = {
   stt: RealtimeSttSession;
   turnFinalizer: SttTurnFinalizer;
   refinement?: RefinementFence;
+  contextAudio?: { chunks: Buffer[]; bytes: number; eligible: boolean };
+  completedAudio?: { pcm: Buffer; endedAt: number };
+  priorAudio?: { userId: string; pcm: Buffer };
   utterance: StreamingUtterance;
   turnId: string;
   pendingPreview?: InterimUtterance;
@@ -593,6 +596,12 @@ export class DiscordTranslationRuntime implements SessionRuntime {
   public async stop(reason: string): Promise<void> {
     if (this.#stopping) return;
     this.#stopping = true;
+    for (const speaker of this.#speakers.values()) {
+      speaker.refinement?.close();
+      delete speaker.contextAudio;
+      delete speaker.completedAudio;
+      delete speaker.priorAudio;
+    }
     const cleanupErrors: unknown[] = [];
     clearTimeout(this.#maxSessionTimer);
     clearInterval(this.#idleTimer);
@@ -658,6 +667,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     this.#tts.warm?.();
     const existing = this.#speakers.get(userId);
     if (existing) {
+      this.#beginAudioContext(existing);
       existing.turnFinalizer.speakingStarted();
       existing.burstHasPacket = false;
       existing.privateCapture?.speakingStarted({
@@ -700,6 +710,12 @@ export class DiscordTranslationRuntime implements SessionRuntime {
             },
           }),
       onFinalize: (reason) => {
+        const context = speaker.contextAudio;
+        delete speaker.contextAudio;
+        delete speaker.completedAudio;
+        if (reason === "speaking_end" && context?.eligible && context.bytes && speaker.lastAudioAtMonotonic !== undefined) {
+          speaker.completedAudio = { pcm: Buffer.concat(context.chunks, context.bytes), endedAt: speaker.lastAudioAtMonotonic };
+        }
         speaker.refinement?.finalizeRequested(reason);
         this.#observeFlow(sttFinalizeFlowStage(reason));
         speaker.privateCapture?.recordFinalizeRequested({
@@ -745,6 +761,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     if (this.#refinement) {
       speaker.refinement = new RefinementFence(() => this.#refinement?.start({
         session: this.#session, userId, hint: languageHint, terms: this.#translationTerms,
+        ...(speaker.priorAudio ? { priorAudio: speaker.priorAudio.pcm } : {}),
         observe: (outcome) => this.#observeFlow(`stt_refinement_${outcome}`),
         onError: (error) => {
           const mapped = mapSttError(error);
@@ -753,6 +770,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       }));
     }
     this.#speakers.set(userId, speaker);
+    this.#beginAudioContext(speaker);
     speaker.privateCapture?.speakingStarted({
       turnId: speaker.turnId,
       atMonotonicMs: performance.now(),
@@ -808,6 +826,8 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     closedStream: AudioReceiveStream,
     cause: unknown,
   ): void {
+    this.#forgetAudioContext(speaker);
+    speaker.refinement?.cancel();
     speaker.receiveRecoveryAttempts += 1;
     if (speaker.receiveRecoveryAttempts > maxConsecutiveVoiceReceiveRecoveries) {
       this.#fail("VOICE_CONNECTION_LOST", "Discordの音声受信を復旧できませんでした。", cause);
@@ -940,6 +960,13 @@ export class DiscordTranslationRuntime implements SessionRuntime {
         return;
       }
       speaker.stt.sendAudio(monoPcm);
+      const context = speaker.contextAudio;
+      if (context?.eligible) {
+        context.bytes += monoPcm.length;
+        // Only short turns that did not start native refinement can prime the next speaker.
+        if (context.bytes < 230_400) context.chunks.push(Buffer.from(monoPcm));
+        else { context.eligible = false; context.chunks = []; }
+      }
       speaker.refinement?.push(monoPcm, performance.now());
       if (captureSequence !== undefined) {
         speaker.privateCapture?.recordSonioxAudio({
@@ -972,6 +999,38 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       atMonotonicMs: performance.now(),
     });
     speaker.turnFinalizer.speakingEnded();
+  }
+
+  #beginAudioContext(speaker: SpeakerStream): void {
+    if (!this.#refinement || this.#session.pair !== "ja-ko") return;
+    delete speaker.completedAudio;
+    if (speaker.contextAudio) return; // A brief pause is still the same turn.
+    // Startup packets lack a speaking-generation marker; do not cache that turn.
+    speaker.contextAudio = { chunks: [], bytes: 0, eligible: speaker.sttConnected };
+    delete speaker.priorAudio;
+    if (this.#speakerLanguageHints.get(speaker.userId) !== "ja") return;
+    const now = performance.now();
+    let latest = Number.NEGATIVE_INFINITY;
+    for (const other of this.#speakers.values()) {
+      const prior = other.completedAudio;
+      if (other.userId === speaker.userId || !prior || other.closed ||
+          !this.#participants.has(other.userId) || !this.#config.discord.allowedUserIds.has(other.userId) ||
+          prior.endedAt > now || now - prior.endedAt > 15_000 || prior.endedAt <= latest) continue;
+      latest = prior.endedAt;
+      // Snapshot at speaking_start: later-finished audio must never enter this turn.
+      speaker.priorAudio = { userId: other.userId, pcm: prior.pcm };
+    }
+  }
+
+  #forgetAudioContext(speaker: SpeakerStream): void {
+    if (speaker.contextAudio) { speaker.contextAudio.eligible = false; speaker.contextAudio.chunks = []; }
+    delete speaker.completedAudio;
+    delete speaker.priorAudio;
+    for (const other of this.#speakers.values()) {
+      if (other.priorAudio?.userId !== speaker.userId) continue;
+      delete other.priorAudio;
+      other.refinement?.cancel();
+    }
   }
 
   #handleSttResult(speaker: SpeakerStream, result: RealtimeResult): void {
@@ -1140,6 +1199,7 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     const speaker = this.#speakers.get(userId);
     if (!speaker || speaker.closed) return;
     speaker.closed = true;
+    this.#forgetAudioContext(speaker);
     this.#speakers.delete(userId);
     speaker.startupOpus.clear();
     speaker.utterance.discard();
@@ -1173,6 +1233,10 @@ export class DiscordTranslationRuntime implements SessionRuntime {
 
   async #recoverVoiceConnection(): Promise<void> {
     if (this.#stopping) return;
+    for (const speaker of this.#speakers.values()) {
+      this.#forgetAudioContext(speaker);
+      speaker.refinement?.cancel();
+    }
     try {
       await Promise.race([
         entersState(

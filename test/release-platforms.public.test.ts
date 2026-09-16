@@ -55,8 +55,8 @@ void test("Pi用ComposeはARM64と限定seccomp profileを明示しportを公開
   assert.doesNotMatch(compose, /^\s*ports:\s*$/m);
   assert.match(
     compose,
-    /STT_LOCAL_REFINEMENT_ENABLED:\s*\$\{STT_LOCAL_REFINEMENT_ENABLED:-false\}/,
-    "補助認識は精度と遅延の採用条件を満たすまで既定で無効にする",
+    /STT_LOCAL_REFINEMENT_ENABLED:\s*\$\{STT_LOCAL_REFINEMENT_ENABLED:-true\}/,
+    "Piでは検証した補助認識を有効にし、環境変数で無効化できる",
   );
 });
 

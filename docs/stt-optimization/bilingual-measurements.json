@@ -1546,5 +1546,1836 @@
         "target_terms_found": []
       }
     ]
+  },
+  "early_prefix_and_acoustic_context_20260916": {
+    "status": "integrated_candidate_passed_pi_replay_release_image_pending",
+    "fixed_trials_recorded_in_order": true,
+    "native_prefix_seconds": 2.4,
+    "native_hint_last_word_removed": true,
+    "target_pcm_not_trimmed": true,
+    "native_short_finished_turns": "primary_only",
+    "acoustic_context": {
+      "other_speaker_same_call": true,
+      "chosen_at_target_speaking_start": true,
+      "max_seconds_exclusive": 2.4,
+      "max_age_seconds": 15,
+      "manual_finalize_before_target": true,
+      "prior_phase_tokens_excluded": true,
+      "ram_only": true
+    },
+    "prototype_untrimmed_prefix_runtime": [
+      {
+        "index": 0,
+        "caseId": "human-ko-selection-full",
+        "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+        "audio_seconds": 6.2,
+        "after_speech_ms": 1636.0073040000007,
+        "primary_after_speech_ms": 489.09168800000043,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0.0625,
+              "character_edits": 2,
+              "reference_characters": 32,
+              "hypothesis_characters": 31,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 1,
+                "insertions": 0,
+                "total": 2
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 489.09168800000043
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0.03125,
+              "character_edits": 1,
+              "reference_characters": 32,
+              "hypothesis_characters": 32,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 1
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 1636.0073040000007
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "caseId": "reported-ja-wallet-full",
+        "source_pcm_sha256": "03b2af2f15f5eb018a94e4e1698cf2b4f506563c09e99cc16e366ec771345d47",
+        "audio_seconds": 3.12,
+        "after_speech_ms": 2365.3986760000007,
+        "primary_after_speech_ms": 460.00911199999973,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0.3333333333333333,
+              "character_edits": 2,
+              "reference_characters": 6,
+              "hypothesis_characters": 8,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 2,
+                "total": 2
+              }
+            },
+            "terms_found": [
+              true
+            ],
+            "after_speech_ms": 460.00911199999973
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0.3333333333333333,
+              "character_edits": 2,
+              "reference_characters": 6,
+              "hypothesis_characters": 8,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 2,
+                "total": 2
+              }
+            },
+            "terms_found": [
+              true
+            ],
+            "after_speech_ms": 2365.3986760000007
+          }
+        ]
+      },
+      {
+        "index": 2,
+        "caseId": "human-ko-selection-full",
+        "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+        "audio_seconds": 6.2,
+        "after_speech_ms": 1454.3307269999968,
+        "primary_after_speech_ms": 522.092604999998,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0.0625,
+              "character_edits": 2,
+              "reference_characters": 32,
+              "hypothesis_characters": 31,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 1,
+                "insertions": 0,
+                "total": 2
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 522.092604999998
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0.03125,
+              "character_edits": 1,
+              "reference_characters": 32,
+              "hypothesis_characters": 32,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 1
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 1454.3307269999968
+          }
+        ]
+      },
+      {
+        "index": 3,
+        "caseId": "human-ko-selection-full",
+        "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+        "audio_seconds": 6.2,
+        "after_speech_ms": 1506.6036689999964,
+        "primary_after_speech_ms": 537.1677399999971,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0.0625,
+              "character_edits": 2,
+              "reference_characters": 32,
+              "hypothesis_characters": 31,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 1,
+                "insertions": 0,
+                "total": 2
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 537.1677399999971
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0.03125,
+              "character_edits": 1,
+              "reference_characters": 32,
+              "hypothesis_characters": 32,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 1
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 1506.6036689999964
+          }
+        ]
+      },
+      {
+        "index": 4,
+        "caseId": "reported-ja-drink-full",
+        "source_pcm_sha256": "beb5f6b726070f2650801c01cd31654c60adceab920944b7597612cdf5c8c0fc",
+        "audio_seconds": 1.64,
+        "after_speech_ms": 2223.570139000003,
+        "primary_after_speech_ms": 457.8302760000006,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0.14285714285714285,
+              "character_edits": 1,
+              "reference_characters": 7,
+              "hypothesis_characters": 7,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 1
+              }
+            },
+            "terms_found": [
+              false
+            ],
+            "after_speech_ms": 457.8302760000006
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0.14285714285714285,
+              "character_edits": 1,
+              "reference_characters": 7,
+              "hypothesis_characters": 7,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 1
+              }
+            },
+            "terms_found": [
+              false
+            ],
+            "after_speech_ms": 2223.570139000003
+          }
+        ]
+      },
+      {
+        "index": 5,
+        "caseId": "human-ko-selection-full",
+        "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+        "audio_seconds": 6.2,
+        "after_speech_ms": 1607.1408630000005,
+        "primary_after_speech_ms": 511.0786270000026,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0.0625,
+              "character_edits": 2,
+              "reference_characters": 32,
+              "hypothesis_characters": 31,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 1,
+                "insertions": 0,
+                "total": 2
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 511.0786270000026
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0.03125,
+              "character_edits": 1,
+              "reference_characters": 32,
+              "hypothesis_characters": 32,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 1
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 1607.1408630000005
+          }
+        ]
+      },
+      {
+        "index": 6,
+        "caseId": "human-ko-selection-full",
+        "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+        "audio_seconds": 6.2,
+        "after_speech_ms": 1546.5670989999999,
+        "primary_after_speech_ms": 560.0567020000017,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0.0625,
+              "character_edits": 2,
+              "reference_characters": 32,
+              "hypothesis_characters": 31,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 1,
+                "insertions": 0,
+                "total": 2
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 560.0567020000017
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0.03125,
+              "character_edits": 1,
+              "reference_characters": 32,
+              "hypothesis_characters": 32,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 1
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 1546.5670989999999
+          }
+        ]
+      }
+    ],
+    "prototype_native_runtime": [
+      {
+        "index": 0,
+        "caseId": "human-ko-selection-full",
+        "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+        "audio_seconds": 6.2,
+        "after_speech_ms": 1585.333369,
+        "primary_after_speech_ms": 519.7628299999997,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0.0625,
+              "character_edits": 2,
+              "reference_characters": 32,
+              "hypothesis_characters": 31,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 1,
+                "insertions": 0,
+                "total": 2
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 519.7628299999997
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0,
+              "character_edits": 0,
+              "reference_characters": 32,
+              "hypothesis_characters": 32,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 0
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 1585.333369
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "caseId": "reported-ja-wallet-full",
+        "source_pcm_sha256": "03b2af2f15f5eb018a94e4e1698cf2b4f506563c09e99cc16e366ec771345d47",
+        "audio_seconds": 3.12,
+        "after_speech_ms": 2379.699299,
+        "primary_after_speech_ms": 467.6649099999995,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0.3333333333333333,
+              "character_edits": 2,
+              "reference_characters": 6,
+              "hypothesis_characters": 8,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 2,
+                "total": 2
+              }
+            },
+            "terms_found": [
+              true
+            ],
+            "after_speech_ms": 467.6649099999995
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0.3333333333333333,
+              "character_edits": 2,
+              "reference_characters": 6,
+              "hypothesis_characters": 8,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 2,
+                "total": 2
+              }
+            },
+            "terms_found": [
+              true
+            ],
+            "after_speech_ms": 2379.699299
+          }
+        ]
+      },
+      {
+        "index": 2,
+        "caseId": "human-ko-selection-full",
+        "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+        "audio_seconds": 6.2,
+        "after_speech_ms": 1495.779757999997,
+        "primary_after_speech_ms": 515.1624469999988,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0.0625,
+              "character_edits": 2,
+              "reference_characters": 32,
+              "hypothesis_characters": 31,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 1,
+                "insertions": 0,
+                "total": 2
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 515.1624469999988
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0,
+              "character_edits": 0,
+              "reference_characters": 32,
+              "hypothesis_characters": 32,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 0
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 1495.779757999997
+          }
+        ]
+      },
+      {
+        "index": 3,
+        "caseId": "human-ko-selection-full",
+        "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+        "audio_seconds": 6.2,
+        "after_speech_ms": 1504.9158779999998,
+        "primary_after_speech_ms": 488.52714800000103,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0.0625,
+              "character_edits": 2,
+              "reference_characters": 32,
+              "hypothesis_characters": 31,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 1,
+                "insertions": 0,
+                "total": 2
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 488.52714800000103
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0,
+              "character_edits": 0,
+              "reference_characters": 32,
+              "hypothesis_characters": 32,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 0
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 1504.9158779999998
+          }
+        ]
+      },
+      {
+        "index": 4,
+        "caseId": "reported-ja-drink-full",
+        "source_pcm_sha256": "beb5f6b726070f2650801c01cd31654c60adceab920944b7597612cdf5c8c0fc",
+        "audio_seconds": 1.64,
+        "after_speech_ms": 2143.3229929999943,
+        "primary_after_speech_ms": 452.751562999998,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0.14285714285714285,
+              "character_edits": 1,
+              "reference_characters": 7,
+              "hypothesis_characters": 7,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 1
+              }
+            },
+            "terms_found": [
+              false
+            ],
+            "after_speech_ms": 452.751562999998
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0.14285714285714285,
+              "character_edits": 1,
+              "reference_characters": 7,
+              "hypothesis_characters": 7,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 1
+              }
+            },
+            "terms_found": [
+              false
+            ],
+            "after_speech_ms": 2143.3229929999943
+          }
+        ]
+      },
+      {
+        "index": 5,
+        "caseId": "human-ko-selection-full",
+        "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+        "audio_seconds": 6.2,
+        "after_speech_ms": 1534.1769760000025,
+        "primary_after_speech_ms": 528.4378910000014,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0.0625,
+              "character_edits": 2,
+              "reference_characters": 32,
+              "hypothesis_characters": 31,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 1,
+                "insertions": 0,
+                "total": 2
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 528.4378910000014
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0,
+              "character_edits": 0,
+              "reference_characters": 32,
+              "hypothesis_characters": 32,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 0
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 1534.1769760000025
+          }
+        ]
+      },
+      {
+        "index": 6,
+        "caseId": "human-ko-selection-full",
+        "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+        "audio_seconds": 6.2,
+        "after_speech_ms": 1436.042527000005,
+        "primary_after_speech_ms": 506.4389230000015,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0.0625,
+              "character_edits": 2,
+              "reference_characters": 32,
+              "hypothesis_characters": 31,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 1,
+                "insertions": 0,
+                "total": 2
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 506.4389230000015
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0,
+              "character_edits": 0,
+              "reference_characters": 32,
+              "hypothesis_characters": 32,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 0
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 1436.042527000005
+          }
+        ]
+      }
+    ],
+    "prototype_acoustic_runtime": [
+      {
+        "index": 0,
+        "caseId": "current-ja-uncertain-full",
+        "source_pcm_sha256": "02fb11f3418344775ea5e7a60cde3b2021802b3bb2a554890eacdfb5b6d1a5a8",
+        "audio_seconds": 1.32,
+        "after_speech_ms": 557.450589,
+        "primary_after_speech_ms": 496.39793800000007,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "prior_source_pcm_sha256": "bf138ca2797226205a953d6ffc39749e86dbd42673d91c27f87f0eae5f904020",
+        "prior_audio_seconds": 1.54,
+        "strictly_past_context": true,
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 1.4,
+              "character_edits": 7,
+              "reference_characters": 5,
+              "hypothesis_characters": 7,
+              "edit_counts": {
+                "substitutions": 5,
+                "deletions": 0,
+                "insertions": 2,
+                "total": 7
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 496.39793800000007
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0.2,
+              "character_edits": 1,
+              "reference_characters": 5,
+              "hypothesis_characters": 6,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 1,
+                "total": 1
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 557.450589
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "caseId": "reported-ja-wallet-full",
+        "source_pcm_sha256": "03b2af2f15f5eb018a94e4e1698cf2b4f506563c09e99cc16e366ec771345d47",
+        "audio_seconds": 3.12,
+        "after_speech_ms": 483.7927380000001,
+        "primary_after_speech_ms": 468.3899190000002,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "ineligible"
+        ],
+        "prior_source_pcm_sha256": "1aadf0ad0e0a3335a41982069bf3e41cdfe3c44f92a08f17e53e5823ccd0b256",
+        "prior_audio_seconds": 0.88,
+        "strictly_past_context": true,
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0.3333333333333333,
+              "character_edits": 2,
+              "reference_characters": 6,
+              "hypothesis_characters": 8,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 2,
+                "total": 2
+              }
+            },
+            "terms_found": [
+              true
+            ],
+            "after_speech_ms": 468.3899190000002
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0.3333333333333333,
+              "character_edits": 2,
+              "reference_characters": 6,
+              "hypothesis_characters": 8,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 2,
+                "total": 2
+              }
+            },
+            "terms_found": [
+              true
+            ],
+            "after_speech_ms": 483.7927380000001
+          }
+        ]
+      },
+      {
+        "index": 2,
+        "caseId": "current-ja-uncertain-full",
+        "source_pcm_sha256": "02fb11f3418344775ea5e7a60cde3b2021802b3bb2a554890eacdfb5b6d1a5a8",
+        "audio_seconds": 1.32,
+        "after_speech_ms": 534.1687750000001,
+        "primary_after_speech_ms": 524.9427359999991,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "prior_source_pcm_sha256": "bf138ca2797226205a953d6ffc39749e86dbd42673d91c27f87f0eae5f904020",
+        "prior_audio_seconds": 1.54,
+        "strictly_past_context": true,
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 1.4,
+              "character_edits": 7,
+              "reference_characters": 5,
+              "hypothesis_characters": 7,
+              "edit_counts": {
+                "substitutions": 5,
+                "deletions": 0,
+                "insertions": 2,
+                "total": 7
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 524.9427359999991
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0.2,
+              "character_edits": 1,
+              "reference_characters": 5,
+              "hypothesis_characters": 6,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 1,
+                "total": 1
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 534.1687750000001
+          }
+        ]
+      },
+      {
+        "index": 3,
+        "caseId": "reported-ja-drink-full",
+        "source_pcm_sha256": "beb5f6b726070f2650801c01cd31654c60adceab920944b7597612cdf5c8c0fc",
+        "audio_seconds": 1.64,
+        "after_speech_ms": 458.59781399999883,
+        "primary_after_speech_ms": 458.530295999999,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "prior_source_pcm_sha256": "3c412f22ab41afcd7da7c2fb0d938fdb1be9a0e46314f7bc826cb2dd8130a45b",
+        "prior_audio_seconds": 0.54,
+        "strictly_past_context": true,
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0.14285714285714285,
+              "character_edits": 1,
+              "reference_characters": 7,
+              "hypothesis_characters": 7,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 1
+              }
+            },
+            "terms_found": [
+              false
+            ],
+            "after_speech_ms": 458.530295999999
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0.14285714285714285,
+              "character_edits": 1,
+              "reference_characters": 7,
+              "hypothesis_characters": 7,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 1
+              }
+            },
+            "terms_found": [
+              false
+            ],
+            "after_speech_ms": 458.59781399999883
+          }
+        ]
+      },
+      {
+        "index": 4,
+        "caseId": "current-ja-uncertain-full",
+        "source_pcm_sha256": "02fb11f3418344775ea5e7a60cde3b2021802b3bb2a554890eacdfb5b6d1a5a8",
+        "audio_seconds": 1.32,
+        "after_speech_ms": 521.0284649999994,
+        "primary_after_speech_ms": 520.9536869999993,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "prior_source_pcm_sha256": "bf138ca2797226205a953d6ffc39749e86dbd42673d91c27f87f0eae5f904020",
+        "prior_audio_seconds": 1.54,
+        "strictly_past_context": true,
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 1.4,
+              "character_edits": 7,
+              "reference_characters": 5,
+              "hypothesis_characters": 7,
+              "edit_counts": {
+                "substitutions": 5,
+                "deletions": 0,
+                "insertions": 2,
+                "total": 7
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 520.9536869999993
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0.2,
+              "character_edits": 1,
+              "reference_characters": 5,
+              "hypothesis_characters": 6,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 1,
+                "total": 1
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 521.0284649999994
+          }
+        ]
+      }
+    ],
+    "integrated_driver_warmed_runtime": [
+      {
+        "index": 0,
+        "caseId": "human-ko-selection-full",
+        "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+        "audio_seconds": 6.2,
+        "after_speech_ms": 1658.785523999999,
+        "primary_after_speech_ms": 499.1236689999987,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "prior_source_pcm_sha256": null,
+        "prior_audio_seconds": 0,
+        "real_discord_network": false,
+        "exact_decoded_pcm_injected": true,
+        "actual_driver_and_caption_pipeline": true,
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0,
+              "character_edits": 0,
+              "reference_characters": 32,
+              "hypothesis_characters": 32,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 0
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 499.1236689999987
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0,
+              "character_edits": 0,
+              "reference_characters": 32,
+              "hypothesis_characters": 32,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 0
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 1658.785523999999
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "caseId": "current-ja-uncertain-full",
+        "source_pcm_sha256": "02fb11f3418344775ea5e7a60cde3b2021802b3bb2a554890eacdfb5b6d1a5a8",
+        "audio_seconds": 1.32,
+        "after_speech_ms": 481.2630199999985,
+        "primary_after_speech_ms": 476.5630199999978,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "prior_source_pcm_sha256": "bf138ca2797226205a953d6ffc39749e86dbd42673d91c27f87f0eae5f904020",
+        "prior_audio_seconds": 1.54,
+        "real_discord_network": false,
+        "exact_decoded_pcm_injected": true,
+        "actual_driver_and_caption_pipeline": true,
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 1.2,
+              "character_edits": 6,
+              "reference_characters": 5,
+              "hypothesis_characters": 6,
+              "edit_counts": {
+                "substitutions": 5,
+                "deletions": 0,
+                "insertions": 1,
+                "total": 6
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 476.5630199999978
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0.2,
+              "character_edits": 1,
+              "reference_characters": 5,
+              "hypothesis_characters": 6,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 1,
+                "total": 1
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 481.2630199999985
+          }
+        ]
+      },
+      {
+        "index": 2,
+        "caseId": "reported-ja-drink-full",
+        "source_pcm_sha256": "beb5f6b726070f2650801c01cd31654c60adceab920944b7597612cdf5c8c0fc",
+        "audio_seconds": 1.64,
+        "after_speech_ms": 415.87402099999963,
+        "primary_after_speech_ms": 382.2355470000002,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "prior_source_pcm_sha256": "3c412f22ab41afcd7da7c2fb0d938fdb1be9a0e46314f7bc826cb2dd8130a45b",
+        "prior_audio_seconds": 0.54,
+        "real_discord_network": false,
+        "exact_decoded_pcm_injected": true,
+        "actual_driver_and_caption_pipeline": true,
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0.14285714285714285,
+              "character_edits": 1,
+              "reference_characters": 7,
+              "hypothesis_characters": 7,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 1
+              }
+            },
+            "terms_found": [
+              false
+            ],
+            "after_speech_ms": 382.2355470000002
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0.14285714285714285,
+              "character_edits": 1,
+              "reference_characters": 7,
+              "hypothesis_characters": 7,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 1
+              }
+            },
+            "terms_found": [
+              false
+            ],
+            "after_speech_ms": 415.87402099999963
+          }
+        ]
+      },
+      {
+        "index": 3,
+        "caseId": "human-ko-selection-full",
+        "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+        "audio_seconds": 6.2,
+        "after_speech_ms": 1355.780061000005,
+        "primary_after_speech_ms": 517.5308900000018,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "prior_source_pcm_sha256": null,
+        "prior_audio_seconds": 0,
+        "real_discord_network": false,
+        "exact_decoded_pcm_injected": true,
+        "actual_driver_and_caption_pipeline": true,
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0,
+              "character_edits": 0,
+              "reference_characters": 32,
+              "hypothesis_characters": 32,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 0
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 517.5308900000018
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0,
+              "character_edits": 0,
+              "reference_characters": 32,
+              "hypothesis_characters": 32,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 0
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 1355.780061000005
+          }
+        ]
+      },
+      {
+        "index": 4,
+        "caseId": "current-ja-uncertain-full",
+        "source_pcm_sha256": "02fb11f3418344775ea5e7a60cde3b2021802b3bb2a554890eacdfb5b6d1a5a8",
+        "audio_seconds": 1.32,
+        "after_speech_ms": 498.2936439999976,
+        "primary_after_speech_ms": 406.80314499999804,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "prior_source_pcm_sha256": "bf138ca2797226205a953d6ffc39749e86dbd42673d91c27f87f0eae5f904020",
+        "prior_audio_seconds": 1.54,
+        "real_discord_network": false,
+        "exact_decoded_pcm_injected": true,
+        "actual_driver_and_caption_pipeline": true,
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 1.2,
+              "character_edits": 6,
+              "reference_characters": 5,
+              "hypothesis_characters": 6,
+              "edit_counts": {
+                "substitutions": 5,
+                "deletions": 0,
+                "insertions": 1,
+                "total": 6
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 406.80314499999804
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0.2,
+              "character_edits": 1,
+              "reference_characters": 5,
+              "hypothesis_characters": 6,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 1,
+                "total": 1
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 498.2936439999976
+          }
+        ]
+      },
+      {
+        "index": 5,
+        "caseId": "reported-ja-wallet-full",
+        "source_pcm_sha256": "03b2af2f15f5eb018a94e4e1698cf2b4f506563c09e99cc16e366ec771345d47",
+        "audio_seconds": 3.12,
+        "after_speech_ms": 387.6703219999981,
+        "primary_after_speech_ms": 384.2572699999946,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "ineligible"
+        ],
+        "prior_source_pcm_sha256": "1aadf0ad0e0a3335a41982069bf3e41cdfe3c44f92a08f17e53e5823ccd0b256",
+        "prior_audio_seconds": 0.88,
+        "real_discord_network": false,
+        "exact_decoded_pcm_injected": true,
+        "actual_driver_and_caption_pipeline": true,
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0,
+              "character_edits": 0,
+              "reference_characters": 6,
+              "hypothesis_characters": 6,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 0
+              }
+            },
+            "terms_found": [
+              true
+            ],
+            "after_speech_ms": 384.2572699999946
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0,
+              "character_edits": 0,
+              "reference_characters": 6,
+              "hypothesis_characters": 6,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 0
+              }
+            },
+            "terms_found": [
+              true
+            ],
+            "after_speech_ms": 387.6703219999981
+          }
+        ]
+      },
+      {
+        "index": 6,
+        "caseId": "human-ko-selection-full",
+        "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+        "audio_seconds": 6.2,
+        "after_speech_ms": 1644.6980029999977,
+        "primary_after_speech_ms": 572.8828479999938,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "prior_source_pcm_sha256": null,
+        "prior_audio_seconds": 0,
+        "real_discord_network": false,
+        "exact_decoded_pcm_injected": true,
+        "actual_driver_and_caption_pipeline": true,
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0,
+              "character_edits": 0,
+              "reference_characters": 32,
+              "hypothesis_characters": 32,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 0
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 572.8828479999938
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0,
+              "character_edits": 0,
+              "reference_characters": 32,
+              "hypothesis_characters": 32,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 0
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 1644.6980029999977
+          }
+        ]
+      },
+      {
+        "index": 7,
+        "caseId": "current-ja-uncertain-full",
+        "source_pcm_sha256": "02fb11f3418344775ea5e7a60cde3b2021802b3bb2a554890eacdfb5b6d1a5a8",
+        "audio_seconds": 1.32,
+        "after_speech_ms": 449.763205999996,
+        "primary_after_speech_ms": 398.4512130000003,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "prior_source_pcm_sha256": "bf138ca2797226205a953d6ffc39749e86dbd42673d91c27f87f0eae5f904020",
+        "prior_audio_seconds": 1.54,
+        "real_discord_network": false,
+        "exact_decoded_pcm_injected": true,
+        "actual_driver_and_caption_pipeline": true,
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 1.2,
+              "character_edits": 6,
+              "reference_characters": 5,
+              "hypothesis_characters": 6,
+              "edit_counts": {
+                "substitutions": 5,
+                "deletions": 0,
+                "insertions": 1,
+                "total": 6
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 398.4512130000003
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0.2,
+              "character_edits": 1,
+              "reference_characters": 5,
+              "hypothesis_characters": 6,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 1,
+                "total": 1
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 449.763205999996
+          }
+        ]
+      }
+    ],
+    "warmed_runtime_note": "Both primary sessions first received 200ms silence and a finalized acknowledgment. Korean primary already had zero errors; those three completions are not accuracy gains. Runtime outcomes include the prior speaker.",
+    "korean_batch_controls": [
+      {
+        "index": 0,
+        "caseId": "human-ko-neutral-full",
+        "variant": "baseline",
+        "source_pcm_sha256": "04c6a943de60884878f29235c79099383ef6193053a2e2c0526487c698e44cd7",
+        "audio_seconds": 45.504,
+        "boundaries": [
+          "endpoint",
+          "endpoint",
+          "endpoint",
+          "endpoint",
+          "endpoint",
+          "endpoint",
+          "endpoint"
+        ],
+        "uses_human_reference_as_input": false,
+        "score": {
+          "cer": 0.02358490566037736,
+          "character_edits": 5,
+          "reference_characters": 212,
+          "hypothesis_characters": 212,
+          "edit_counts": {
+            "substitutions": 5,
+            "deletions": 0,
+            "insertions": 0,
+            "total": 5
+          }
+        }
+      },
+      {
+        "index": 1,
+        "caseId": "human-ko-neutral-full",
+        "variant": "prefix24-without-last-word",
+        "source_pcm_sha256": "04c6a943de60884878f29235c79099383ef6193053a2e2c0526487c698e44cd7",
+        "audio_seconds": 45.504,
+        "boundaries": [
+          "endpoint",
+          "endpoint",
+          "endpoint",
+          "endpoint",
+          "endpoint",
+          "endpoint",
+          "endpoint"
+        ],
+        "uses_human_reference_as_input": false,
+        "score": {
+          "cer": 0.02358490566037736,
+          "character_edits": 5,
+          "reference_characters": 212,
+          "hypothesis_characters": 212,
+          "edit_counts": {
+            "substitutions": 5,
+            "deletions": 0,
+            "insertions": 0,
+            "total": 5
+          }
+        }
+      },
+      {
+        "index": 2,
+        "caseId": "human-ko-selection-full",
+        "variant": "prefix24-without-last-word",
+        "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+        "audio_seconds": 6.2,
+        "boundaries": [
+          "endpoint"
+        ],
+        "uses_human_reference_as_input": false,
+        "score": {
+          "cer": 0,
+          "character_edits": 0,
+          "reference_characters": 32,
+          "hypothesis_characters": 32,
+          "edit_counts": {
+            "substitutions": 0,
+            "deletions": 0,
+            "insertions": 0,
+            "total": 0
+          }
+        }
+      },
+      {
+        "index": 3,
+        "caseId": "human-ko-selection-full",
+        "variant": "baseline",
+        "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+        "audio_seconds": 6.2,
+        "boundaries": [
+          "endpoint"
+        ],
+        "uses_human_reference_as_input": false,
+        "score": {
+          "cer": 0.0625,
+          "character_edits": 2,
+          "reference_characters": 32,
+          "hypothesis_characters": 31,
+          "edit_counts": {
+            "substitutions": 1,
+            "deletions": 1,
+            "insertions": 0,
+            "total": 2
+          }
+        }
+      },
+      {
+        "index": 4,
+        "caseId": "human-ko-unseen-opening-full",
+        "variant": "baseline",
+        "source_pcm_sha256": "e923d68dbfd2fca7d0999a9be8d10f8afaaddb85a9a550152380611faf684463",
+        "audio_seconds": 19.2,
+        "boundaries": [
+          "endpoint",
+          "endpoint",
+          "endpoint"
+        ],
+        "uses_human_reference_as_input": false,
+        "score": {
+          "cer": 0,
+          "character_edits": 0,
+          "reference_characters": 90,
+          "hypothesis_characters": 90,
+          "edit_counts": {
+            "substitutions": 0,
+            "deletions": 0,
+            "insertions": 0,
+            "total": 0
+          }
+        }
+      },
+      {
+        "index": 5,
+        "caseId": "human-ko-unseen-opening-full",
+        "variant": "prefix24-without-last-word",
+        "source_pcm_sha256": "e923d68dbfd2fca7d0999a9be8d10f8afaaddb85a9a550152380611faf684463",
+        "audio_seconds": 19.2,
+        "boundaries": [
+          "endpoint",
+          "endpoint",
+          "endpoint"
+        ],
+        "uses_human_reference_as_input": false,
+        "score": {
+          "cer": 0,
+          "character_edits": 0,
+          "reference_characters": 90,
+          "hypothesis_characters": 90,
+          "edit_counts": {
+            "substitutions": 0,
+            "deletions": 0,
+            "insertions": 0,
+            "total": 0
+          }
+        }
+      },
+      {
+        "index": 6,
+        "caseId": "reported-ko-knee-full",
+        "variant": "prefix24-without-last-word",
+        "source_pcm_sha256": "2a1ec2c83a579211472c2c9295cba6c25d6b24cb3d2e9d137512370f1280ba28",
+        "audio_seconds": 3.72,
+        "boundaries": [
+          "endpoint",
+          "endpoint"
+        ],
+        "uses_human_reference_as_input": false,
+        "score": null
+      },
+      {
+        "index": 7,
+        "caseId": "reported-ko-knee-full",
+        "variant": "baseline",
+        "source_pcm_sha256": "2a1ec2c83a579211472c2c9295cba6c25d6b24cb3d2e9d137512370f1280ba28",
+        "audio_seconds": 3.72,
+        "boundaries": [
+          "endpoint",
+          "endpoint"
+        ],
+        "uses_human_reference_as_input": false,
+        "score": null
+      }
+    ],
+    "negative_silence_control": {
+      "id": "silence-after-uncertain-prior",
+      "target_seconds": 1.5,
+      "prior_seconds": 1.54,
+      "empty_expectation_passed": true,
+      "after_speech_ms": 462.42151699999977,
+      "refined_target_characters": 0
+    },
+    "synthetic_unrelated_context_control": {
+      "target_seconds": 7.8,
+      "prior_seconds": 0.74,
+      "secondary_endpoints": 2,
+      "replacement": "ineligible_primary_retained",
+      "counted_as_accuracy_gain": false,
+      "full_primary_cer": "not_reported_due_to_segment_scoring_limit"
+    },
+    "rejected_candidates": [
+      {
+        "name": "Soniox async-v5",
+        "audio_count": 6,
+        "reason": "reported_knitting_and_quotation_unresolved_and_delivery_latency",
+        "uploaded_files_and_transcriptions_deleted": 6
+      },
+      {
+        "name": "past_original_translation_text_and_general_context",
+        "requests": 18,
+        "reason": "reported_knitting_and_quotation_unresolved"
+      },
+      {
+        "name": "pair_language_hints_only",
+        "requests": 10,
+        "reason": "no_target_gain"
+      },
+      {
+        "name": "Omnilingual300M CTC v2 int8",
+        "audio_count": 7,
+        "reason": "control_regressions_in_both_languages"
+      }
+    ],
+    "unresolved": [
+      "reported_japanese_knitting",
+      "korean_knee_source_position_and_full_reference",
+      "live_discord_audio_caption_tts_e2e",
+      "population_accuracy"
+    ],
+    "measurement_preparation_failures": [
+      "The native Opus decode method is read-only; PCM injection uses a test-only decoder constructor instead.",
+      "The isolated Runtime requires setAudioEnabled(false); otherwise its deliberately disabled TTS test double rejects silence-generated output. Five pre-target setup attempts were retained privately; no quality trial was removed."
+    ],
+    "integrated_driver_first_turn_runtime": [
+      {
+        "index": 0,
+        "caseId": "human-ko-selection-full",
+        "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+        "audio_seconds": 6.2,
+        "after_speech_ms": 1713.9508889999997,
+        "primary_after_speech_ms": 509.7787900000003,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "prior_source_pcm_sha256": null,
+        "prior_audio_seconds": 0,
+        "real_discord_network": false,
+        "exact_decoded_pcm_injected": true,
+        "actual_driver_and_caption_pipeline": true,
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0.0625,
+              "character_edits": 2,
+              "reference_characters": 32,
+              "hypothesis_characters": 31,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 1,
+                "insertions": 0,
+                "total": 2
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 509.7787900000003
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0,
+              "character_edits": 0,
+              "reference_characters": 32,
+              "hypothesis_characters": 32,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 0
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 1713.9508889999997
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "caseId": "human-ko-selection-full",
+        "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+        "audio_seconds": 6.2,
+        "after_speech_ms": 1452.120571000003,
+        "primary_after_speech_ms": 505.30159000000276,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "prior_source_pcm_sha256": null,
+        "prior_audio_seconds": 0,
+        "real_discord_network": false,
+        "exact_decoded_pcm_injected": true,
+        "actual_driver_and_caption_pipeline": true,
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0.0625,
+              "character_edits": 2,
+              "reference_characters": 32,
+              "hypothesis_characters": 31,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 1,
+                "insertions": 0,
+                "total": 2
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 505.30159000000276
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0,
+              "character_edits": 0,
+              "reference_characters": 32,
+              "hypothesis_characters": 32,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 0
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 1452.120571000003
+          }
+        ]
+      },
+      {
+        "index": 2,
+        "caseId": "human-ko-selection-full",
+        "source_pcm_sha256": "2c17064574c8dccf633cc38b8660dad8d796d6c8361f0e6f4b00ec10bdbb9779",
+        "audio_seconds": 6.2,
+        "after_speech_ms": 1516.7018669999998,
+        "primary_after_speech_ms": 525.8149790000025,
+        "deliveries": 1,
+        "uses_human_reference_as_input": false,
+        "call_refinement_outcomes": [
+          "completed"
+        ],
+        "prior_source_pcm_sha256": null,
+        "prior_audio_seconds": 0,
+        "real_discord_network": false,
+        "exact_decoded_pcm_injected": true,
+        "actual_driver_and_caption_pipeline": true,
+        "comparison": [
+          {
+            "variant": "primary",
+            "score": {
+              "cer": 0.0625,
+              "character_edits": 2,
+              "reference_characters": 32,
+              "hypothesis_characters": 31,
+              "edit_counts": {
+                "substitutions": 1,
+                "deletions": 1,
+                "insertions": 0,
+                "total": 2
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 525.8149790000025
+          },
+          {
+            "variant": "result",
+            "score": {
+              "cer": 0,
+              "character_edits": 0,
+              "reference_characters": 32,
+              "hypothesis_characters": 32,
+              "edit_counts": {
+                "substitutions": 0,
+                "deletions": 0,
+                "insertions": 0,
+                "total": 0
+              }
+            },
+            "terms_found": [],
+            "after_speech_ms": 1516.7018669999998
+          }
+        ]
+      }
+    ]
   }
 }

@@ -69,7 +69,7 @@ Piでは、以降の`docker compose`コマンドへ必ずPi用overrideを追加�
 docker compose --env-file .env.local -f compose.yaml -f compose.pi.yaml config -q
 ```
 
-`compose.pi.yaml`は`linux/arm64`、上記seccomp profile、10 MB×3世代のログrotationを追加する。日本語・韓国語の[補助音声認識](stt-optimization/bilingual-refinement.md)は、精度と遅延の採用条件を満たしていないため既定で無効（`STT_LOCAL_REFINEMENT_ENABLED=false`）にしている。ホストportは公開しない。64-bit OSへ移行して64-bit Docker Engineを導入した後は、このprofileが必要かを再検証し、不要ならPi用overrideから`security_opt`を削除する。
+`compose.pi.yaml`は`linux/arm64`、上記seccomp profile、10 MB×3世代のログrotationを追加する。日本語・韓国語の[補助音声認識](stt-optimization/bilingual-refinement.md)は、Piの実時間再生で確認した構成を既定で有効にしている。`STT_LOCAL_REFINEMENT_ENABLED=false`で通常のSonioxだけへ戻せる。ホストportは公開しない。64-bit OSへ移行して64-bit Docker Engineを導入した後は、このprofileが必要かを再検証し、不要ならPi用overrideから`security_opt`を削除する。
 
 ## publish成功後に同じcommitを配備する
 
@@ -135,7 +135,7 @@ else
 fi
 ```
 
-`architecture=arm64`、`{"sqlite":true,"opus":true,"dolphin":true}`、`application_ready`の3点がそろうまで、配備元のコンテナとvolumeは削除しない。現在の本番では `local_stt_ready` の `enabled: false` も確認する。native smokeの成功は、音声認識の精度や遅延の採用条件を満たしたことを意味しない。
+`architecture=arm64`、`{"sqlite":true,"opus":true,"dolphin":true}`、`application_ready`の3点がそろうまで、配備元のコンテナとvolumeは削除しない。補助認識を有効にして配備する場合は `local_stt_ready` の `enabled: true`、無効へ戻す場合は `enabled: false` も確認する。native smokeの成功は、音声認識の精度や遅延の採用条件を満たしたことを意味しない。
 
 `.env.local`を`.env.example`で上書きしない。入力ゲートを通過した後もComposeの設定検査が失敗した場合は、Botを起動せず設定を修正する。
 
