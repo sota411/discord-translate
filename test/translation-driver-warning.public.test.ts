@@ -475,7 +475,7 @@ void test("Runtimeは音声受信を復旧し、短い無音で再開した発�
   assert.equal(captureClosed, true);
 });
 
-void test("RuntimeはJAと後から参加したKO話者の補助結果を正しい字幕へ送り、退出後は送らない", {
+void test("Runtimeは途中参加者の原文を分け、過去の音声文脈を提供した話者の退出で補助結果を取り消す", {
   timeout: 3_000,
 }, async () => {
   const ja = "323456789012345678", ko = "423456789012345678";
@@ -484,7 +484,7 @@ void test("RuntimeはJAと後から参加したKO話者の補助結果を正し�
   const members = new Map([[ja, { user: { bot: false } }]]);
   const providers: FakeSttSession[] = [];
   const sent: CaptionMessagePayload[] = [];
-  const starts: { userId: string; hint: { language: string } }[] = [];
+  const starts: { userId: string; hint: { language: string }; priorAudio?: Buffer }[] = [];
   const failures: string[] = [];
   let closed = 0;
   const runtime = new DiscordTranslationRuntime({
@@ -508,7 +508,7 @@ void test("RuntimeはJAと後から参加したKO話者の補助結果を正し�
       finishProviderRequest: () => undefined, finishSession: () => undefined },
     sttFactory: { create: () => { const provider = new FakeSttSession(); providers.push(provider);
       return { session: provider, initialTextCharacterCount: 0 }; } },
-    refinement: { start: (input: { userId: string; hint: { language: string } }) => {
+    refinement: { start: (input: { userId: string; hint: { language: string }; priorAudio?: Buffer }) => {
       starts.push(input);
       return { push: () => undefined, finish: () => undefined, cancel: () => undefined,
         close: () => { closed += 1; },
@@ -570,14 +570,38 @@ void test("RuntimeはJAと後から参加したKO話者の補助結果を正し�
     assert.equal(sent.length, 2);
     assert.match(JSON.stringify(sent[1]), /Minji/u);
     assert.deepEqual(starts.map(({ userId, hint }) => [userId, hint.language]), [[ja, "ja"], [ko, "ko"]]);
+    assert.equal(starts[0]?.priorAudio, undefined);
+    // The first turn crossed the connection wait; only a later complete turn is context.
+    // Snapshot JA now: KO will complete another turn before JA's first decoded packet.
+    speaking.emit("start", ja);
     await startTurn(ko);
     providers[1]?.emit("result", result);
     providers[1]?.emit("endpoint");
-    members.delete(ko);
-    await runtime.updateParticipants([ja]);
     providers[1]?.emit("finalized");
     await new Promise<void>((resolve) => setImmediate(resolve));
-    assert.equal(sent.length, 2);
+    assert.equal(sent.length, 3);
+    streams.get(ja)?.write(Buffer.from([0x00]));
+    assert.equal(starts.at(-1)?.priorAudio, undefined, "exclude startup-ambiguous and future-ended context");
+    speaking.emit("end", ja);
+    await new Promise<void>((resolve) => setTimeout(resolve, 220));
+    primary.emit("result", result);
+    primary.emit("endpoint");
+    primary.emit("finalized");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(sent.length, 4);
+    await startTurn(ja);
+    assert.equal(starts.at(-1)?.priorAudio?.length, 960);
+    primary.emit("result", result);
+    primary.emit("endpoint");
+    assert.equal(sent.length, 4);
+    members.delete(ko);
+    await runtime.updateParticipants([ja]);
+    primary.emit("finalized");
+    providers[1]?.emit("finalized");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(sent.length, 5);
+    assert.match(JSON.stringify(sent[4]), /通常の原文/u);
+    assert.doesNotMatch(JSON.stringify(sent[4]), /補助認識済み/u);
     assert.ok(closed > 0);
     speaking.emit("start", "523456789012345678");
     assert.equal(providers.length, 2);

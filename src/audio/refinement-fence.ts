@@ -115,6 +115,14 @@ export class RefinementFence {
     this.#chosen = undefined;
   }
 
+  public cancel(): void {
+    this.#turn?.work.cancel();
+    this.#turn = undefined;
+    this.#chosen?.cancel();
+    this.#chosen = undefined;
+    for (const fence of this.#fences) this.#release(fence);
+  }
+
   #release(fence: Fence): void {
     fence.turn?.work.cancel();
     fence.turn = undefined;
