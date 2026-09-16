@@ -135,7 +135,7 @@ else
 fi
 ```
 
-`architecture=arm64`、`{"sqlite":true,"opus":true,"dolphin":true}`、`application_ready`の3点がそろうまで、配備元のコンテナとvolumeは削除しない。現在の本番では `local_stt_ready` の `enabled: false` も確認する。native smokeの成功は、音声認識の精度や遅延の採用条件を満たしたことを意味しない。
+`architecture=arm64`、`{"sqlite":true,"opus":true,"dolphin":true}`、`application_ready`の3点がそろうまで、配備元のコンテナとvolumeは削除しない。補助認識を有効にして配備する場合は `local_stt_ready` の `enabled: true`、無効へ戻す場合は `enabled: false` も確認する。native smokeの成功は、音声認識の精度や遅延の採用条件を満たしたことを意味しない。
 
 `.env.local`を`.env.example`で上書きしない。入力ゲートを通過した後もComposeの設定検査が失敗した場合は、Botを起動せず設定を修正する。
 
