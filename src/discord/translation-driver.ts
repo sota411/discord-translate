@@ -41,6 +41,7 @@ import {
 } from "../audio/stt-turn-finalizer.js";
 import { ApplicationError } from "../domain/application-error.js";
 import type {
+  PrivateSttRtpPacket,
   PrivateSttCaptureFactory,
   PrivateSttCaptureSession,
   PrivateSttCaptureSpeaker,
@@ -785,6 +786,12 @@ export class DiscordTranslationRuntime implements SessionRuntime {
   #attachSpeakerAudio(speaker: SpeakerStream, stream: AudioReceiveStream): void {
     speaker.opus = stream;
     let streamError: unknown;
+    // The pinned voice patch emits metadata for the same accepted Buffer before push().
+    // Identity also distinguishes repeated silence packets while the stream is paused.
+    const rtpPackets = speaker.privateCapture === undefined ? undefined : new WeakMap<Buffer, PrivateSttRtpPacket>();
+    if (rtpPackets) stream.on("rtpPacket", (packet: Buffer, metadata: PrivateSttRtpPacket) => {
+      rtpPackets.set(packet, metadata);
+    });
     stream.on("data", (packet: Buffer) => {
       if (speaker.closed || speaker.opus !== stream) return;
       speaker.receiveRecoveryAttempts = 0;
@@ -794,10 +801,14 @@ export class DiscordTranslationRuntime implements SessionRuntime {
         return;
       }
       const receivedAtMonotonicMs = performance.now();
+      const rtp = rtpPackets?.get(packet);
+      if (!rtp) throw new Error("private STT captureのRTP情報がありません。voiceパッチを確認してください。");
+      rtpPackets?.delete(packet);
       const captureSequence = privateCapture.recordOpusPacket({
         turnId: speaker.turnId,
         atMonotonicMs: receivedAtMonotonicMs,
         packet,
+        rtp,
       });
       this.#handleOpusPacket(speaker, packet, {
         captureSequence,
@@ -1074,8 +1085,8 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     ) {
       return;
     }
-    if (!speaker.turnFinalizer.boundaryReceived(kind)) {
-      if (kind === "finalized") speaker.refinement?.finalized();
+    if (kind === "finalized" && !speaker.turnFinalizer.boundaryReceived(kind)) {
+      speaker.refinement?.finalized();
       return;
     }
     speaker.privateCapture?.recordSttBoundary({
@@ -1084,7 +1095,8 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       atMonotonicMs: performance.now(),
     });
     delete speaker.lastTranscriptFingerprint;
-    this.#handleEndpoint(speaker);
+    const hasUtterance = this.#handleEndpoint(speaker);
+    if (kind === "endpoint") speaker.turnFinalizer.boundaryReceived(kind, hasUtterance);
     if (kind === "finalized") speaker.refinement?.finalized();
     // A natural endpoint is not a PCM acknowledgment. Request a quiet manual
     // barrier before allowing a later turn to start another refinement.
@@ -1093,14 +1105,14 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     }
   }
 
-  #handleEndpoint(speaker: SpeakerStream): void {
+  #handleEndpoint(speaker: SpeakerStream): boolean {
     try {
       if (
         this.#stopping ||
         speaker.closed ||
         !this.#participants.has(speaker.userId)
       ) {
-        return;
+        return false;
       }
       if (speaker.previewTimer) {
         clearTimeout(speaker.previewTimer);
@@ -1121,9 +1133,11 @@ export class DiscordTranslationRuntime implements SessionRuntime {
         this.#observeFlow("stt_endpoint_empty");
         void this.#captions.discardPreview(utteranceId);
       }
+      return finalized !== undefined;
     } catch (error) {
       const mapped = mapSttError(error);
       this.#fail(mapped.code, mapped.publicMessage, error);
+      return false;
     }
   }
 

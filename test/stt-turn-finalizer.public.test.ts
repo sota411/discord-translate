@@ -147,6 +147,36 @@ void test("manual finalizeをsemantic endpointが連続で先取りしても各f
   finalizer.close();
 });
 
+void test("古いfinalizedは空endpoint後に待つ新しい手動確定を消さない", (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const calls: FinalizeCall[] = [];
+  const finalizer = new SttTurnFinalizer({
+    session: recordingSession(calls), speakingEndDelayMs: 200,
+    transcriptInactivityMs: 3_000, maxTurnMs: 30_000, trailingSilenceMs: 200,
+  });
+  finalizer.audioReceived();
+  context.mock.timers.tick(200);
+  assert.equal(finalizer.boundaryReceived("endpoint", true), true);
+  finalizer.audioReceived();
+  context.mock.timers.tick(200);
+  assert.equal(finalizer.boundaryReceived("endpoint", false), true);
+  finalizer.transcriptProgressed();
+  assert.equal(finalizer.boundaryReceived("finalized"), false, "acknowledge only the earlier request");
+  context.mock.timers.tick(3_000);
+  assert.equal(calls.length, 4, "do not submit another finalize while the newer request is pending");
+  assert.equal(finalizer.boundaryReceived("finalized"), true, "flush the matching request's late tokens");
+  finalizer.audioReceived();
+  context.mock.timers.tick(200);
+  finalizer.boundaryReceived("endpoint", false);
+  finalizer.audioReceived();
+  finalizer.boundaryReceived("endpoint", true);
+  context.mock.timers.tick(200);
+  assert.equal(finalizer.boundaryReceived("finalized"), false, "a nonempty endpoint supersedes the empty one");
+  assert.equal(finalizer.boundaryReceived("finalized"), true, "do not carry its hold into the next request");
+  assert.equal(calls.length, 8);
+  finalizer.close();
+});
+
 void test("発話中にsemantic endpointが届いても直後の短い発話を確定できる", (context) => {
   context.mock.timers.enable({ apis: ["setTimeout"] });
   const calls: FinalizeCall[] = [];

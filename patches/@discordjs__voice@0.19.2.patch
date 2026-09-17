@@ -1,0 +1,54 @@
+diff --git a/dist/index.js b/dist/index.js
+index 63c6dfbaeb145f4ec332784ce5a80bb534fb8905..eb250ecf29a143c9338d31f37efcf95c5feb013b 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -2117,6 +2117,7 @@ var VoiceReceiver = class {
+    * @internal
+    */
+   onUdpMessage(msg) {
++    const receivedAtMonotonicMs = performance.now();
+     if (msg.length <= 8) return;
+     const ssrc = msg.readUInt32BE(8);
+     const userData = this.ssrcMap.get(ssrc);
+@@ -2136,7 +2137,13 @@ var VoiceReceiver = class {
+           this.connectionData.secretKey,
+           userData.userId
+         );
+-        if (packet) stream.push(packet);
++        if (packet) {
++          // Keep the existing Buffer stream; opt-in diagnostics receive its RTP clock.
++          if (stream.listenerCount("rtpPacket")) stream.emit("rtpPacket", packet, {
++            sequence: msg.readUInt16BE(2), timestamp: msg.readUInt32BE(4), ssrc, receivedAtMonotonicMs
++          });
++          stream.push(packet);
++        }
+       } catch (error) {
+         stream.destroy(error);
+       }
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 4a5678cf6efbd76a00efaa0c1218aa6fb8cccffe..8d624f677aaf7c9b30082a16075ee835be83aa3e 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -2057,6 +2057,7 @@ var VoiceReceiver = class {
+    * @internal
+    */
+   onUdpMessage(msg) {
++    const receivedAtMonotonicMs = performance.now();
+     if (msg.length <= 8) return;
+     const ssrc = msg.readUInt32BE(8);
+     const userData = this.ssrcMap.get(ssrc);
+@@ -2076,7 +2077,13 @@ var VoiceReceiver = class {
+           this.connectionData.secretKey,
+           userData.userId
+         );
+-        if (packet) stream.push(packet);
++        if (packet) {
++          // Keep the existing Buffer stream; opt-in diagnostics receive its RTP clock.
++          if (stream.listenerCount("rtpPacket")) stream.emit("rtpPacket", packet, {
++            sequence: msg.readUInt16BE(2), timestamp: msg.readUInt32BE(4), ssrc, receivedAtMonotonicMs
++          });
++          stream.push(packet);
++        }
+       } catch (error) {
+         stream.destroy(error);
+       }
