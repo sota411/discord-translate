@@ -7,7 +7,7 @@
   "engines": {
     "node": ">=24.17.0"
   },
-  "packageManager": "pnpm@11.3.0",
+  "packageManager": "pnpm@11.10.0",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
