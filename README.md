@@ -13,7 +13,7 @@ Discordの音声チャンネルで、日本語・韓国語・英語の会話を�
 - 許可するDiscord Server IDとUser ID
 - Sonioxアカウント
 - Node.js 24.17.0以上
-- pnpm 11.3.0
+- pnpm 11.10.0
 - Dockerで動かす場合はDocker EngineとDocker Compose
 - Linuxシェル、`openssl`
 
@@ -21,7 +21,7 @@ Discordの音声チャンネルで、日本語・韓国語・英語の会話を�
 
 秘密情報を用意する前に、リポジトリをcloneしてローカル検証を通す。`pnpm verify`はDiscordやSonioxへ接続しない。
 
-Node.jsは24.17.0以上、pnpmは11.3.0を使う。`pnpm`がない場合は、Node.jsを導入した後に`npm install --global pnpm@11.3.0`で用意する。
+Node.jsは24.17.0以上、pnpmは11.10.0を使う。`pnpm`がない場合は、Node.jsを導入した後に`npm install --global pnpm@11.10.0`で用意する。
 
 ```bash
 git clone https://github.com/sota411/discord-translate.git
