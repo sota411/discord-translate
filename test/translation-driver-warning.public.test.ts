@@ -57,6 +57,100 @@ const unsupportedResult: RealtimeResult = {
   total_audio_proc_ms: 500,
 };
 
+void test("空のendpoint後の原文と訳をfinalizedで届け、次のPCMは古い応答で確定しない", async () => {
+  for (const language of ["ja", "ko"] as const) {
+    for (const resume of [false, true]) {
+      const userId = "323456789012345678";
+      const speaking = new EventEmitter();
+      const opus = new PassThrough();
+      const connection = new EventEmitter();
+      const stt = new FakeSttSession();
+      let requested = Promise.withResolvers<undefined>();
+      stt.finalize = () => {
+        stt.finalizeCalls += 1;
+        requested.resolve(undefined);
+        return Promise.resolve();
+      };
+      const sent: CaptionMessagePayload[] = [];
+      const failures: string[] = [];
+      const warnings: string[] = [];
+      const runtime = new DiscordTranslationRuntime({
+        session: { sessionId: "empty-endpoint", guildId: "223456789012345678", voiceChannelId: "voice",
+          voiceChannelName: "Test", textChannelId: "text", textChannelName: "test", startedByUserId: userId,
+          pair: "ja-ko", state: "ACTIVE", startedAt: new Date(), participantIds: [userId],
+          playbackMode: "conversation", audioEnabled: false, captionFailurePolicy: "continue_audio" },
+        participantIds: [userId], translationTerms: [],
+        guild: { client: { rest: new REST({ hashSweepInterval: 0, handlerSweepInterval: 0 }) },
+          members: { cache: new Map([[userId, { displayName: "Test" }]]) } },
+        voiceChannel: { members: new Map([[userId, { user: { bot: false } }]]) },
+        presentation: { threadId: "test", captionChannel: {
+          send: (payload: CaptionMessagePayload) => {
+            sent.push(payload);
+            return Promise.resolve({ edit: () => Promise.resolve(), delete: () => Promise.resolve() });
+          },
+        }, update: () => Promise.resolve(), close: () => Promise.resolve() },
+        connection: { receiver: { speaking, subscribe: () => opus }, subscribe: () => undefined,
+          on: connection.on.bind(connection), destroy: () => undefined },
+        config: loadConfig(validEnv({ SONIOX_REGION: "jp" }), new Date("2026-08-15T00:00:00Z")),
+        speakerLanguageHints: new Map([[userId, language]]),
+        ledger: { openProviderRequest: () => undefined, recordProviderUsage: () => undefined,
+          finishProviderRequest: () => undefined, finishSession: () => undefined },
+        sttFactory: { create: () => ({ session: stt, initialTextCharacterCount: 0 }) },
+        tts: { synthesize: () => Promise.reject(new Error("Unexpected TTS request")) },
+        latency: { start: () => undefined, mark: () => undefined, finish: () => undefined },
+        observeFlow: () => undefined,
+        onFailure: (_guild: string, reason: string, _message: string, cause: unknown) =>
+          failures.push(reason + ": " + String(cause)),
+        onWarning: (_guild: string, operation: string) => warnings.push(operation),
+      } as unknown as TranslationRuntimeOptions);
+      const drain = () => new Promise<void>((resolve) => setImmediate(resolve));
+      try {
+        await runtime.setAudioEnabled(false);
+        speaking.emit("start", userId);
+        await drain();
+        opus.write(Buffer.from([0xf8, 0xff, 0xfe]));
+        speaking.emit("end", userId);
+        await requested.promise;
+        stt.emit("endpoint");
+        if (resume) {
+          speaking.emit("start", userId);
+          opus.write(Buffer.from([0xf8, 0xff, 0xfe]));
+          speaking.emit("end", userId);
+        }
+        const original = language === "ja" ? "明日は晴れです。" : "내일은 맑아요.";
+        const translated = language === "ja" ? "내일은 맑아요." : "明日は晴れです。";
+        stt.emit("result", { tokens: [
+          { text: original, confidence: 0.95, is_final: true, language,
+            translation_status: "original", start_ms: 0, end_ms: 500 },
+          { text: translated, confidence: 0.95, is_final: true,
+            language: language === "ja" ? "ko" : "ja", source_language: language,
+            translation_status: "translation" },
+        ], final_audio_proc_ms: 500, total_audio_proc_ms: 500 });
+        requested = Promise.withResolvers<undefined>();
+        stt.emit("finalized");
+        await drain();
+        if (resume) {
+          assert.equal(sent.length, 0, "the earlier request must not flush later PCM");
+          await requested.promise;
+          stt.emit("finalized");
+          await drain();
+        }
+        assert.equal(sent.length, 1, language + ": deliver without another inactivity timeout");
+        assert.match(JSON.stringify(sent[0]), new RegExp(original, "u"));
+        assert.match(JSON.stringify(sent[0]), new RegExp(translated, "u"));
+        stt.emit("finalized");
+        await drain();
+        assert.equal(sent.length, 1, "do not duplicate a delivered pair");
+        assert.equal(stt.finalizeCalls, resume ? 2 : 1);
+        assert.deepEqual(failures, []);
+        assert.deepEqual(warnings, []);
+      } finally {
+        await runtime.stop("TEST_COMPLETE");
+      }
+    }
+  }
+});
+
 void test("Runtimeは警告失敗を非致命に扱い、訳文のない確定原文も字幕とexportに残す", {
   timeout: 2_000,
 }, async () => {
@@ -70,6 +164,7 @@ void test("Runtimeは警告失敗を非致命に扱い、訳文のない確定�
   let deleted = 0;
   let synthesisCalls = 0;
   let discordUnavailable = true;
+  const firstPreviewSent = Promise.withResolvers<undefined>();
   const failures: string[] = [];
   const sttCreateCalls: unknown[][] = [];
   const observedWarning = Promise.withResolvers<{
@@ -117,6 +212,7 @@ void test("Runtimeは警告失敗を非致命に扱い、訳文のない確定�
           if (discordUnavailable) {
             return Promise.reject(new Error("Discord unavailable"));
           }
+          firstPreviewSent.resolve(undefined);
           return Promise.resolve({
             edit(next: CaptionMessagePayload) {
               edited.push(next);
@@ -213,6 +309,7 @@ void test("Runtimeは警告失敗を非致命に扱い、訳文のない確定�
       total_audio_proc_ms: 500,
     });
     stt.emit("result", previewResult("明日の", "내일"));
+    await firstPreviewSent.promise;
     await new Promise<void>((resolve) => setImmediate(resolve));
     stt.emit("result", previewResult("明日の夜", "내일 밤"));
     stt.emit("result", previewResult("明日の夜は空いてる？", "내일 밤에 시간 있어?"));

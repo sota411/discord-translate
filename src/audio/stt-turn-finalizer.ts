@@ -37,6 +37,7 @@ export class SttTurnFinalizer {
   #manualFinalizeRequested = false;
   #audioAfterFinalizeRequest = false;
   #transcriptProgressAfterFinalizeRequest = false;
+  #emptyEndpointWhileFinalizing = false;
   #ignoredFinalizedBoundaryCount = 0;
   #speaking = false;
   #closed = false;
@@ -114,10 +115,17 @@ export class SttTurnFinalizer {
     this.#transcriptInactivityTimer.unref();
   }
 
-  public boundaryReceived(kind: SttBoundaryKind): boolean {
+  public boundaryReceived(kind: SttBoundaryKind, hasUtterance = true): boolean {
     if (kind === "finalized" && this.#ignoredFinalizedBoundaryCount > 0) {
       this.#ignoredFinalizedBoundaryCount -= 1;
       return false;
+    }
+
+    // An empty natural endpoint has not delivered the pending transcript.
+    // Keep its manual request open for the matching finalized marker.
+    if (kind === "endpoint" && !hasUtterance) {
+      if (this.#manualFinalizeRequested) this.#emptyEndpointWhileFinalizing = true;
+      return true;
     }
 
     this.#clearTimers();
@@ -125,9 +133,12 @@ export class SttTurnFinalizer {
       this.#ignoredFinalizedBoundaryCount += 1;
     }
     const hadAudioAfterFinalizeRequest = this.#audioAfterFinalizeRequest;
+    const canFlush = !(kind === "finalized" && this.#emptyEndpointWhileFinalizing &&
+      hadAudioAfterFinalizeRequest);
     this.#hasPendingAudio = hadAudioAfterFinalizeRequest || this.#speaking;
     this.#manualFinalizeRequested = false;
     this.#audioAfterFinalizeRequest = false;
+    this.#emptyEndpointWhileFinalizing = false;
     const transcriptProgressed = this.#transcriptProgressAfterFinalizeRequest;
     this.#transcriptProgressAfterFinalizeRequest = false;
     if (transcriptProgressed && hadAudioAfterFinalizeRequest) {
@@ -136,7 +147,7 @@ export class SttTurnFinalizer {
     if (this.#hasPendingAudio && !this.#speaking) {
       this.#scheduleSpeakingEndFinalize();
     }
-    return true;
+    return canFlush;
   }
 
   public close(): void {

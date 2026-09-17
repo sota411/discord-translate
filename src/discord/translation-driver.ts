@@ -1085,8 +1085,8 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     ) {
       return;
     }
-    if (!speaker.turnFinalizer.boundaryReceived(kind)) {
-      if (kind === "finalized") speaker.refinement?.finalized();
+    if (kind === "finalized" && !speaker.turnFinalizer.boundaryReceived(kind)) {
+      speaker.refinement?.finalized();
       return;
     }
     speaker.privateCapture?.recordSttBoundary({
@@ -1095,7 +1095,8 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       atMonotonicMs: performance.now(),
     });
     delete speaker.lastTranscriptFingerprint;
-    this.#handleEndpoint(speaker);
+    const hasUtterance = this.#handleEndpoint(speaker);
+    if (kind === "endpoint") speaker.turnFinalizer.boundaryReceived(kind, hasUtterance);
     if (kind === "finalized") speaker.refinement?.finalized();
     // A natural endpoint is not a PCM acknowledgment. Request a quiet manual
     // barrier before allowing a later turn to start another refinement.
@@ -1104,14 +1105,14 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     }
   }
 
-  #handleEndpoint(speaker: SpeakerStream): void {
+  #handleEndpoint(speaker: SpeakerStream): boolean {
     try {
       if (
         this.#stopping ||
         speaker.closed ||
         !this.#participants.has(speaker.userId)
       ) {
-        return;
+        return false;
       }
       if (speaker.previewTimer) {
         clearTimeout(speaker.previewTimer);
@@ -1132,9 +1133,11 @@ export class DiscordTranslationRuntime implements SessionRuntime {
         this.#observeFlow("stt_endpoint_empty");
         void this.#captions.discardPreview(utteranceId);
       }
+      return finalized !== undefined;
     } catch (error) {
       const mapped = mapSttError(error);
       this.#fail(mapped.code, mapped.publicMessage, error);
+      return false;
     }
   }
 
