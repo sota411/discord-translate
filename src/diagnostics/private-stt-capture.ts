@@ -35,10 +35,17 @@ type CaptureEventTime = {
   atMonotonicMs: number;
 };
 
+export type PrivateSttRtpPacket = {
+  sequence: number;
+  timestamp: number;
+  ssrc: number;
+  receivedAtMonotonicMs: number;
+};
+
 export type PrivateSttCaptureSpeaker = {
   speakingStarted(input: CaptureEventTime): void;
   speakingEnded(input: CaptureEventTime): void;
-  recordOpusPacket(input: CaptureEventTime & { packet: Buffer }): number;
+  recordOpusPacket(input: CaptureEventTime & { packet: Buffer; rtp?: PrivateSttRtpPacket }): number;
   recordDecodedPacket(input: {
     packetSequence: number;
     atMonotonicMs: number;
@@ -189,7 +196,7 @@ class FilePrivateSttCaptureSpeaker implements PrivateSttCaptureSpeaker {
     this.#writeTimedEvent("speaking_end", input);
   }
 
-  public recordOpusPacket(input: CaptureEventTime & { packet: Buffer }): number {
+  public recordOpusPacket(input: CaptureEventTime & { packet: Buffer; rtp?: PrivateSttRtpPacket }): number {
     const packetSequence = this.#packetSequence;
     this.#packetSequence += 1;
     const opusOffset = this.#opusOffset;
@@ -202,6 +209,12 @@ class FilePrivateSttCaptureSpeaker implements PrivateSttCaptureSpeaker {
       packet_sequence: packetSequence,
       opus_offset: opusOffset,
       opus_byte_length: input.packet.length,
+      ...(input.rtp ? {
+        rtp_sequence: input.rtp.sequence,
+        rtp_timestamp: input.rtp.timestamp,
+        rtp_ssrc: input.rtp.ssrc,
+        rtp_received_at_ms: this.#elapsed(input.rtp.receivedAtMonotonicMs),
+      } : {}),
     }));
     return packetSequence;
   }

@@ -41,6 +41,7 @@ import {
 } from "../audio/stt-turn-finalizer.js";
 import { ApplicationError } from "../domain/application-error.js";
 import type {
+  PrivateSttRtpPacket,
   PrivateSttCaptureFactory,
   PrivateSttCaptureSession,
   PrivateSttCaptureSpeaker,
@@ -785,6 +786,12 @@ export class DiscordTranslationRuntime implements SessionRuntime {
   #attachSpeakerAudio(speaker: SpeakerStream, stream: AudioReceiveStream): void {
     speaker.opus = stream;
     let streamError: unknown;
+    // The pinned voice patch emits metadata for the same accepted Buffer before push().
+    // Identity also distinguishes repeated silence packets while the stream is paused.
+    const rtpPackets = speaker.privateCapture === undefined ? undefined : new WeakMap<Buffer, PrivateSttRtpPacket>();
+    if (rtpPackets) stream.on("rtpPacket", (packet: Buffer, metadata: PrivateSttRtpPacket) => {
+      rtpPackets.set(packet, metadata);
+    });
     stream.on("data", (packet: Buffer) => {
       if (speaker.closed || speaker.opus !== stream) return;
       speaker.receiveRecoveryAttempts = 0;
@@ -794,10 +801,14 @@ export class DiscordTranslationRuntime implements SessionRuntime {
         return;
       }
       const receivedAtMonotonicMs = performance.now();
+      const rtp = rtpPackets?.get(packet);
+      if (!rtp) throw new Error("private STT captureのRTP情報がありません。voiceパッチを確認してください。");
+      rtpPackets?.delete(packet);
       const captureSequence = privateCapture.recordOpusPacket({
         turnId: speaker.turnId,
         atMonotonicMs: receivedAtMonotonicMs,
         packet,
+        rtp,
       });
       this.#handleOpusPacket(speaker, packet, {
         captureSequence,

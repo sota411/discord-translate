@@ -307,6 +307,16 @@ void test("Runtimeは音声受信を復旧し、短い無音で再開した発�
   const userId = "323456789012345678";
   const speaking = new EventEmitter();
   const opusStreams = [new PassThrough(), new PassThrough()];
+  let rtpSequence = 0;
+  const sendCapturedPacket = (): void => {
+    const stream = opusStreams[1];
+    assert.ok(stream);
+    const packet = Buffer.from([0x00]);
+    stream.emit("rtpPacket", packet, { sequence: rtpSequence, timestamp: rtpSequence * 480,
+      ssrc: 123, receivedAtMonotonicMs: performance.now() });
+    rtpSequence += 1;
+    stream.write(packet);
+  };
   const stt = new FakeSttSession();
   const failures: string[] = [];
   const warnings: string[] = [];
@@ -428,14 +438,14 @@ void test("Runtimeは音声受信を復旧し、短い無音で再開した発�
     await new Promise<void>((resolve) => setTimeout(resolve, 300));
 
     assert.equal(subscriptions, 2);
-    opusStreams[1]?.write(Buffer.from([0x00]));
+    sendCapturedPacket();
     await new Promise<void>((resolve) => setImmediate(resolve));
     stt.emit("result", unsupportedResult);
     stt.emit("endpoint");
     await new Promise<void>((resolve) => setImmediate(resolve));
 
     speaking.emit("start", userId);
-    opusStreams[1]?.write(Buffer.from([0x00]));
+    sendCapturedPacket();
     await new Promise<void>((resolve) => setImmediate(resolve));
     speaking.emit("end", userId);
     // A real packet trace resumed 117 ms after Discord's speaking_end event.
@@ -443,7 +453,7 @@ void test("Runtimeは音声受信を復旧し、短い無音で再開した発�
     assert.equal(stt.audioWrites, 2, "do not insert silence inside a brief pause");
     assert.equal(stt.finalizeCalls, 0, "keep the utterance open across a brief pause");
     speaking.emit("start", userId);
-    opusStreams[1]?.write(Buffer.from([0x00]));
+    sendCapturedPacket();
     speaking.emit("end", userId);
     await new Promise<void>((resolve) => setTimeout(resolve, 220));
 

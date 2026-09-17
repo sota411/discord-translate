@@ -207,7 +207,7 @@ Raspberry PiではPi上でimageをbuildせず、CIで検証してGHCRへ配布�
 
 `STT_PRIVATE_CAPTURE_DIRECTORY`は通常運用では空のままにする。明示的に設定した診断セッションだけ、Sonioxより前の次のデータを話者番号別に保存する。
 
-- Discordから受信したOpus packetと受信時刻
+- Discordから受信したOpus packetと受信時刻、対応するRTPのsequence・timestamp・SSRC
 - Opus復号直後の48 kHz・signed 16-bit・stereo PCM
 - stereoから変換した復号後mono PCM
 - 終端用の無音を含め、Sonioxへ実際に渡した48 kHz・signed 16-bit・mono PCM
@@ -215,6 +215,10 @@ Raspberry PiではPi上でimageをbuildせず、CIで検証してGHCRへ配布�
 - Sonioxが返した原文tokenと翻訳tokenを分けた結果
 
 通常経路では無効であり、追加buffer、再文字起こし、二段階処理を行わない。有効時も同じmono PCMをそのままSonioxへ送り、保存完了を待って字幕や読み上げを遅らせない。ただし、診断用のdisk I/O自体は発生するため、改善候補の遅延比較はこの設定を無効にして行う。
+
+Opusの記録には、UDP受信時刻を `rtp_received_at_ms`、streamから読み出した時刻を `at_ms` として、どちらも診断開始からのミリ秒で残す。送信元の48 kHz基準のRTP時刻とsequenceを併せて調べることで、受信の遅れと送信間隔・欠番を切り分ける。ただし、欠けた区間が無音だったかは時刻だけでは分からない。この記録自体は音声へ無音を追加せず、認識結果も変更しない。旧版の記録にはRTP情報がない。
+
+RTP情報の取得には、固定した `@discordjs/voice@0.19.2` に `patches/` のpnpm patchを適用する。復号処理が受理したOpusと同じBufferに情報を対応付け、既存のBuffer stream APIを保つ。依存の更新時にはpatchを見直し、`test/rtp-private-capture.integration.test.ts` で対応関係を確認する。
 
 保存内容には私的な音声と会話本文が含まれる。参加者全員の同意を得た一回の診断だけで有効にし、通常ログ、Git、Issue、PRへ入れない。保存先は既存の絶対pathかつ権限`0700`でなければ起動を拒否する。repository内ではGit管理外の`.data/stt-eval`配下だけを許可し、生成するdirectoryは`0700`、fileは`0600`とする。Guild ID、User ID、表示名は保存しない。字幕・TTS・遅延記録と同じ発話を照合するため、Discord識別子を含まないランダムな発話trace IDは保存する。
 
