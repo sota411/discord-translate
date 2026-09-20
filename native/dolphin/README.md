@@ -43,7 +43,9 @@ docker run --rm --network none --entrypoint node IMAGE scripts/smoke-runtime.mjs
 ```
 
 Startup checks do not establish recognition quality or the 2.39-second complete
-pipeline deadline. This is a candidate pending independent production comparison.
+pipeline deadline. Independent same-PCM comparisons in both languages, current
+candidate confirmation and the remaining validation limits are recorded in the
+[evaluation report](../../docs/stt-optimization/independent-evaluation-20260920.md).
 
 Sources and licenses:
 
