@@ -17,6 +17,7 @@ const peer = String.raw`
         remaining = count; buffer = buffer.subarray(4); chunks = []; continue;
       }
       assert.ok(count <= remaining && count % 2 === 0);
+      assert.ok(count === 0 || count === Math.min(1920, remaining));
       if (buffer.length < 4 + count) return;
       chunks.push(buffer.subarray(4, 4 + count)); buffer = buffer.subarray(4 + count);
       if (!count) {
@@ -51,8 +52,18 @@ void test("実際の子プロセスへ分割PCMを送り、中止応答の後だ
     job.cancel(); // A completed prefix must not write a stray cancellation header.
     assert.equal(await job.result, "010203040506");
     assert.throws(() => job.push(Buffer.alloc(2)));
+    const pcm = Buffer.from(Array.from({ length: 3846 }, (_, i) => i % 256));
+    assert.equal(await worker.transcribe(pcm), pcm.toString("hex"));
+    const fragmented = worker.begin(pcm.length);
+    const first = Buffer.from(pcm.subarray(0, 2));
+    fragmented.push(first);
+    first.fill(0); // Buffered input must not retain the caller's mutable storage.
+    for (const [start, end] of [[2, 1000], [1000, 3000], [3000, 3846]]) {
+      fragmented.push(pcm.subarray(start, end));
+    }
+    assert.equal(await fragmented.result, pcm.toString("hex"));
     const cancelled = worker.begin(230400);
-    cancelled.push(Buffer.alloc(1920));
+    cancelled.push(Buffer.alloc(1922)); // Cancel with a partial frame buffered.
     cancelled.cancel();
     cancelled.cancel();
     assert.throws(() => worker.begin(2));

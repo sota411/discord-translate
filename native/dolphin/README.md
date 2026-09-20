@@ -14,6 +14,10 @@ C API header and all four model files by SHA-256. Weights are outside Git.
 A request starts with a four-byte little-endian total byte count, limited to
 288,000 bytes (3 seconds). Each chunk has its own four-byte byte count followed
 by 48 kHz mono s16le PCM. Chunk lengths must be even and fit the remaining total.
+The client always sends 1,920-byte (20 ms) chunks, followed by a shorter final
+chunk if needed. Partial chunks stay buffered until they are complete or all
+expected PCM has arrived. This keeps resampler rounding and recognition output
+independent of how callers partition the same audio.
 The worker emits `READY` after model loading, then one UTF-8 line per request.
 It creates a fresh stream and decodes chunks as they arrive. Once the expected
 PCM is complete, it appends 1.28 seconds of synthetic silence to finish decoding.
