@@ -49,18 +49,41 @@ export class DolphinWorker {
   }
 
   public async transcribe(pcm: Buffer): Promise<string> {
+    const job = this.begin(pcm.length);
+    job.push(pcm);
+    return job.result;
+  }
+
+  public begin(bytes: number): { push: (pcm: Buffer) => void; cancel: () => void; result: Promise<string> } {
     if (this.#failure) throw this.#failure;
     if (this.#closed || this.#reply) throw new Error("補助認識を開始できません");
-    if (!pcm.length || pcm.length > 288_000 || pcm.length % 2) throw new TypeError("補助認識のPCMが不正です");
+    if (!Number.isInteger(bytes) || bytes <= 0 || bytes > 288_000 || bytes % 2) {
+      throw new TypeError("補助認識のPCMが不正です");
+    }
     const header = Buffer.alloc(4);
-    header.writeUInt32LE(pcm.length);
+    header.writeUInt32LE(bytes);
+    let remaining = bytes;
     const timer = setTimeout(() => this.#fail(new Error("補助認識がタイムアウトしました")), 8_000);
-    try {
-      return await new Promise<string>((resolve, reject) => {
-        this.#reply = { resolve, reject };
-        this.#child.stdin.write(Buffer.concat([header, pcm]));
-      });
-    } finally { clearTimeout(timer); }
+    const result = new Promise<string>((resolve, reject) => { this.#reply = { resolve, reject }; })
+      .finally(() => { clearTimeout(timer); });
+    this.#child.stdin.write(header);
+    return {
+      result,
+      push: (pcm) => {
+        if (this.#failure) throw this.#failure;
+        if (this.#closed || !remaining) throw new Error("補助認識への送信は終了しています");
+        if (!pcm.length || pcm.length > remaining || pcm.length % 2) throw new TypeError("補助認識のPCMが不正です");
+        const frame = Buffer.alloc(4);
+        frame.writeUInt32LE(pcm.length);
+        remaining -= pcm.length;
+        this.#child.stdin.write(Buffer.concat([frame, pcm]));
+      },
+      cancel: () => {
+        if (!remaining || this.#closed || this.#failure) return;
+        remaining = 0;
+        this.#child.stdin.write(Buffer.alloc(4));
+      },
+    };
   }
 
   public async close(): Promise<void> {

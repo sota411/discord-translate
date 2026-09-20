@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -23,6 +24,19 @@ uint32_t byte_count(const unsigned char *header) {
 float sample(unsigned char lo, unsigned char hi) {
   const int value = int(lo) | (int(hi) << 8);
   return float(value >= 32768 ? value - 65536 : value) / 32768.0f;
+}
+
+std::vector<unsigned char> read_chunk(std::istream &input, uint32_t remaining) {
+  unsigned char header[4];
+  input.read(reinterpret_cast<char *>(header), 4);
+  require(bool(input), "Incomplete chunk header");
+  if (!(header[0] | header[1] | header[2] | header[3])) return {};
+  const auto bytes = byte_count(header);
+  require(bytes <= remaining, "Chunk exceeds remaining PCM");
+  std::vector<unsigned char> pcm(bytes);
+  input.read(reinterpret_cast<char *>(pcm.data()), bytes);
+  require(bool(input), "Incomplete chunk input");
+  return pcm;
 }
 
 std::string reply_text(const char *flat, const char *const *tokens, int count) {
@@ -54,6 +68,16 @@ void contract() {
   }
   require(sample(0, 128) == -1 && sample(255,127) == 32767.0f/32768.0f,
           "PCM conversion contract failed");
+  std::istringstream framed(std::string("\x02\0\0\0ab\0\0\0\0next", 14));
+  require(read_chunk(framed, 4) == std::vector<unsigned char>({'a', 'b'}), "Chunk changed PCM");
+  require(read_chunk(framed, 2).empty() && framed.peek() == 'n', "Cancel consumed next request");
+  for (const std::string &invalid : {std::string("\0\0", 2), std::string("\x01\0\0\0a", 5),
+       std::string("\x06\0\0\0abcdef", 10), std::string("\x04\0\0\0ab", 6)}) {
+    std::istringstream frame(invalid);
+    bool rejected = false;
+    try { read_chunk(frame, 4); } catch (const std::runtime_error &) { rejected = true; }
+    require(rejected, "Invalid chunk accepted");
+  }
   const char *words[] = {"가", " ", "나"};
   require(reply_text("가나", words, 3) == "가 나", "Reply lost word boundaries");
   require(reply_text("", nullptr, 0).empty(), "Empty reply contract failed");
@@ -106,15 +130,26 @@ int main(int argc, char **argv) {
       if (std::cin.eof() && std::cin.gcount() == 0) break;
       require(bool(std::cin), "Incomplete PCM header");
       const uint32_t bytes = byte_count(header);
-      std::vector<unsigned char> pcm(bytes);
-      std::cin.read(reinterpret_cast<char *>(pcm.data()), bytes);
-      require(bool(std::cin), "Incomplete PCM input");
-      std::vector<float> audio(bytes / 2);
-      for (uint32_t i = 0; i < bytes; i += 2) audio[i / 2] = sample(pcm[i], pcm[i + 1]);
       std::unique_ptr<const SherpaOnnxOnlineStream, decltype(&SherpaOnnxDestroyOnlineStream)>
         stream(SherpaOnnxCreateOnlineStream(recognizer.get()), SherpaOnnxDestroyOnlineStream);
       require(bool(stream), "Stream creation failed");
-      SherpaOnnxOnlineStreamAcceptWaveform(stream.get(), 48000, audio.data(), audio.size());
+      uint32_t remaining = bytes;
+      while (remaining) {
+        const auto pcm = read_chunk(std::cin, remaining);
+        if (pcm.empty()) break;
+        remaining -= pcm.size();
+        std::vector<float> audio(pcm.size() / 2);
+        for (uint32_t i = 0; i < pcm.size(); i += 2) audio[i / 2] = sample(pcm[i], pcm[i + 1]);
+        SherpaOnnxOnlineStreamAcceptWaveform(stream.get(), 48000, audio.data(), audio.size());
+        while (SherpaOnnxIsOnlineStreamReady(recognizer.get(), stream.get())) {
+          SherpaOnnxDecodeOnlineStream(recognizer.get(), stream.get());
+        }
+      }
+      if (remaining) {
+        std::cout << '\n' << std::flush;
+        require(bool(std::cout), "Cancel acknowledgement failed");
+        continue;
+      }
       SherpaOnnxOnlineStreamAcceptWaveform(stream.get(), 48000, right.data(), right.size());
       SherpaOnnxOnlineStreamInputFinished(stream.get());
       while (SherpaOnnxIsOnlineStreamReady(recognizer.get(), stream.get())) {

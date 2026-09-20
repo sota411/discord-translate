@@ -54,6 +54,7 @@ export class SpeechRefinement {
     let characters = 0;
     let request: { session: RealtimeSttSession; ref: string } | undefined;
     let local: Promise<void> | undefined;
+    let native: ReturnType<DolphinWorker["begin"]> | undefined;
     let finished = false;
     let ready = false;
     let stopped = false;
@@ -104,6 +105,7 @@ export class SpeechRefinement {
       stopped = true;
       clearTimeout(deadline);
       chunks = [];
+      native?.cancel();
       try { closeRequest(status); }
       catch (error) { disposed = true; input.onError(error); }
       finally {
@@ -137,11 +139,11 @@ export class SpeechRefinement {
     };
     const begin = (): void => {
       if (local || stopped) return;
-      const pcm = Buffer.concat(chunks, bytes).subarray(0, prefixBytes);
       local = (async () => {
         let text: string | undefined;
         if (!priorAudio) {
-          const decoded = await worker.transcribe(pcm);
+          native = worker.begin(prefixBytes);
+          const decoded = await native.result;
           // A prefix can end within a Korean word; exclude its last word from the hint.
           text = decoded.trimEnd().replace(/\s*\S+$/u, "");
           if (isStopped()) return;
@@ -197,17 +199,20 @@ export class SpeechRefinement {
       push: (audio) => {
         if (stopped || finished) return;
         if (audio.length % 2) throw new TypeError("補助認識のPCM長が不正です");
+        if (!audio.length) return;
         bytes += audio.length;
         if (bytes > 768_000) { stop(); return; }
         if (ready && request) { request.session.sendAudio(audio); sentBytes += audio.length; }
         else chunks.push(Buffer.from(audio));
-        if (priorAudio || bytes >= prefixBytes) begin();
+        begin();
+        const prefix = audio.subarray(0, Math.max(0, prefixBytes - (bytes - audio.length)));
+        try { if (prefix.length) native?.push(prefix); } catch (error) { fail(error); }
       },
       finish: (lastAudioAt) => {
         if (stopped || finished) return;
         finished = true;
-        // Short Korean turns have no validated local benefit; free the next speaker's slot.
-        if (!local) { stop(); return; }
+        // Cancel short prefixes without adding fabricated audio; await native acknowledgement.
+        if (!local || (!priorAudio && bytes < prefixBytes)) { stop(); return; }
         const remaining = lastAudioAt + 2_390 - performance.now();
         if (remaining <= 0) { outcome = "deadline"; stop(); return; }
         deadline = setTimeout(() => {

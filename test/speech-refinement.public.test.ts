@@ -39,8 +39,12 @@ function harness() {
   const output: FinalizedUtterance[] = [];
   const outcomes: string[] = [];
   let nativeBytes = 0;
+  let nativeCancelled = false;
   const service = new SpeechRefinement({
-    worker: { transcribe: (audio: Buffer) => { nativeBytes = audio.length; return recognized.promise; } } as never,
+    worker: { begin: () => ({ result: recognized.promise,
+      push: (audio: Buffer) => { nativeBytes += audio.length; },
+      cancel: () => { nativeCancelled = true; },
+    }) } as never,
     factory: new SonioxSttFactory({ realtime: { stt: (request: Record<string, unknown>) => {
       requests.push(request); return provider;
     } } } as never, "stt-rt-v5"),
@@ -55,14 +59,17 @@ function harness() {
   const fence = new RefinementFence(start);
   const deliver = (value: FinalizedUtterance) => output.push(value);
   return { provider, recognized, requests, usage, failures, output, outcomes, start, fence, deliver,
-    nativeBytes: () => nativeBytes };
+    nativeBytes: () => nativeBytes, nativeCancelled: () => nativeCancelled };
 }
 
-void test("2.4秒で補助認識を始め、全PCMを再認識して確定応答の後だけ原文と訳を置き換える", async () => {
+void test("到着したPCMから補助認識を進め、全PCMを再認識して確定応答の後だけ原文と訳を置き換える", async () => {
   const h = harness();
   const first = Buffer.alloc(230400, 1), last = Buffer.alloc(67200, 2);
   try {
-    h.fence.push(first, performance.now());
+    h.fence.push(first.subarray(0, 1920), performance.now());
+    assert.equal(h.nativeBytes(), 1920);
+    assert.equal(h.requests.length, 0);
+    h.fence.push(first.subarray(1920), performance.now());
     assert.equal(h.nativeBytes(), first.length);
     assert.equal(h.start(), undefined);
     h.recognized.resolve("창문을 열");
@@ -86,7 +93,7 @@ void test("2.4秒で補助認識を始め、全PCMを再認識して確定応答
   } finally { h.fence.close(); }
 });
 
-void test("短い韓国語は次の話者を待たせず、一語だけの途中ヒントも通常結果を返す", async () => {
+void test("短い韓国語は中止確認後に次の話者へ進み、一語だけの途中ヒントも通常結果を返す", async () => {
   for (const complete of [true, false]) {
     const h = harness();
     try {
@@ -94,9 +101,18 @@ void test("短い韓国語は次の話者を待たせず、一語だけの途中
       h.fence.finalizeRequested("speaking_end");
       h.fence.boundary(primary, h.deliver);
       h.fence.finalized();
+      if (complete) {
+        assert.equal(h.nativeCancelled(), true);
+        assert.equal(h.start(), undefined);
+      }
       h.recognized.resolve("창문을");
       await turn();
-      if (complete) assert.equal(h.nativeBytes(), 0);
+      if (complete) {
+        assert.equal(h.nativeBytes(), 96000);
+        const next = h.start();
+        assert.ok(next);
+        next.close();
+      }
       assert.equal(h.requests.length, 0);
       assert.deepEqual(h.output, [primary]);
       assert.deepEqual(h.failures, []);
@@ -147,8 +163,9 @@ void test("短い相手の発話後に音声文脈を渡し、確定境界を越
     h.fence.finalizeRequested("speaking_end");
     h.fence.boundary(primary, h.deliver);
     h.fence.finalized();
+    h.recognized.resolve("");
     await turn();
-    assert.equal(h.nativeBytes(), 0);
+    assert.equal(h.nativeBytes(), priorAudio.length);
     assert.deepEqual(h.output, [primary]);
     h.output.length = 0;
     next.push(target, performance.now());

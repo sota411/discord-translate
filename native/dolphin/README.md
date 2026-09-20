@@ -11,10 +11,15 @@ The existing `DolphinWorker` client name, `/opt/dolphin` installation path and
 arguments: encoder, decoder, joiner and tokens. `fetch.py` pins the runtime,
 C API header and all four model files by SHA-256. Weights are outside Git.
 
-A request contains a four-byte little-endian byte count followed by 48 kHz mono
-s16le PCM, limited to 288,000 bytes (3 seconds). The worker emits `READY` after
-model loading, then one UTF-8 line per request. It creates a fresh stream for
-each request and appends 1.28 seconds of synthetic silence to complete decoding.
+A request starts with a four-byte little-endian total byte count, limited to
+288,000 bytes (3 seconds). Each chunk has its own four-byte byte count followed
+by 48 kHz mono s16le PCM. Chunk lengths must be even and fit the remaining total.
+The worker emits `READY` after model loading, then one UTF-8 line per request.
+It creates a fresh stream and decodes chunks as they arrive. Once the expected
+PCM is complete, it appends 1.28 seconds of synthetic silence to finish decoding.
+A zero-length chunk before completion cancels the stream and returns an empty
+line without padding. The client waits for that acknowledgement before reuse.
+The native worker and client must be updated together for this framed protocol.
 Token spacing is preserved; a whitespace-only result becomes an empty reply.
 Malformed lengths, truncated frames and invalid results exit nonzero. There is
 no network listener, credential access or audio recording in the worker.
