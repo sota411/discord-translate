@@ -121,36 +121,50 @@ void test("短い韓国語は中止確認後に次の話者へ進み、一語だ
 });
 
 void test("異なる補助原文の平均・最小確信度が両方低い場合だけ初回の原文と訳を残す", async () => {
-  for (const scenario of ["lower", "equal", "mixed", "missing-primary", "missing-secondary", "same-original"] as const) {
+  for (const scenario of ["lower", "ja-lower", "equal", "mixed", "missing-primary", "missing-secondary", "same-original"] as const) {
     const h = harness();
-    const initial = { ...primary, ...(scenario === "missing-primary" ? {} : {
+    const japanese = scenario === "ja-lower";
+    const keepPrimary = scenario === "lower" || japanese;
+    const first: FinalizedUtterance = japanese
+      ? { ...primary, sourceLanguage: "ja", targetLanguage: "ko", originalText: "保証期限が付く", translatedText: "보증 기한이 있다" }
+      : primary;
+    const fence = japanese ? new RefinementFence(() => h.start({
+      hint: { language: "ja", strict: false }, priorAudio: Buffer.alloc(96000),
+    })) : h.fence;
+    const initial = { ...first, ...(scenario === "missing-primary" ? {} : {
       originalConfidence: { tokenCount: 2, mean: 0.8, min: 0.6 },
     }) };
     const confidence = scenario === "equal" ? [0.6, 1] : scenario === "mixed" ? [0.7, 0.8] : [0.4, 0.6];
-    const original = scenario === "same-original" ? primary.originalText : "창문을 열었어";
+    const original = scenario === "same-original" ? first.originalText : japanese ? "補償期限が付く" : "창문을 열었어";
+    const translation = japanese ? "보상 기한이 있다" : "窓を開けた";
     try {
-      h.fence.push(Buffer.alloc(288000), performance.now());
+      fence.push(Buffer.alloc(288000), performance.now());
       h.recognized.resolve("창문을 열");
       await turn();
-      h.fence.finalizeRequested("speaking_end");
-      h.fence.boundary(initial, h.deliver);
-      h.fence.finalized();
+      if (japanese) {
+        assert.equal(h.nativeBytes(), 0);
+        assert.equal(h.provider.finalizeCalls, 1);
+        h.provider.emit("finalized");
+      }
+      fence.finalizeRequested("speaking_end");
+      fence.boundary(initial, h.deliver);
+      fence.finalized();
       h.provider.emit("result", { tokens: [
-        { text: original.slice(0, 3), is_final: true, language: "ko", translation_status: "original",
+        { text: original.slice(0, 3), is_final: true, language: first.sourceLanguage, translation_status: "original",
           ...(scenario === "missing-secondary" ? {} : { confidence: confidence[0] }) },
-        { text: original.slice(3), is_final: true, language: "ko", translation_status: "original",
+        { text: original.slice(3), is_final: true, language: first.sourceLanguage, translation_status: "original",
           ...(scenario === "missing-secondary" ? {} : { confidence: confidence[1] }) },
-        { text: "窓を開けた", is_final: true, language: "ja", source_language: "ko", translation_status: "translation" },
+        { text: translation, is_final: true, language: first.targetLanguage, source_language: first.sourceLanguage, translation_status: "translation" },
       ] });
       h.provider.emit("endpoint");
       h.provider.finished.resolve(undefined);
       await turn();
       assert.equal(h.output.length, 1, scenario);
-      assert.equal(h.output[0]?.originalText, scenario === "lower" ? primary.originalText : original, scenario);
-      assert.equal(h.output[0].translatedText, scenario === "lower" ? primary.translatedText : "窓を開けた", scenario);
-      assert.deepEqual(h.outcomes, [scenario === "lower" ? "unchanged" : "completed"], scenario);
+      assert.equal(h.output[0]?.originalText, keepPrimary ? first.originalText : original, scenario);
+      assert.equal(h.output[0].translatedText, keepPrimary ? first.translatedText : translation, scenario);
+      assert.deepEqual(h.outcomes, [keepPrimary ? "unchanged" : "completed"], scenario);
       assert.deepEqual(h.failures, [], scenario);
-    } finally { h.fence.close(); }
+    } finally { fence.close(); }
   }
 });
 
