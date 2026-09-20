@@ -89,6 +89,13 @@ export class SpeechRefinement {
       if (!selected || !stopped || disposed) return;
       const current = selected;
       selected = undefined;
+      if (result?.originalConfidence && current.primary.originalConfidence &&
+          result.originalText.trim() !== current.primary.originalText.trim() &&
+          result.originalConfidence.mean < current.primary.originalConfidence.mean &&
+          result.originalConfidence.min < current.primary.originalConfidence.min) {
+        result = undefined;
+        outcome = "unchanged";
+      }
       input.observe(outcome);
       current.deliver(result ?? current.primary);
     };

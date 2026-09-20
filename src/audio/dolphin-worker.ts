@@ -10,7 +10,9 @@ export class DolphinWorker {
   private constructor(child: ChildProcessWithoutNullStreams) { this.#child = child; }
 
   public static async start(command = "/opt/dolphin/worker", args = [
-    "/opt/dolphin/model.int8.onnx", "/opt/dolphin/tokens.txt",
+    "/opt/dolphin/encoder-epoch-99-avg-1-chunk-32-left-128.int8.onnx",
+    "/opt/dolphin/decoder-epoch-99-avg-1-chunk-32-left-128.int8.onnx",
+    "/opt/dolphin/joiner-epoch-99-avg-1-chunk-32-left-128.int8.onnx", "/opt/dolphin/tokens.txt",
   ]): Promise<DolphinWorker> {
     const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"],
       env: { PATH: process.env.PATH, LANG: "C.UTF-8" } });

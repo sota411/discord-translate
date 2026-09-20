@@ -48,18 +48,14 @@ with tempfile.TemporaryDirectory() as temporary:
                 destination.symlink_to(entry.linkname)
             else:
                 raise RuntimeError('Unexpected runtime archive member')
-    archive = Path(temporary) / 'model.tar.bz2'
-    fetch('https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-dolphin-small-ctc-multi-lang-int8-2025-04-02.tar.bz2', archive, '7346b00ffe42396fff5c96d11892f0d4d72ac11418d47c5a8ada2b0f6ac8d27b')
-    expected = {'model.int8.onnx': 'c1afcb9265de0ebd853eb8f570b371f399a6f9b2b9af9a3cb17c2e509171e697',
-                'tokens.txt': 'c3788261a51df1899ea4b210b552cd42139204de72c0ad60f6cebb199078872e'}
-    with tarfile.open(archive) as bundle:
-        for name, digest in expected.items():
-            entry = bundle.getmember('sherpa-onnx-dolphin-small-ctc-multi-lang-int8-2025-04-02/' + name)
-            if not entry.isfile():
-                raise RuntimeError('Unexpected model archive member')
-            with bundle.extractfile(entry) as source, (output / name).open('wb') as target:
-                shutil.copyfileobj(source, target)
-            if hashlib.sha256((output / name).read_bytes()).hexdigest() != digest:
-                raise RuntimeError('Model checksum mismatch')
+    model = 'https://huggingface.co/kangkyu/icefall-asr-ko-streaming-zipformer-174m/resolve/f0e73b1653c3ea75898c6d949dd71c690c9121da'
+    expected = {
+        'encoder-epoch-99-avg-1-chunk-32-left-128.int8.onnx': 'd07cbf5198c8c6d41108cc9c9e057b0a3591846867b6a4d2e283add3bbb84413',
+        'decoder-epoch-99-avg-1-chunk-32-left-128.int8.onnx': 'f5dfa6c8609b29da86c739d4904889475c33b62e28e70c619952a0ee6c31416f',
+        'joiner-epoch-99-avg-1-chunk-32-left-128.int8.onnx': '64efd9aeb71fb2278c713b3d5eb5ec45edf6b2ccd8716d3709044f17723c13fd',
+        'tokens.txt': '435dfb9e0a2b6a79124f1a4d8f0f33a951b25384726e2e0d854f081533e6ec9d',
+    }
+    for name, digest in expected.items():
+        fetch(f'{model}/{name}', output / name, digest)
 fetch(f'https://raw.githubusercontent.com/k2-fsa/sherpa-onnx/v{version}/sherpa-onnx/c-api/c-api.h', output / 'c-api.h',
       '2a1b95084be8fd1deb3228fcad2fd3f7f0258b64582f7402281ec174c7b7f4ce')

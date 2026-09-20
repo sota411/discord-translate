@@ -104,6 +104,40 @@ void test("短い韓国語は次の話者を待たせず、一語だけの途中
   }
 });
 
+void test("異なる補助原文の平均・最小確信度が両方低い場合だけ初回の原文と訳を残す", async () => {
+  for (const scenario of ["lower", "equal", "mixed", "missing-primary", "missing-secondary", "same-original"] as const) {
+    const h = harness();
+    const initial = { ...primary, ...(scenario === "missing-primary" ? {} : {
+      originalConfidence: { tokenCount: 2, mean: 0.8, min: 0.6 },
+    }) };
+    const confidence = scenario === "equal" ? [0.6, 1] : scenario === "mixed" ? [0.7, 0.8] : [0.4, 0.6];
+    const original = scenario === "same-original" ? primary.originalText : "창문을 열었어";
+    try {
+      h.fence.push(Buffer.alloc(288000), performance.now());
+      h.recognized.resolve("창문을 열");
+      await turn();
+      h.fence.finalizeRequested("speaking_end");
+      h.fence.boundary(initial, h.deliver);
+      h.fence.finalized();
+      h.provider.emit("result", { tokens: [
+        { text: original.slice(0, 3), is_final: true, language: "ko", translation_status: "original",
+          ...(scenario === "missing-secondary" ? {} : { confidence: confidence[0] }) },
+        { text: original.slice(3), is_final: true, language: "ko", translation_status: "original",
+          ...(scenario === "missing-secondary" ? {} : { confidence: confidence[1] }) },
+        { text: "窓を開けた", is_final: true, language: "ja", source_language: "ko", translation_status: "translation" },
+      ] });
+      h.provider.emit("endpoint");
+      h.provider.finished.resolve(undefined);
+      await turn();
+      assert.equal(h.output.length, 1, scenario);
+      assert.equal(h.output[0]?.originalText, scenario === "lower" ? primary.originalText : original, scenario);
+      assert.equal(h.output[0].translatedText, scenario === "lower" ? primary.translatedText : "窓を開けた", scenario);
+      assert.deepEqual(h.outcomes, [scenario === "lower" ? "unchanged" : "completed"], scenario);
+      assert.deepEqual(h.failures, [], scenario);
+    } finally { h.fence.close(); }
+  }
+});
+
 void test("短い相手の発話後に音声文脈を渡し、確定境界を越えた本人の原文と訳だけを返す", async () => {
   const h = harness();
   const priorAudio = Buffer.alloc(96000, 1), target = Buffer.alloc(144000, 2);
