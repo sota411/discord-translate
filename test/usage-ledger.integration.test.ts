@@ -479,6 +479,32 @@ void test("照合が古い場合と月額上限到達時は新規開始をFail C
       (error: unknown) =>
         error instanceof ApplicationError && error.code === "USAGE_LIMIT_REACHED",
     );
+    const monthEnd = new Date("2026-08-31T14:59:59.999Z");
+    const nextMonth = new Date("2026-08-31T15:00:00.000Z");
+    ledger.markReconciled(monthEnd);
+    await assert.rejects(
+      ledger.assertCanStart({
+        guildId: "223456789012345678",
+        userIds: ["323456789012345678"],
+        at: monthEnd,
+      }),
+      (error: unknown) =>
+        error instanceof ApplicationError && error.code === "USAGE_LIMIT_REACHED",
+    );
+    ledger.markReconciled(nextMonth);
+    await ledger.assertCanStart({
+      guildId: "223456789012345678",
+      userIds: ["323456789012345678"],
+      at: nextMonth,
+    });
+    assert.equal(
+      ledger.getMonthlyUsage("user", "323456789012345678", monthEnd).estimatedCostMicrousd,
+      1_000_000,
+    );
+    assert.equal(
+      ledger.getMonthlyUsage("user", "323456789012345678", nextMonth).estimatedCostMicrousd,
+      0,
+    );
   });
 });
 

@@ -175,12 +175,14 @@ export function usdDecimalToMicrousd(value: string): number {
   );
 }
 
+const tokyoMonthFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Tokyo",
+  year: "numeric",
+  month: "2-digit",
+});
+
 function periodInTokyo(at: Date): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "2-digit",
-  }).formatToParts(at);
+  const parts = tokyoMonthFormatter.formatToParts(at);
   const year = parts.find((part) => part.type === "year")?.value;
   const month = parts.find((part) => part.type === "month")?.value;
   if (!year || !month) {
