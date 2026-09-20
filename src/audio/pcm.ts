@@ -58,10 +58,12 @@ export function downmixStereoS16leToMono(stereo: Buffer): Buffer {
     throw new Error("stereo PCM s16leの長さが4バイト境界ではありません");
   }
   const mono = Buffer.allocUnsafe(stereo.length / 2);
+  const input = new DataView(stereo.buffer, stereo.byteOffset, stereo.byteLength);
+  const output = new DataView(mono.buffer, mono.byteOffset, mono.byteLength);
   for (let sourceOffset = 0, targetOffset = 0; sourceOffset < stereo.length; sourceOffset += 4, targetOffset += 2) {
-    const left = stereo.readInt16LE(sourceOffset);
-    const right = stereo.readInt16LE(sourceOffset + 2);
-    mono.writeInt16LE(Math.trunc((left + right) / 2), targetOffset);
+    const left = input.getInt16(sourceOffset, true);
+    const right = input.getInt16(sourceOffset + 2, true);
+    output.setInt16(targetOffset, Math.trunc((left + right) / 2), true);
   }
   return mono;
 }
