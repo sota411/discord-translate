@@ -1221,5 +1221,128 @@
         ]
       }
     ]
+  },
+  "followup_20260921": {
+    "goal_completed": false,
+    "application_commit_unchanged": "2bc275a7f4e58b8a0f7274dba07a34782ba04b5e",
+    "production_changed": false,
+    "japanese": {
+      "dataset": "IngCrowd/japanese-themed-dialogue",
+      "revision": "e2eed8769400269f20821deb0e47e68b40012e8b",
+      "recording": "japanese-themed-dialogue01",
+      "window_ms": 60000,
+      "sources": 28,
+      "selection": "First minute, chosen before reading recognition outputs or references; all annotated intervals retained, including 8.75-second source. Participant overlap with other corpora unknown.",
+      "totals": {
+        "streams": 2,
+        "reference_characters": 395,
+        "A_edits": 44,
+        "B_edits": 44,
+        "A_primary_edits": 44,
+        "B_primary_edits": 44,
+        "B_unguarded_counterfactual_edits": 44,
+        "vetoes": 0
+      },
+      "originals_byte_identical": true,
+      "semantic_gain_observed": false,
+      "scheduled_caption_latency": [
+        {
+          "variant": "A",
+          "runtime_sha256": "be55f3c75d0484eeb78ff9b4af496507846410e4b8eb2b3677b0cd405e36ad12",
+          "count": 30,
+          "within_2390": 30,
+          "maximum_ms": 626.5824980000034
+        },
+        {
+          "variant": "B",
+          "runtime_sha256": "82730ea0b4fe004671525797f89b37f871c3031f3e780cf136a97c7dd6120d73",
+          "count": 30,
+          "within_2390": 30,
+          "maximum_ms": 646.0385510000051
+        }
+      ],
+      "maximum_input_lateness_ms": {
+        "A": 65.01400600000488,
+        "B": 75.74112600000808
+      },
+      "passes_40ms_input_diagnostic": false,
+      "ignore_empty_endpoint_counterfactual": {
+        "newly_eligible": 5,
+        "confidence_vetoes": 4,
+        "selected_original_identical": 1,
+        "character_edits": 44
+      }
+    },
+    "korean_full_hint": {
+      "scope": "All 60 previously used development segments. Fresh unhinted and hinted sessions; saved-output guard counterfactual; not integrated end-to-end.",
+      "totals": {
+        "cases": 60,
+        "reference_characters": 1239,
+        "historical_primary": 101,
+        "native": 87,
+        "unhinted": 106,
+        "full_native_hint": 84,
+        "existing_guard": 92
+      },
+      "new_lexical_errors_passing_guard": 2,
+      "native_speaker_listening_review": false,
+      "decision": {
+        "adopt": false,
+        "reason": "Full-text hints repair one lexical error, one verb-form error and part of one referent, but introduce two lexical errors that survive the existing confidence guard; a homophone spelling also regresses. The latency feasibility sum exceeds 2390ms for 49/60 cases. Do not implement or deploy this variant.",
+        "scores_sha256": "16c42b604ff2f6db74ced4740e50efaf4d53347289aae9f4d54829791e4449e6",
+        "semantic_sha256": "62c9224e0eb40c7c4eb51f9781d1887b300e29f600def272ed3e89d209dc49e3",
+        "timing": {
+          "scope": "300ms receiver/manual delay + measured Pi native completion tail + separately measured buffered cloud completion; not actual end-to-end latency",
+          "over_2390ms": 49,
+          "cases": 60,
+          "median_ms": 2705.8635004999896,
+          "maximum_ms": 6664.73536299999
+        },
+        "new_paid_runs_for_this_variant_planned": 0
+      }
+    },
+    "cost": {
+      "authorized_total_usd": "2.5000000000",
+      "korean_full_hint_usd": "0.1953840000",
+      "japanese_new_dialogue_usd": "0.0340200000",
+      "followup_total_usd": "0.2294040000",
+      "cumulative_extra_cost_usd": "2.3533660000",
+      "remaining_authorized_usd": "0.1466340000",
+      "billed_requests": 136,
+      "pending_requests": 0
+    },
+    "evidence_sha256": {
+      "full-hint-cloud/seal.json": "ce3ad9248554a1ef100597617fca18c2a6b919580c1e24880a9192eccb707445",
+      "full-hint-cloud/scores.json": "16c42b604ff2f6db74ced4740e50efaf4d53347289aae9f4d54829791e4449e6",
+      "full-hint-cloud/semantic-adjudication.json": "62c9224e0eb40c7c4eb51f9781d1887b300e29f600def272ed3e89d209dc49e3",
+      "full-hint-cloud/decision.json": "4245891ae419ca5999054dfac65bb47a7babc0ee38a56bbfd3b4ef76713fdaa9",
+      "full-hint-cloud/cost-reconciliation.json": "7b062a4ab2fac474deca3beb8ae37672bf41f7aae98d8ad94bef702c584e8536",
+      "japanese-new-dialogue/seal.json": "9e9080e92fb4c14a2a9df7c2f4ee40f644df7922a7ebfbd60f9bd0e668742714",
+      "japanese-new-dialogue/scoring-before-inference.json": "d39d6e3627c7cf38006951d1d3b25d1bd3a2e66dd873611f325610ce05e1c514",
+      "japanese-new-dialogue/scores.json": "4c5a84a464d5d86c1ba1138d40caec026ebe401061ea47a7496f6e612f32d1a9",
+      "japanese-new-dialogue/timing-audit.json": "15cfcee9b76ae9b673a0887f6b80f229905160516b2998b491b4eaa03092c436",
+      "japanese-new-dialogue/scheduled-latency.json": "cafa983f9520ddbad3b8419c7d7cf18fbcb51c4ec1646be0d3cffa569f6a8713",
+      "japanese-new-dialogue/empty-endpoint-audit.json": "79b9374af29ce5271bbcbf3b1ef45058b9c03f144679c8a6a611020acdb9ba65",
+      "japanese-new-dialogue/cost-reconciliation.json": "ce74ad2d5fa27474414b23402361d23ec6d309c440551dacc46690a07e890b74"
+    },
+    "audio_inputs": [
+      {
+        "file": "japanese-themed-dialogue01_individual_audio1.wav",
+        "sha256": "9ab7c49391960428920b89b4206da6e9281092651d039d2e1ffbbae001448b54",
+        "bytes": 21624910,
+        "url": "https://huggingface.co/datasets/IngCrowd/japanese-themed-dialogue/resolve/e2eed8769400269f20821deb0e47e68b40012e8b/japanese-themed-dialogue01/japanese-themed-dialogue01_individual_audio1.wav"
+      },
+      {
+        "file": "japanese-themed-dialogue01_individual_audio2.wav",
+        "sha256": "686a626dae1572cb32e977a9e60300e9acafacd11a9dfbfaaa373ca21ac80566",
+        "bytes": 21624910,
+        "url": "https://huggingface.co/datasets/IngCrowd/japanese-themed-dialogue/resolve/e2eed8769400269f20821deb0e47e68b40012e8b/japanese-themed-dialogue01/japanese-themed-dialogue01_individual_audio2.wav"
+      }
+    ],
+    "remaining": [
+      "Reproducible content improvement across additional natural conversations and speakers",
+      "Actual Discord microphone/Opus/network/display and translation quality",
+      "40ms input producer diagnostic"
+    ]
   }
 }
