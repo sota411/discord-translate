@@ -1,6 +1,6 @@
 # Raspberry Piでの補助音声認識の高速化
 
-最新の候補と日韓の独立音声での比較は、[独立評価の記録](independent-evaluation-20260920.md)を参照してください。以前のDolphinの方式は[補助音声認識の記録](bilingual-refinement.md)に残しています。以下はMoonshineの実験記録です。
+調査は採用判断が未完了のまま停止しています。次の担当者は[9月21日の引き継ぎ](handoff-20260921.md)から読んでください。候補と日韓の比較は[独立評価の記録](independent-evaluation-20260920.md)、以前のDolphinの方式は[補助音声認識の記録](bilingual-refinement.md)に残しています。以下はMoonshineの実験記録です。
 
 2026年9月15〜16日の検証記録です。**実験用のMoonshineを高速化できましたが、本番のBotには未導入です。** このPRをマージしても、通話中の認識経路は変わりません。
 
