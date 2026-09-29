@@ -10,6 +10,7 @@ import { StreamingUtterance } from "../translation/streaming-utterance.js";
 import type { FinalizedUtterance } from "../translation/token-assembler.js";
 import type { UsageLedger } from "../usage/usage-ledger.js";
 import type { SonioxSttFactory } from "./control.js";
+import { SonioxContextLimitError } from "./transcription-context.js";
 
 export type RefinementOutcome = "completed" | "unchanged" | "busy" | "deadline" | "ineligible";
 type Options = {
@@ -23,6 +24,7 @@ type Start = {
   userId: string;
   hint: { language: Language; strict: boolean } | undefined;
   priorAudio?: Buffer;
+  priorText?: string;
   terms: readonly TranslationTerm[];
   observe: (outcome: RefinementOutcome) => void;
   onError: (error: unknown) => void;
@@ -40,7 +42,13 @@ export class SpeechRefinement {
     if (input.session.pair !== "ja-ko") return undefined;
     const priorAudio = input.hint?.language === "ja" || input.hint?.language === "ko"
       ? input.priorAudio : undefined;
-    if (!priorAudio && input.hint?.language !== "ko") return undefined;
+    const priorText = input.hint?.language === "ja" || input.hint?.language === "ko"
+      ? input.priorText : undefined;
+    if (!priorAudio && priorText === undefined && input.hint?.language !== "ko") return undefined;
+    if (priorText !== undefined && (priorAudio || !priorText.trim() ||
+        Array.from(priorText).length > this.#options.maxInputCharacters)) {
+      throw new TypeError("相手原文の文脈が不正です");
+    }
     if (priorAudio && (!priorAudio.length || priorAudio.length % 2 || priorAudio.length > 230_400)) {
       throw new TypeError("音声文脈のPCM長が不正です");
     }
@@ -92,7 +100,7 @@ export class SpeechRefinement {
       const current = selected;
       selected = undefined;
       // 原文を訂正できていない途中ヒントでは、既存の訳を差し替えない。
-      if (!priorAudio && result && current.primary.translatedText.trim() &&
+      if (!priorAudio && !priorText && result && current.primary.translatedText.trim() &&
           result.sourceLanguage === current.primary.sourceLanguage &&
           result.targetLanguage === current.primary.targetLanguage &&
           result.originalText.trim() === current.primary.originalText.trim()) {
@@ -157,8 +165,8 @@ export class SpeechRefinement {
     const begin = (): void => {
       if (local || stopped) return;
       local = (async () => {
-        let text: string | undefined;
-        if (!priorAudio) {
+        let text = priorText;
+        if (!priorAudio && !priorText) {
           native = worker.begin(prefixBytes);
           const decoded = await native.result;
           // A prefix can end within a Korean word; exclude its last word from the hint.
@@ -169,7 +177,14 @@ export class SpeechRefinement {
         await ledger.assertCanStart({ guildId: input.session.guildId, userIds: [input.userId], at: new Date() });
         if (isStopped()) return;
         const ref = randomUUID();
-        const created = factory.create(input.session.pair, ref, input.terms, priorAudio ? undefined : input.hint, text);
+        let created: ReturnType<SonioxSttFactory["create"]>;
+        try {
+          created = factory.create(input.session.pair, ref, input.terms, priorAudio ? undefined : input.hint, text);
+        } catch (error) {
+          if (!text || !(error instanceof SonioxContextLimitError)) throw error;
+          stop();
+          return;
+        }
         characters = created.initialTextCharacterCount;
         ledger.openProviderRequest({ requestRef: ref, sessionId: input.session.sessionId,
           userId: input.userId, kind: "stt", startedAt: new Date() });
@@ -230,7 +245,7 @@ export class SpeechRefinement {
         if (stopped || finished) return;
         finished = true;
         // Cancel short prefixes without adding fabricated audio; await native acknowledgement.
-        if (!local || (!priorAudio && bytes < prefixBytes)) { stop(); return; }
+        if (!local || (!priorAudio && !priorText && bytes < prefixBytes)) { stop(); return; }
         const remaining = lastAudioAt + 2_390 - performance.now();
         if (remaining <= 0) { outcome = "deadline"; stop(); return; }
         deadline = setTimeout(() => {

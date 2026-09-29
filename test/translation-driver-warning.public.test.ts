@@ -612,7 +612,7 @@ void test("Runtimeは途中参加者の原文を分け、過去の音声文脈�
   const members = new Map([[ja, { user: { bot: false } }]]);
   const providers: FakeSttSession[] = [];
   const sent: CaptionMessagePayload[] = [];
-  const starts: { userId: string; hint: { language: string }; priorAudio?: Buffer }[] = [];
+  const starts: { userId: string; hint: { language: string }; priorAudio?: Buffer; priorText?: string }[] = [];
   const failures: string[] = [];
   let closed = 0;
   const runtime = new DiscordTranslationRuntime({
@@ -636,7 +636,7 @@ void test("Runtimeは途中参加者の原文を分け、過去の音声文脈�
       finishProviderRequest: () => undefined, finishSession: () => undefined },
     sttFactory: { create: () => { const provider = new FakeSttSession(); providers.push(provider);
       return { session: provider, initialTextCharacterCount: 0 }; } },
-    refinement: { start: (input: { userId: string; hint: { language: string }; priorAudio?: Buffer }) => {
+    refinement: { start: (input: { userId: string; hint: { language: string }; priorAudio?: Buffer; priorText?: string }) => {
       starts.push(input);
       return { push: () => undefined, finish: () => undefined, cancel: () => undefined,
         close: () => { closed += 1; },
@@ -655,10 +655,10 @@ void test("Runtimeは途中参加者の原文を分け、過去の音声文脈�
     { text: "通常の原文", confidence: 0.5, is_final: true, language: "ko", translation_status: "original" },
     { text: "通常の訳文", confidence: 0.5, is_final: true, language: "ja", source_language: "ko", translation_status: "translation" },
   ], final_audio_proc_ms: 10, total_audio_proc_ms: 10 };
-  const startTurn = async (id: string): Promise<void> => {
+  const startTurn = async (id: string, packets = 1): Promise<void> => {
     speaking.emit("start", id);
     await new Promise<void>((resolve) => setImmediate(resolve));
-    streams.get(id)?.write(Buffer.from([0x00]));
+    for (let index = 0; index < packets; index += 1) streams.get(id)?.write(Buffer.from([0x00]));
     speaking.emit("end", id);
     await new Promise<void>((resolve) => setTimeout(resolve, 220));
   };
@@ -718,20 +718,38 @@ void test("Runtimeは途中参加者の原文を分け、過去の音声文脈�
     primary.emit("finalized");
     await new Promise<void>((resolve) => setImmediate(resolve));
     assert.equal(sent.length, 4);
+    await startTurn(ko, 300);
+    providers[1]?.emit("result", result);
+    providers[1]?.emit("endpoint");
+    providers[1]?.emit("finalized");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await startTurn(ja);
+    assert.equal(starts.at(-1)?.priorAudio, undefined, "long audio is not retained");
+    assert.equal(starts.at(-1)?.priorText, "通常の原文", "use the completed primary original, not its refinement");
+    primary.emit("result", result);
+    primary.emit("endpoint");
+    primary.emit("finalized");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await startTurn(ko);
+    providers[1]?.emit("result", result);
+    providers[1]?.emit("endpoint");
+    providers[1]?.emit("finalized");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(sent.length, 7);
     elapsed += 20_000;
     await startTurn(ja);
     assert.equal(starts.at(-1)?.priorAudio?.length, 960);
     primary.emit("result", result);
     primary.emit("endpoint");
-    assert.equal(sent.length, 4);
+    assert.equal(sent.length, 7);
     members.delete(ko);
     await runtime.updateParticipants([ja]);
     primary.emit("finalized");
     providers[1]?.emit("finalized");
     await new Promise<void>((resolve) => setImmediate(resolve));
-    assert.equal(sent.length, 5);
-    assert.match(JSON.stringify(sent[4]), /通常の原文/u);
-    assert.doesNotMatch(JSON.stringify(sent[4]), /補助認識済み/u);
+    assert.equal(sent.length, 8);
+    assert.match(JSON.stringify(sent[7]), /通常の原文/u);
+    assert.doesNotMatch(JSON.stringify(sent[7]), /補助認識済み/u);
     assert.ok(closed > 0);
     speaking.emit("start", "523456789012345678");
     assert.equal(providers.length, 2);

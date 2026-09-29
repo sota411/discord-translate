@@ -9,6 +9,10 @@ import {
 
 export const sonioxContextCharacterLimit = 10_000;
 
+export class SonioxContextLimitError extends Error {
+  public override readonly name = "SonioxContextLimitError";
+}
+
 export type RecognitionTerms = Readonly<Partial<Record<LanguagePair, readonly string[]>>>;
 
 const languageNames: Readonly<Record<Language, string>> = {
@@ -67,7 +71,7 @@ export function buildSonioxTranscriptionContext(
   if (Object.keys(context).length === 0) return { characterCount: 0 };
   const characterCount = Array.from(JSON.stringify(context)).length;
   if (characterCount > sonioxContextCharacterLimit) {
-    throw new Error(
+    throw new SonioxContextLimitError(
       `${pair}: Soniox contextの${sonioxContextCharacterLimit.toLocaleString("en-US")}文字上限を超えています`,
     );
   }

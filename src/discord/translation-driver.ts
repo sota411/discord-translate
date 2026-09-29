@@ -122,9 +122,9 @@ type SpeakerStream = {
   stt: RealtimeSttSession;
   turnFinalizer: SttTurnFinalizer;
   refinement?: RefinementFence;
-  contextAudio?: { chunks: Buffer[]; bytes: number; eligible: boolean };
-  completedAudio?: { pcm: Buffer; endedAt: number };
-  priorAudio?: { userId: string; pcm: Buffer };
+  contextAudio?: { chunks: Buffer[]; bytes: number; eligible: boolean; text?: string };
+  completedContext?: { pcm?: Buffer; text?: string; endedAt: number };
+  priorContext?: { userId: string; pcm?: Buffer; text?: string };
   utterance: StreamingUtterance;
   turnId: string;
   pendingPreview?: InterimUtterance;
@@ -600,8 +600,8 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     for (const speaker of this.#speakers.values()) {
       speaker.refinement?.close();
       delete speaker.contextAudio;
-      delete speaker.completedAudio;
-      delete speaker.priorAudio;
+      delete speaker.completedContext;
+      delete speaker.priorContext;
     }
     const cleanupErrors: unknown[] = [];
     clearTimeout(this.#maxSessionTimer);
@@ -713,9 +713,13 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       onFinalize: (reason) => {
         const context = speaker.contextAudio;
         delete speaker.contextAudio;
-        delete speaker.completedAudio;
+        delete speaker.completedContext;
         if (reason === "speaking_end" && context?.eligible && context.bytes && speaker.lastAudioAtMonotonic !== undefined) {
-          speaker.completedAudio = { pcm: Buffer.concat(context.chunks, context.bytes), endedAt: speaker.lastAudioAtMonotonic };
+          speaker.completedContext = {
+            ...(context.bytes < 230_400 ? { pcm: Buffer.concat(context.chunks, context.bytes) } : {}),
+            ...(context.text ? { text: context.text } : {}),
+            endedAt: speaker.lastAudioAtMonotonic,
+          };
         }
         speaker.refinement?.finalizeRequested(reason);
         this.#observeFlow(sttFinalizeFlowStage(reason));
@@ -762,7 +766,8 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     if (this.#refinement) {
       speaker.refinement = new RefinementFence(() => this.#refinement?.start({
         session: this.#session, userId, hint: languageHint, terms: this.#translationTerms,
-        ...(speaker.priorAudio ? { priorAudio: speaker.priorAudio.pcm } : {}),
+        ...(speaker.priorContext?.pcm ? { priorAudio: speaker.priorContext.pcm } : {}),
+        ...(speaker.priorContext?.text ? { priorText: speaker.priorContext.text } : {}),
         observe: (outcome) => this.#observeFlow(`stt_refinement_${outcome}`),
         onError: (error) => {
           const mapped = mapSttError(error);
@@ -974,9 +979,10 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       const context = speaker.contextAudio;
       if (context?.eligible) {
         context.bytes += monoPcm.length;
-        // Only short turns that did not start native refinement can prime the next speaker.
+        // Keep short audio; longer turns can contribute their finalized original text.
         if (context.bytes < 230_400) context.chunks.push(Buffer.from(monoPcm));
-        else { context.eligible = false; context.chunks = []; }
+        else context.chunks = [];
+        delete context.text;
       }
       speaker.refinement?.push(monoPcm, performance.now());
       if (captureSequence !== undefined) {
@@ -1014,32 +1020,34 @@ export class DiscordTranslationRuntime implements SessionRuntime {
 
   #beginAudioContext(speaker: SpeakerStream): void {
     if (!this.#refinement || this.#session.pair !== "ja-ko") return;
-    delete speaker.completedAudio;
+    delete speaker.completedContext;
     if (speaker.contextAudio) return; // A brief pause is still the same turn.
     // Startup packets lack a speaking-generation marker; do not cache that turn.
     speaker.contextAudio = { chunks: [], bytes: 0, eligible: speaker.sttConnected };
-    delete speaker.priorAudio;
+    delete speaker.priorContext;
     if (!speakerLanguageHint(this.#speakerLanguageHints.get(speaker.userId), this.#session.pair)) return;
     const now = performance.now();
     let latest = Number.NEGATIVE_INFINITY;
     for (const other of this.#speakers.values()) {
-      const prior = other.completedAudio;
-      if (other.userId === speaker.userId || !prior || other.closed ||
+      const prior = other.completedContext;
+      if (other.userId === speaker.userId || !prior || (!prior.pcm && !prior.text) || other.closed ||
           !this.#participants.has(other.userId) || !this.#config.discord.allowedUserIds.has(other.userId) ||
           prior.endedAt > now || now - prior.endedAt > 30_000 || prior.endedAt <= latest) continue;
       latest = prior.endedAt;
       // Snapshot at speaking_start: later-finished audio must never enter this turn.
-      speaker.priorAudio = { userId: other.userId, pcm: prior.pcm };
+      speaker.priorContext = { userId: other.userId };
+      if (prior.pcm) speaker.priorContext.pcm = prior.pcm;
+      else if (prior.text) speaker.priorContext.text = prior.text;
     }
   }
 
   #forgetAudioContext(speaker: SpeakerStream): void {
     if (speaker.contextAudio) { speaker.contextAudio.eligible = false; speaker.contextAudio.chunks = []; }
-    delete speaker.completedAudio;
-    delete speaker.priorAudio;
+    delete speaker.completedContext;
+    delete speaker.priorContext;
     for (const other of this.#speakers.values()) {
-      if (other.priorAudio?.userId !== speaker.userId) continue;
-      delete other.priorAudio;
+      if (other.priorContext?.userId !== speaker.userId) continue;
+      delete other.priorContext;
       other.refinement?.cancel();
     }
   }
@@ -1123,6 +1131,18 @@ export class DiscordTranslationRuntime implements SessionRuntime {
       delete speaker.pendingPreview;
       this.#flushSpeakerUsage(speaker);
       const finalized = speaker.utterance.takeAtEndpoint();
+      if (finalized) {
+        const text = finalized.originalText.trim();
+        const eligible = Array.from(text).length <= this.#config.limits.ttsMaxInputCharacters;
+        if (speaker.contextAudio?.eligible) {
+          delete speaker.contextAudio.text;
+          if (eligible) speaker.contextAudio.text = text;
+        }
+        if (speaker.completedContext && speaker.completedContext.endedAt === speaker.lastAudioAtMonotonic) {
+          delete speaker.completedContext.text;
+          if (eligible) speaker.completedContext.text = text;
+        }
+      }
       const utteranceId = speaker.turnId;
       const lastAudioAt = speaker.lastAudioAtMonotonic ?? performance.now();
       speaker.turnId = randomUUID();

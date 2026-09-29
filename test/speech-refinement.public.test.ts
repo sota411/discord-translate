@@ -64,7 +64,7 @@ function harness() {
       finishProviderRequest: () => undefined } as never,
     maxInputCharacters: 1000,
   });
-  const start = (options: Partial<Pick<Parameters<SpeechRefinement["start"]>[0], "hint" | "priorAudio">> = {}) => service.start({ session: { sessionId: "session", guildId: "guild", pair: "ja-ko" },
+  const start = (options: Partial<Pick<Parameters<SpeechRefinement["start"]>[0], "hint" | "priorAudio" | "priorText" | "terms">> = {}) => service.start({ session: { sessionId: "session", guildId: "guild", pair: "ja-ko" },
     userId: "speaker", hint: { language: "ko", strict: false }, terms: [],
     observe: (outcome) => outcomes.push(outcome), onError: (error) => failures.push(error), ...options });
   const fence = new RefinementFence(start);
@@ -102,6 +102,69 @@ void test("到着したPCMから補助認識を進め、全PCMを再認識して
     assert.ok((h.usage[0]?.textCharacterCount ?? 0) > 0);
     assert.deepEqual(h.failures, []);
   } finally { h.fence.close(); }
+});
+
+void test("確定した相手原文を文脈に使い、短い対象音声もnativeを待たず手動確定する", async () => {
+  const invalid = harness();
+  for (const priorText of ["", "長".repeat(1001)]) {
+    assert.throws(() => invalid.start({ priorText }), TypeError);
+  }
+  assert.throws(() => invalid.start({ priorText: "文脈", priorAudio: Buffer.alloc(96000) }), TypeError);
+  assert.equal(invalid.requests.length, 0);
+  for (const language of ["ja", "ko"] as const) {
+    const h = harness();
+    const priorText = "最近はずっと同じ店に行っている";
+    const fence = new RefinementFence(() => h.start({ hint: { language, strict: false }, priorText }));
+    try {
+      fence.push(Buffer.alloc(96000), performance.now());
+      await turn();
+      assert.equal(h.requests.length, 1);
+      assert.equal(h.nativeBytes(), 0);
+      assert.deepEqual(h.requests[0]?.context, { text: priorText });
+      assert.deepEqual(h.requests[0].language_hints, [language]);
+      fence.finalizeRequested("speaking_end");
+      fence.boundary(primary, h.deliver);
+      fence.finalized();
+      h.provider.emit("result", { tokens: [
+        { text: primary.originalText, is_final: true, language: "ko", translation_status: "original" },
+        { text: "入り口のドアを開けた", is_final: true, language: "ja", source_language: "ko", translation_status: "translation" },
+      ] });
+      h.provider.acknowledge();
+      await turn();
+      assert.equal(h.provider.finishCalls, 0);
+      assert.equal(h.provider.finalizeCalls, 1);
+      assert.equal(h.output[0]?.originalText, primary.originalText);
+      assert.equal(h.output[0].translatedText, "入り口のドアを開けた");
+      assert.deepEqual(h.failures, []);
+    } finally { fence.close(); }
+  }
+});
+
+void test("文脈全体の上限を超える動的ヒントは補助要求を送らず主認識を維持する", async () => {
+  for (const route of ["ja", "ko", "native"] as const) {
+    const h = harness();
+    const terms = [{ source: "a", target: "x".repeat(9940) }];
+    const fence = new RefinementFence(() => h.start({ terms,
+      hint: { language: route === "native" ? "ko" : route, strict: false },
+      ...(route === "native" ? {} : { priorText: "最近" }),
+    }));
+    try {
+      fence.push(Buffer.alloc(144000), performance.now());
+      if (route === "native") h.recognized.resolve("최근 이야기");
+      await turn();
+      assert.deepEqual(h.failures, [], "optional context capacity must not stop the conversation");
+      fence.finalizeRequested("speaking_end");
+      fence.boundary(primary, h.deliver);
+      fence.finalized();
+      assert.equal(h.requests.length, 0);
+      assert.deepEqual(h.output, [primary]);
+      assert.deepEqual(h.outcomes, ["ineligible"]);
+      assert.equal(h.usage.length, 0);
+      const next = h.start();
+      assert.ok(next, "context rejection must release the shared refinement slot");
+      next.close();
+    } finally { fence.close(); }
+  }
 });
 
 void test("途中ヒントの補助認識は手動確定で配信し、複数の発話境界をまとめない", async () => {
