@@ -14,7 +14,8 @@ type Fence = { bytes: number; turn: Turn | undefined; held?: {
 } };
 
 // A replacement is allowed only after one complete source turn and its manual
-// finalize acknowledgment. Later PCM or an earlier natural endpoint invalidates it.
+// finalize acknowledgment. A primary held before later PCM still belongs to the
+// requested audio; an earlier or additional natural endpoint invalidates it.
 export class RefinementFence {
   readonly #start: () => RefinementWork | undefined;
   readonly #fences: Fence[] = [];
@@ -39,7 +40,7 @@ export class RefinementFence {
     if (audio.length % 2 || !Number.isFinite(at)) throw new TypeError("補助認識のPCMまたは時刻が不正です");
     this.#chosen?.cancel();
     this.#chosen = undefined;
-    for (const fence of this.#fences) this.#release(fence);
+    for (const fence of this.#fences) if (!fence.held) this.#release(fence);
     if (this.#turn?.ended) { this.#turn.work.cancel(); this.#turn = undefined; }
     if (!this.#turn && this.#bytes === this.#acknowledgedBytes && !this.#fences.length) {
       const work = this.#start();
@@ -99,7 +100,7 @@ export class RefinementFence {
     const fence = this.#fences.shift();
     if (!fence) return;
     if (fence.bytes === this.#bytes) this.#acknowledgedBytes = this.#bytes;
-    if (fence.held && fence.turn && fence.bytes === this.#bytes &&
+    if (fence.held && fence.turn &&
         this.#boundaries - fence.turn.initialBoundary === 1) {
       this.#chosen = fence.turn.work;
       const held = fence.held;

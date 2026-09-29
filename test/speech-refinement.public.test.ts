@@ -381,7 +381,34 @@ void test("音声文脈がない日本語・言語未設定では補助処理を
   assert.equal(h.start({ hint: undefined }), undefined);
 });
 
-void test("確定待ちの次のPCM、途中endpoint、混在言語では置き換えず、原文を一度だけ返す", async () => {
+void test("原文の確定後に次のPCMが届いても対応する確定応答で前の発話だけを訂正する", async () => {
+  for (const secondBoundary of [false, true]) {
+    const h = harness();
+    try {
+      h.fence.push(Buffer.alloc(144000, 1), performance.now());
+      h.recognized.resolve("창문을 열");
+      await turn();
+      h.fence.finalizeRequested("speaking_end");
+      h.provider.complete();
+      await turn();
+      h.fence.boundary(primary, h.deliver);
+      const sentBytes = Buffer.concat(h.provider.audio).length;
+      h.fence.push(Buffer.alloc(1920, 2), performance.now());
+      assert.equal(h.output.length, 0);
+      assert.equal(Buffer.concat(h.provider.audio).length, sentBytes);
+      if (secondBoundary) h.fence.boundary(undefined, h.deliver);
+      h.fence.finalized();
+      assert.equal(h.output.length, 1);
+      assert.equal(h.output[0]?.originalText, secondBoundary ? primary.originalText : "창문을 열었어");
+      assert.equal(h.output[0].translatedText, secondBoundary ? primary.translatedText : "窓を開けた");
+      h.fence.finalized();
+      assert.equal(h.output.length, 1);
+      assert.deepEqual(h.failures, []);
+    } finally { h.fence.close(); }
+  }
+});
+
+void test("原文境界前の次のPCM、途中endpoint、混在言語では置き換えず、原文を一度だけ返す", async () => {
   for (const scenario of ["later-pcm", "endpoint", "mixed", "left"] as const) {
     const h = harness();
     h.fence.push(Buffer.alloc(288000), performance.now());
@@ -391,8 +418,8 @@ void test("確定待ちの次のPCM、途中endpoint、混在言語では置き�
       { text: "문", is_final: true, language: "ko", translation_status: "original" },
     ]);
     h.fence.finalizeRequested("speaking_end");
-    if (scenario !== "endpoint") h.fence.boundary(primary, h.deliver);
     if (scenario === "later-pcm") h.fence.push(Buffer.alloc(1920), performance.now());
+    if (scenario !== "endpoint") h.fence.boundary(primary, h.deliver);
     if (scenario === "left") h.fence.close();
     h.fence.finalized();
     h.recognized.resolve("창문을");
