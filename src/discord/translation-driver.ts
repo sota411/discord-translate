@@ -1085,7 +1085,9 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     ) {
       return;
     }
-    if (kind === "finalized" && !speaker.turnFinalizer.boundaryReceived(kind)) {
+    if (kind === "finalized" && !speaker.turnFinalizer.boundaryReceived(
+      kind, true, speaker.utterance.hasPendingOriginal(),
+    )) {
       speaker.refinement?.finalized();
       return;
     }

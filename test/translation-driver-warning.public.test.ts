@@ -57,9 +57,11 @@ const unsupportedResult: RealtimeResult = {
   total_audio_proc_ms: 500,
 };
 
-void test("空のendpoint後の原文と訳をfinalizedで届け、次のPCMは古い応答で確定しない", async () => {
+void test("endpoint後の遅れた原文と訳をfinalizedで届け、次のPCMは古い応答で確定しない", async () => {
   for (const language of ["ja", "ko"] as const) {
-    for (const resume of [false, true]) {
+    for (const mode of ["empty", "empty-resume", "nonempty", "nonempty-resume"]) {
+      const resume = mode.endsWith("-resume");
+      const earlierUtterance = mode.startsWith("nonempty");
       const userId = "323456789012345678";
       const speaking = new EventEmitter();
       const opus = new PassThrough();
@@ -72,6 +74,10 @@ void test("空のendpoint後の原文と訳をfinalizedで届け、次のPCMは�
         return Promise.resolve();
       };
       const sent: CaptionMessagePayload[] = [];
+      const recordFinalCaption = (payload: CaptionMessagePayload): Promise<void> => {
+        if (!JSON.stringify(payload).includes("認識中:")) sent.push(payload);
+        return Promise.resolve();
+      };
       const failures: string[] = [];
       const warnings: string[] = [];
       const runtime = new DiscordTranslationRuntime({
@@ -85,8 +91,8 @@ void test("空のendpoint後の原文と訳をfinalizedで届け、次のPCMは�
         voiceChannel: { members: new Map([[userId, { user: { bot: false } }]]) },
         presentation: { threadId: "test", captionChannel: {
           send: (payload: CaptionMessagePayload) => {
-            sent.push(payload);
-            return Promise.resolve({ edit: () => Promise.resolve(), delete: () => Promise.resolve() });
+            void recordFinalCaption(payload);
+            return Promise.resolve({ edit: recordFinalCaption, delete: () => Promise.resolve() });
           },
         }, update: () => Promise.resolve(), close: () => Promise.resolve() },
         connection: { receiver: { speaking, subscribe: () => opus }, subscribe: () => undefined,
@@ -111,10 +117,22 @@ void test("空のendpoint後の原文と訳をfinalizedで届け、次のPCMは�
         opus.write(Buffer.from([0xf8, 0xff, 0xfe]));
         speaking.emit("end", userId);
         await requested.promise;
+        if (earlierUtterance) {
+          stt.emit("result", { tokens: [
+            { text: language === "ja" ? "こんにちは。" : "안녕하세요.", is_final: true,
+              confidence: 0.95, language, translation_status: "original", start_ms: 0, end_ms: 10 },
+          ], final_audio_proc_ms: 10, total_audio_proc_ms: 10 });
+        }
         stt.emit("endpoint");
+        await drain();
+        const earlierCount = earlierUtterance ? 1 : 0;
+        assert.equal(sent.length, earlierCount);
         if (resume) {
           speaking.emit("start", userId);
+          const previousWrites = stt.audioWrites;
           opus.write(Buffer.from([0xf8, 0xff, 0xfe]));
+          await drain();
+          assert.equal(stt.audioWrites, previousWrites + 1, "resume PCM reaches the STT session before its acknowledgment");
           speaking.emit("end", userId);
         }
         const original = language === "ja" ? "明日は晴れです。" : "내일은 맑아요.";
@@ -130,17 +148,17 @@ void test("空のendpoint後の原文と訳をfinalizedで届け、次のPCMは�
         stt.emit("finalized");
         await drain();
         if (resume) {
-          assert.equal(sent.length, 0, "the earlier request must not flush later PCM");
+          assert.equal(sent.length, earlierCount, "the earlier request must not flush later PCM");
           await requested.promise;
           stt.emit("finalized");
           await drain();
         }
-        assert.equal(sent.length, 1, language + ": deliver without another inactivity timeout");
-        assert.match(JSON.stringify(sent[0]), new RegExp(original, "u"));
-        assert.match(JSON.stringify(sent[0]), new RegExp(translated, "u"));
+        assert.equal(sent.length, earlierCount + 1, language + ": deliver without another inactivity timeout");
+        assert.match(JSON.stringify(sent[earlierCount]), new RegExp(original, "u"));
+        assert.match(JSON.stringify(sent[earlierCount]), new RegExp(translated, "u"));
         stt.emit("finalized");
         await drain();
-        assert.equal(sent.length, 1, "do not duplicate a delivered pair");
+        assert.equal(sent.length, earlierCount + 1, "do not duplicate a delivered pair");
         assert.equal(stt.finalizeCalls, resume ? 2 : 1);
         assert.deepEqual(failures, []);
         assert.deepEqual(warnings, []);
