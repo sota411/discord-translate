@@ -207,34 +207,44 @@ void test("短い相手の発話後に音声文脈を渡し、確定境界を越
   } finally { h.fence.close(); next.close(); }
 });
 
-void test("補助認識の確信度が高くても主認識と翻訳方向が異なる場合は原文と訳を保持する", async () => {
+void test("言語判定の訂正も確信度で判断し、採用した原文と訳を一緒に返す", async () => {
   for (const language of ["ja", "ko"] as const) {
-    const h = harness();
-    const work = h.start({ hint: { language: "ja", strict: false }, priorAudio: Buffer.alloc(96000) });
-    assert.ok(work);
-    const first: FinalizedUtterance = language === "ko" ? primary : {
-      ...primary, sourceLanguage: "ja", targetLanguage: "ko",
-      originalText: "明日見たい", translatedText: "내일 보고 싶어",
-    };
-    try {
-      work.push(Buffer.alloc(144000));
-      await turn();
-      h.provider.emit("finalized");
-      work.finish(performance.now());
-      work.choose(first, h.deliver);
-      h.provider.emit("result", { tokens: [
-        { text: first.translatedText, is_final: true, confidence: 1,
-          language: first.targetLanguage, translation_status: "original" },
-        { text: first.originalText, is_final: true, confidence: 1,
-          language: first.sourceLanguage, source_language: first.targetLanguage, translation_status: "translation" },
-      ] });
-      h.provider.emit("endpoint");
-      h.provider.finished.resolve(undefined);
-      await turn();
-      assert.deepEqual(h.output, [first]);
-      assert.deepEqual(h.outcomes, ["unchanged"]);
-      assert.deepEqual(h.failures, []);
-    } finally { work.close(); }
+    for (const lowerConfidence of [false, true]) {
+      const h = harness();
+      const work = h.start({ hint: { language: "ja", strict: false }, priorAudio: Buffer.alloc(96000) });
+      assert.ok(work);
+      const first: FinalizedUtterance = { ...(language === "ko" ? primary : {
+        ...primary, sourceLanguage: "ja", targetLanguage: "ko",
+        originalText: "明日見たい", translatedText: "내일 보고 싶어",
+      }), originalConfidence: { tokenCount: 1, mean: 0.8, min: 0.8 } };
+      const confidence = lowerConfidence ? 0.7 : 0.95;
+      try {
+        work.push(Buffer.alloc(144000));
+        await turn();
+        h.provider.emit("finalized");
+        work.finish(performance.now());
+        work.choose(first, h.deliver);
+        h.provider.emit("result", { tokens: [
+          { text: first.translatedText, is_final: true, confidence,
+            language: first.targetLanguage, translation_status: "original" },
+          { text: first.originalText, is_final: true, confidence,
+            language: first.sourceLanguage, source_language: first.targetLanguage, translation_status: "translation" },
+        ] });
+        h.provider.emit("endpoint");
+        h.provider.finished.resolve(undefined);
+        await turn();
+        assert.equal(h.output.length, 1);
+        if (lowerConfidence) assert.deepEqual(h.output, [first]);
+        else {
+          assert.equal(h.output[0]?.sourceLanguage, first.targetLanguage);
+          assert.equal(h.output[0].targetLanguage, first.sourceLanguage);
+          assert.equal(h.output[0].originalText, first.translatedText);
+          assert.equal(h.output[0].translatedText, first.originalText);
+        }
+        assert.deepEqual(h.outcomes, [lowerConfidence ? "unchanged" : "completed"]);
+        assert.deepEqual(h.failures, []);
+      } finally { work.close(); }
+    }
   }
 });
 
