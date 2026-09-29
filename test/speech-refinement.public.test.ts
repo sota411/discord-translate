@@ -207,6 +207,37 @@ void test("短い相手の発話後に音声文脈を渡し、確定境界を越
   } finally { h.fence.close(); next.close(); }
 });
 
+void test("補助認識の確信度が高くても主認識と翻訳方向が異なる場合は原文と訳を保持する", async () => {
+  for (const language of ["ja", "ko"] as const) {
+    const h = harness();
+    const work = h.start({ hint: { language: "ja", strict: false }, priorAudio: Buffer.alloc(96000) });
+    assert.ok(work);
+    const first: FinalizedUtterance = language === "ko" ? primary : {
+      ...primary, sourceLanguage: "ja", targetLanguage: "ko",
+      originalText: "明日見たい", translatedText: "내일 보고 싶어",
+    };
+    try {
+      work.push(Buffer.alloc(144000));
+      await turn();
+      h.provider.emit("finalized");
+      work.finish(performance.now());
+      work.choose(first, h.deliver);
+      h.provider.emit("result", { tokens: [
+        { text: first.translatedText, is_final: true, confidence: 1,
+          language: first.targetLanguage, translation_status: "original" },
+        { text: first.originalText, is_final: true, confidence: 1,
+          language: first.sourceLanguage, source_language: first.targetLanguage, translation_status: "translation" },
+      ] });
+      h.provider.emit("endpoint");
+      h.provider.finished.resolve(undefined);
+      await turn();
+      assert.deepEqual(h.output, [first]);
+      assert.deepEqual(h.outcomes, ["unchanged"]);
+      assert.deepEqual(h.failures, []);
+    } finally { work.close(); }
+  }
+});
+
 void test("音声文脈がない日本語・言語未設定では補助処理を開始しない", () => {
   const h = harness();
   assert.equal(h.start({ hint: { language: "ja", strict: false } }), undefined);
