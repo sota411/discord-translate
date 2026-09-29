@@ -190,7 +190,8 @@ export class SpeechRefinement {
             try { sendTarget(); } catch (error) { fail(error); }
           });
           current.session.sendAudio(priorAudio);
-          sentBytes += priorAudio.length;
+          current.session.sendAudio(Buffer.alloc(19_200));
+          sentBytes += priorAudio.length + 19_200;
           current.session.finalize();
         } else sendTarget();
       })().catch(fail);

@@ -15,10 +15,15 @@ class Provider extends EventEmitter {
   public connected = false;
   public closed = false;
   public finalizeCalls = 0;
+  public readonly audioAtFinalize: Buffer[] = [];
   public connect(): Promise<void> { this.connected = true; return Promise.resolve(); }
   public sendAudio(audio: Buffer): void { assert.equal(this.closed, false); this.audio.push(Buffer.from(audio)); }
   public finish(): Promise<void> { return this.finished.promise; }
-  public finalize(): Promise<void> { this.finalizeCalls += 1; return Promise.resolve(); }
+  public finalize(): Promise<void> {
+    this.finalizeCalls += 1;
+    this.audioAtFinalize.push(Buffer.concat(this.audio));
+    return Promise.resolve();
+  }
   public close(): void { this.closed = true; this.finished.reject(new Error("closed")); }
   public complete(): void {
     this.emit("result", { tokens: [
@@ -185,7 +190,8 @@ void test("短い相手の発話後に音声文脈を渡し、確定境界を越
     next.push(target, performance.now());
     await turn();
     assert.equal(h.provider.finalizeCalls, 1);
-    assert.deepEqual(Buffer.concat(h.provider.audio), priorAudio);
+    assert.equal(h.provider.audioAtFinalize.length, 1);
+    assert.equal(h.provider.audioAtFinalize[0]?.equals(Buffer.concat([priorAudio, Buffer.alloc(19200)])), true);
     assert.deepEqual(h.requests[0]?.language_hints, ["ja", "ko"]);
     h.provider.emit("result", { tokens: [
       { text: "先行発話", is_final: true, language: "ja", translation_status: "original" },
@@ -201,8 +207,8 @@ void test("短い相手の発話後に音声文脈を渡し、確定境界を越
     assert.equal(h.output.length, 1);
     assert.equal(h.output[0]?.originalText, "창문을 열었어");
     assert.equal(h.output[0].translatedText, "窓を開けた");
-    assert.deepEqual(Buffer.concat(h.provider.audio), Buffer.concat([priorAudio, target, Buffer.alloc(19200)]));
-    assert.ok((h.usage[0]?.audioMs ?? 0) >= 2700);
+    assert.deepEqual(Buffer.concat(h.provider.audio), Buffer.concat([priorAudio, Buffer.alloc(19200), target, Buffer.alloc(19200)]));
+    assert.ok((h.usage[0]?.audioMs ?? 0) >= 2900);
     assert.deepEqual(h.failures, []);
   } finally { h.fence.close(); next.close(); }
 });
