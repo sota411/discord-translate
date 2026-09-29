@@ -602,7 +602,10 @@ void test("Runtimeは音声受信を復旧し、短い無音で再開した発�
 
 void test("Runtimeは途中参加者の原文を分け、過去の音声文脈を提供した話者の退出で補助結果を取り消す", {
   timeout: 3_000,
-}, async () => {
+}, async (t) => {
+  const now = performance.now.bind(performance);
+  let elapsed = 0;
+  t.mock.method(performance, "now", () => now() + elapsed);
   const ja = "323456789012345678", ko = "423456789012345678";
   const speaking = new EventEmitter(), connection = new EventEmitter();
   const streams = new Map([[ja, new PassThrough()], [ko, new PassThrough()]]);
@@ -696,6 +699,7 @@ void test("Runtimeは途中参加者の原文を分け、過去の音声文脈�
     assert.match(JSON.stringify(sent[1]), /Minji/u);
     assert.deepEqual(starts.map(({ userId, hint }) => [userId, hint.language]), [[ja, "ja"], [ko, "ko"]]);
     assert.equal(starts[0]?.priorAudio, undefined);
+    assert.equal(starts[1]?.priorAudio?.length, 960, "Korean receives the completed Japanese audio");
     // The first turn crossed the connection wait; only a later complete turn is context.
     // Snapshot JA now: KO will complete another turn before JA's first decoded packet.
     speaking.emit("start", ja);
@@ -714,6 +718,7 @@ void test("Runtimeは途中参加者の原文を分け、過去の音声文脈�
     primary.emit("finalized");
     await new Promise<void>((resolve) => setImmediate(resolve));
     assert.equal(sent.length, 4);
+    elapsed += 20_000;
     await startTurn(ja);
     assert.equal(starts.at(-1)?.priorAudio?.length, 960);
     primary.emit("result", result);

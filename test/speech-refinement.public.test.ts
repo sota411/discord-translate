@@ -15,10 +15,11 @@ class Provider extends EventEmitter {
   public connected = false;
   public closed = false;
   public finalizeCalls = 0;
+  public finishCalls = 0;
   public readonly audioAtFinalize: Buffer[] = [];
   public connect(): Promise<void> { this.connected = true; return Promise.resolve(); }
   public sendAudio(audio: Buffer): void { assert.equal(this.closed, false); this.audio.push(Buffer.from(audio)); }
-  public finish(): Promise<void> { return this.finished.promise; }
+  public finish(): Promise<void> { this.finishCalls += 1; return this.finished.promise; }
   public finalize(): Promise<void> {
     this.finalizeCalls += 1;
     this.audioAtFinalize.push(Buffer.concat(this.audio));
@@ -30,8 +31,13 @@ class Provider extends EventEmitter {
       { text: "창문을 열었어", is_final: true, language: "ko", translation_status: "original" },
       { text: "窓を開けた", is_final: true, language: "ja", source_language: "ko", translation_status: "translation" },
     ] });
-    this.emit("endpoint");
-    this.finished.resolve(undefined);
+    this.acknowledge();
+  }
+  public acknowledge(): void {
+    if (this.finishCalls) {
+      this.emit("endpoint");
+      this.finished.resolve(undefined);
+    } else this.emit("finalized");
   }
 }
 function harness() {
@@ -69,7 +75,7 @@ function harness() {
 
 void test("到着したPCMから補助認識を進め、全PCMを再認識して確定応答の後だけ原文と訳を置き換える", async () => {
   const h = harness();
-  const first = Buffer.alloc(230400, 1), last = Buffer.alloc(67200, 2);
+  const first = Buffer.alloc(115200, 1), last = Buffer.alloc(182400, 2);
   try {
     h.fence.push(first.subarray(0, 1920), performance.now());
     assert.equal(h.nativeBytes(), 1920);
@@ -96,6 +102,31 @@ void test("到着したPCMから補助認識を進め、全PCMを再認識して
     assert.ok((h.usage[0]?.textCharacterCount ?? 0) > 0);
     assert.deepEqual(h.failures, []);
   } finally { h.fence.close(); }
+});
+
+void test("途中ヒントの補助認識は手動確定で配信し、複数の発話境界をまとめない", async () => {
+  for (const earlierEndpoint of [false, true]) {
+    const h = harness();
+    try {
+      h.fence.push(Buffer.alloc(144000), performance.now());
+      h.recognized.resolve("창문을 열");
+      await turn();
+      if (earlierEndpoint) h.provider.emit("endpoint");
+      h.fence.finalizeRequested("speaking_end");
+      h.fence.boundary(primary, h.deliver);
+      h.fence.finalized();
+      h.provider.emit("result", { tokens: [
+        { text: "창문을 열었어", is_final: true, language: "ko", translation_status: "original" },
+        { text: "窓を開けた", is_final: true, language: "ja", source_language: "ko", translation_status: "translation" },
+      ] });
+      h.provider.emit("finalized");
+      await turn();
+      assert.equal(h.output.length, 1);
+      assert.equal(h.output[0]?.originalText, earlierEndpoint ? primary.originalText : "창문을 열었어");
+      assert.equal(h.provider.closed, true);
+      assert.deepEqual(h.failures, []);
+    } finally { h.fence.close(); }
+  }
 });
 
 void test("短い韓国語は中止確認後に次の話者へ進み、一語だけの途中ヒントも通常結果を返す", async () => {
@@ -125,14 +156,14 @@ void test("短い韓国語は中止確認後に次の話者へ進み、一語だ
   }
 });
 
-void test("異なる補助原文の平均・最小確信度が両方低い場合だけ初回の原文と訳を残す", async () => {
-  for (const scenario of ["lower", "ja-lower", "equal", "mixed", "missing-primary", "missing-secondary", "same-original"] as const) {
+void test("補助原文が同じ場合と異なる原文の確信度が両方低い場合に初回の訳を残す", async () => {
+  for (const scenario of ["lower", "ja-lower", "ja-same-original", "equal", "mixed", "missing-primary", "missing-secondary", "same-original", "same-original-empty-translation"] as const) {
     const h = harness();
-    const japanese = scenario === "ja-lower";
-    const keepPrimary = scenario === "lower" || japanese;
+    const japanese = scenario.startsWith("ja-");
+    const keepPrimary = scenario === "lower" || scenario === "ja-lower" || scenario === "same-original";
     const first: FinalizedUtterance = japanese
       ? { ...primary, sourceLanguage: "ja", targetLanguage: "ko", originalText: "保証期限が付く", translatedText: "보증 기한이 있다" }
-      : primary;
+      : scenario === "same-original-empty-translation" ? { ...primary, translatedText: "" } : primary;
     const fence = japanese ? new RefinementFence(() => h.start({
       hint: { language: "ja", strict: false }, priorAudio: Buffer.alloc(96000),
     })) : h.fence;
@@ -140,8 +171,8 @@ void test("異なる補助原文の平均・最小確信度が両方低い場合
       originalConfidence: { tokenCount: 2, mean: 0.8, min: 0.6 },
     }) };
     const confidence = scenario === "equal" ? [0.6, 1] : scenario === "mixed" ? [0.7, 0.8] : [0.4, 0.6];
-    const original = scenario === "same-original" ? first.originalText : japanese ? "補償期限が付く" : "창문을 열었어";
-    const translation = japanese ? "보상 기한이 있다" : "窓を開けた";
+    const original = scenario.includes("same-original") ? ` ${first.originalText} ` : japanese ? "補償期限が付く" : "창문을 열었어";
+    const translation = scenario === "same-original-empty-translation" ? primary.translatedText : japanese ? "보상 기한이 있다" : "窓を開けた";
     try {
       fence.push(Buffer.alloc(288000), performance.now());
       h.recognized.resolve("창문을 열");
@@ -161,8 +192,7 @@ void test("異なる補助原文の平均・最小確信度が両方低い場合
           ...(scenario === "missing-secondary" ? {} : { confidence: confidence[1] }) },
         { text: translation, is_final: true, language: first.targetLanguage, source_language: first.sourceLanguage, translation_status: "translation" },
       ] });
-      h.provider.emit("endpoint");
-      h.provider.finished.resolve(undefined);
+      h.provider.acknowledge();
       await turn();
       assert.equal(h.output.length, 1, scenario);
       assert.equal(h.output[0]?.originalText, keepPrimary ? first.originalText : original, scenario);
@@ -211,6 +241,34 @@ void test("短い相手の発話後に音声文脈を渡し、確定境界を越
     assert.ok((h.usage[0]?.audioMs ?? 0) >= 2900);
     assert.deepEqual(h.failures, []);
   } finally { h.fence.close(); next.close(); }
+});
+
+void test("短い韓国語も相手の音声文脈を使い、原文を変えずに翻訳を訂正する", async () => {
+  const h = harness();
+  const first: FinalizedUtterance = { ...primary, originalText: "양이 많네", translatedText: "羊が多いね" };
+  const work = h.start({ priorAudio: Buffer.alloc(96000) });
+  assert.ok(work);
+  try {
+    work.push(Buffer.alloc(115200));
+    await turn();
+    assert.equal(h.nativeBytes(), 0);
+    assert.equal(h.provider.finalizeCalls, 1);
+    h.provider.emit("finalized");
+    work.finish(performance.now());
+    work.choose(first, h.deliver);
+    h.provider.emit("result", { tokens: [
+      { text: first.originalText, is_final: true, language: "ko", translation_status: "original" },
+      { text: "量が多いね", is_final: true, language: "ja", source_language: "ko", translation_status: "translation" },
+    ] });
+    h.provider.emit("endpoint");
+    h.provider.finished.resolve(undefined);
+    await turn();
+    assert.equal(h.output.length, 1);
+    assert.equal(h.output[0]?.originalText, first.originalText);
+    assert.equal(h.output[0].translatedText, "量が多いね");
+    assert.deepEqual(h.outcomes, ["completed"]);
+    assert.deepEqual(h.failures, []);
+  } finally { work.close(); h.recognized.resolve(""); }
 });
 
 void test("言語判定の訂正も確信度で判断し、採用した原文と訳を一緒に返す", async () => {
@@ -283,15 +341,44 @@ void test("確定待ちの次のPCM、途中endpoint、混在言語では置き�
   }
 });
 
+void test("初回結果があれば確定応答待ちを含め200ms以内に補助結果の待機を終える", async (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  let now = 0;
+  context.mock.method(performance, "now", () => now);
+  for (const acknowledge of [true, false]) {
+    now = 0;
+    const h = harness();
+    try {
+      h.fence.push(Buffer.alloc(288000), now);
+      h.fence.finalizeRequested("speaking_end");
+      h.fence.boundary(primary, h.deliver);
+      now = 100;
+      context.mock.timers.tick(100);
+      if (acknowledge) h.fence.finalized();
+      now = 200;
+      context.mock.timers.tick(100);
+      assert.deepEqual(h.output, [primary]);
+      h.fence.finalized();
+      assert.equal(h.output.length, 1);
+      if (acknowledge) assert.deepEqual(h.outcomes, ["ineligible"]);
+      h.recognized.resolve("창문을");
+      await turn();
+      assert.equal(h.requests.length, 0);
+      assert.deepEqual(h.failures, []);
+    } finally { h.fence.close(); h.recognized.resolve(""); }
+  }
+  context.mock.timers.reset();
+});
+
 void test("遅延期限で元の結果を返し、キャンセル中のnative処理を重複起動しない", async (context) => {
   context.mock.timers.enable({ apis: ["setTimeout"] });
   const h = harness();
   try {
     h.fence.push(Buffer.alloc(288000), performance.now());
     h.fence.finalizeRequested("speaking_end");
+    context.mock.timers.tick(2391);
     h.fence.boundary(primary, h.deliver);
     h.fence.finalized();
-    context.mock.timers.tick(2391);
     assert.deepEqual(h.output, [primary]);
     assert.ok(h.outcomes.includes("deadline"));
     assert.equal(h.start(), undefined);

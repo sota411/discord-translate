@@ -25,6 +25,7 @@ export class RefinementFence {
   #boundaries = 0;
   #lastAudioAt = 0;
   #closed = false;
+  #deliveryDeadline: NodeJS.Timeout | undefined;
   readonly #languages = new Set<string>();
 
   public constructor(start: () => RefinementWork | undefined) { this.#start = start; }
@@ -83,6 +84,8 @@ export class RefinementFence {
     if (value && fence?.turn && fence.bytes === this.#bytes &&
         this.#boundaries - fence.turn.initialBoundary === 1) {
       fence.held = { value, deliver };
+      // Leave 20ms of the 200ms added-latency budget for scheduling and delivery.
+      this.#deliveryDeadline = setTimeout(() => this.#release(fence), 180);
       return;
     }
     this.#turn?.work.cancel();
@@ -101,12 +104,16 @@ export class RefinementFence {
       this.#chosen = fence.turn.work;
       const held = fence.held;
       delete fence.held;
-      fence.turn.work.choose(held.value, held.deliver);
+      fence.turn.work.choose(held.value, (value) => {
+        clearTimeout(this.#deliveryDeadline);
+        held.deliver(value);
+      });
     } else this.#release(fence);
   }
 
   public close(): void {
     this.#closed = true;
+    clearTimeout(this.#deliveryDeadline);
     this.#turn?.work.close();
     this.#chosen?.close();
     for (const fence of this.#fences) fence.turn?.work.close();
@@ -128,6 +135,9 @@ export class RefinementFence {
     fence.turn = undefined;
     const held = fence.held;
     delete fence.held;
-    if (held) held.deliver(held.value);
+    if (held) {
+      clearTimeout(this.#deliveryDeadline);
+      held.deliver(held.value);
+    }
   }
 }

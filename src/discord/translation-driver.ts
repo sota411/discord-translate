@@ -1019,14 +1019,14 @@ export class DiscordTranslationRuntime implements SessionRuntime {
     // Startup packets lack a speaking-generation marker; do not cache that turn.
     speaker.contextAudio = { chunks: [], bytes: 0, eligible: speaker.sttConnected };
     delete speaker.priorAudio;
-    if (this.#speakerLanguageHints.get(speaker.userId) !== "ja") return;
+    if (!speakerLanguageHint(this.#speakerLanguageHints.get(speaker.userId), this.#session.pair)) return;
     const now = performance.now();
     let latest = Number.NEGATIVE_INFINITY;
     for (const other of this.#speakers.values()) {
       const prior = other.completedAudio;
       if (other.userId === speaker.userId || !prior || other.closed ||
           !this.#participants.has(other.userId) || !this.#config.discord.allowedUserIds.has(other.userId) ||
-          prior.endedAt > now || now - prior.endedAt > 15_000 || prior.endedAt <= latest) continue;
+          prior.endedAt > now || now - prior.endedAt > 30_000 || prior.endedAt <= latest) continue;
       latest = prior.endedAt;
       // Snapshot at speaking_start: later-finished audio must never enter this turn.
       speaker.priorAudio = { userId: other.userId, pcm: prior.pcm };

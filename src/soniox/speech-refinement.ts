@@ -38,7 +38,8 @@ export class SpeechRefinement {
 
   public start(input: Start): RefinementWork | undefined {
     if (input.session.pair !== "ja-ko") return undefined;
-    const priorAudio = input.hint?.language === "ja" ? input.priorAudio : undefined;
+    const priorAudio = input.hint?.language === "ja" || input.hint?.language === "ko"
+      ? input.priorAudio : undefined;
     if (!priorAudio && input.hint?.language !== "ko") return undefined;
     if (priorAudio && (!priorAudio.length || priorAudio.length % 2 || priorAudio.length > 230_400)) {
       throw new TypeError("音声文脈のPCM長が不正です");
@@ -46,7 +47,7 @@ export class SpeechRefinement {
     if (this.#busy) { input.observe("busy"); return undefined; }
     this.#busy = true;
     const { worker, factory, ledger, maxInputCharacters } = this.#options;
-    const prefixBytes = 230_400;
+    const prefixBytes = 115_200;
     let chunks: Buffer[] = [];
     let bytes = 0;
     let sentBytes = 0;
@@ -90,6 +91,14 @@ export class SpeechRefinement {
       if (!selected || !stopped || disposed) return;
       const current = selected;
       selected = undefined;
+      // 原文を訂正できていない途中ヒントでは、既存の訳を差し替えない。
+      if (!priorAudio && result && current.primary.translatedText.trim() &&
+          result.sourceLanguage === current.primary.sourceLanguage &&
+          result.targetLanguage === current.primary.targetLanguage &&
+          result.originalText.trim() === current.primary.originalText.trim()) {
+        result = undefined;
+        outcome = "unchanged";
+      }
       if (result?.originalConfidence && current.primary.originalConfidence &&
           result.originalText.trim() !== current.primary.originalText.trim() &&
           result.originalConfidence.mean < current.primary.originalConfidence.mean &&
@@ -125,7 +134,7 @@ export class SpeechRefinement {
       finishStarted = true;
       request.session.sendAudio(Buffer.alloc(19_200));
       sentBytes += 19_200;
-      void request.session.finish().then(() => {
+      const complete = (): void => {
         if (isStopped()) return;
         const refined = utterance.takeAtEndpoint();
         if (boundaries === 1 && sourceLanguages.size === 1 && refined?.translatedText.trim()) {
@@ -135,7 +144,15 @@ export class SpeechRefinement {
         settled = true;
         // Wait for the primary fence before choosing a replacement.
         stop();
-      }).catch(fail);
+      };
+      if (priorAudio) void request.session.finish().then(complete).catch(fail);
+      else {
+        request.session.once("finalized", () => {
+          boundaries += 1;
+          try { complete(); } catch (error) { fail(error); }
+        });
+        request.session.finalize();
+      }
     };
     const begin = (): void => {
       if (local || stopped) return;
