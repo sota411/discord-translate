@@ -71,6 +71,13 @@ void test("完成した翻訳本文から1〜4語の8回以上の連続反復だ
     findRepeatedTranslation("ｍｉｓｔｅｒ　".repeat(8), "en"),
     { maxRepeatCount: 8, ngramLength: 1 },
   );
+  for (const [language, word] of [["ja", "猫"], ["ko", "친구"], ["en", "friend"], ["ja", "犬"]] as const) {
+    assert.equal(findRepeatedTranslation(`${word} `.repeat(7), language), undefined);
+    assert.deepEqual(findRepeatedTranslation(`${word} `.repeat(8), language), {
+      maxRepeatCount: 8,
+      ngramLength: 1,
+    });
+  }
 });
 
 void test("品質ログは本文や反復語句を含めず、匿名の数値だけを返す", () => {

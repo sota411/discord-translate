@@ -14,7 +14,8 @@ type Fence = { bytes: number; turn: Turn | undefined; held?: {
 } };
 
 // A replacement is allowed only after one complete source turn and its manual
-// finalize acknowledgment. Later PCM or an earlier natural endpoint invalidates it.
+// finalize acknowledgment. A primary held before later PCM still belongs to the
+// requested audio; an earlier or additional natural endpoint invalidates it.
 export class RefinementFence {
   readonly #start: () => RefinementWork | undefined;
   readonly #fences: Fence[] = [];
@@ -25,6 +26,7 @@ export class RefinementFence {
   #boundaries = 0;
   #lastAudioAt = 0;
   #closed = false;
+  #deliveryDeadline: NodeJS.Timeout | undefined;
   readonly #languages = new Set<string>();
 
   public constructor(start: () => RefinementWork | undefined) { this.#start = start; }
@@ -38,7 +40,7 @@ export class RefinementFence {
     if (audio.length % 2 || !Number.isFinite(at)) throw new TypeError("補助認識のPCMまたは時刻が不正です");
     this.#chosen?.cancel();
     this.#chosen = undefined;
-    for (const fence of this.#fences) this.#release(fence);
+    for (const fence of this.#fences) if (!fence.held) this.#release(fence);
     if (this.#turn?.ended) { this.#turn.work.cancel(); this.#turn = undefined; }
     if (!this.#turn && this.#bytes === this.#acknowledgedBytes && !this.#fences.length) {
       const work = this.#start();
@@ -83,6 +85,8 @@ export class RefinementFence {
     if (value && fence?.turn && fence.bytes === this.#bytes &&
         this.#boundaries - fence.turn.initialBoundary === 1) {
       fence.held = { value, deliver };
+      // Leave 20ms of the 200ms added-latency budget for scheduling and delivery.
+      this.#deliveryDeadline = setTimeout(() => this.#release(fence), 180);
       return;
     }
     this.#turn?.work.cancel();
@@ -96,17 +100,21 @@ export class RefinementFence {
     const fence = this.#fences.shift();
     if (!fence) return;
     if (fence.bytes === this.#bytes) this.#acknowledgedBytes = this.#bytes;
-    if (fence.held && fence.turn && fence.bytes === this.#bytes &&
+    if (fence.held && fence.turn &&
         this.#boundaries - fence.turn.initialBoundary === 1) {
       this.#chosen = fence.turn.work;
       const held = fence.held;
       delete fence.held;
-      fence.turn.work.choose(held.value, held.deliver);
+      fence.turn.work.choose(held.value, (value) => {
+        clearTimeout(this.#deliveryDeadline);
+        held.deliver(value);
+      });
     } else this.#release(fence);
   }
 
   public close(): void {
     this.#closed = true;
+    clearTimeout(this.#deliveryDeadline);
     this.#turn?.work.close();
     this.#chosen?.close();
     for (const fence of this.#fences) fence.turn?.work.close();
@@ -128,6 +136,9 @@ export class RefinementFence {
     fence.turn = undefined;
     const held = fence.held;
     delete fence.held;
-    if (held) held.deliver(held.value);
+    if (held) {
+      clearTimeout(this.#deliveryDeadline);
+      held.deliver(held.value);
+    }
   }
 }

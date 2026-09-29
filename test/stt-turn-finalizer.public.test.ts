@@ -177,6 +177,24 @@ void test("古いfinalizedは空endpoint後に待つ新しい手動確定を消�
   finalizer.close();
 });
 
+void test("自然endpointより前に新しいPCMが来た場合も古いfinalizedで末尾を確定しない", (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const calls: FinalizeCall[] = [];
+  const finalizer = new SttTurnFinalizer({
+    session: recordingSession(calls), speakingEndDelayMs: 200,
+    transcriptInactivityMs: 3_000, maxTurnMs: 30_000, trailingSilenceMs: 200,
+  });
+  finalizer.audioReceived();
+  context.mock.timers.tick(200);
+  finalizer.audioReceived();
+  finalizer.boundaryReceived("endpoint", true);
+  context.mock.timers.tick(200);
+  assert.equal(calls.length, 4, "both PCM generations have a finalize request");
+  assert.equal(finalizer.boundaryReceived("finalized", true, true), false);
+  assert.equal(finalizer.boundaryReceived("finalized", true, true), true);
+  finalizer.close();
+});
+
 void test("発話中にsemantic endpointが届いても直後の短い発話を確定できる", (context) => {
   context.mock.timers.enable({ apis: ["setTimeout"] });
   const calls: FinalizeCall[] = [];

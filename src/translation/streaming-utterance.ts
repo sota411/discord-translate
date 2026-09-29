@@ -33,6 +33,10 @@ export class StreamingUtterance {
     return this.#assembler.flush();
   }
 
+  public hasPendingOriginal(): boolean {
+    return Boolean(this.#assembler.preview([])?.originalText.trim());
+  }
+
   public discard(): void {
     this.#assembler.flush();
   }

@@ -1,0 +1,1348 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "f19be9a7936d7bb7ee0a32d794fe131887cb29db",
+  "baseline_image": "sha256:eeb142963b156faa9afa572106e5048d9f195a3b49514de8ae10972aa1f15033",
+  "candidate_application_commit": "86e1a37acceeaf29e40075f276c894dcbea7d1df",
+  "candidate_test_commit": "e4c93ee9b12b408366552bef76cfa7a1d92fa412",
+  "inference_device": "Raspberry Pi 4 / Linux ARM64",
+  "recognition_model": "Soniox stt-rt-v5",
+  "local_model": "kangkyu/icefall-asr-ko-streaming-zipformer-174m",
+  "local_model_revision": "f0e73b1653c3ea75898c6d949dd71c690c9121da",
+  "local_threads": 2,
+  "max_active_paths": 8,
+  "scoring": "NFKC, remove Unicode punctuation/symbols/whitespace, character Levenshtein distance; semantic judgments are separate",
+  "latency": "Caption request minus scheduled end of the last input frame present at the original causal boundary. Includes producer lateness; excludes microphone, real Opus decode, Discord network/display and TTS.",
+  "evaluations": [
+    {
+      "id": "confidence-guard-independent-20260918",
+      "language": "ja",
+      "previously_unexamined_references_at_original_run": true,
+      "all_sources_preserved": true,
+      "score": {
+        "streams": 12,
+        "reference_characters": 1591,
+        "A_edits": 139,
+        "B_edits": 137,
+        "A_primary_edits": 137,
+        "B_primary_edits": 137,
+        "B_unguarded_counterfactual_edits": 139,
+        "vetoes": 1
+      },
+      "runtime_summary": [
+        {
+          "variant": "A",
+          "runs": 6,
+          "captions": 56,
+          "translated": 55,
+          "translated_within_2390_ms": 55,
+          "max_caption_minus_injected_ms": 740.9209540000011,
+          "unavailable": 1,
+          "max_producer_lateness_ms": 93.03980499999943,
+          "producer_clock_within_40ms_runs": 0
+        },
+        {
+          "variant": "B",
+          "runs": 6,
+          "captions": 56,
+          "translated": 55,
+          "translated_within_2390_ms": 55,
+          "max_caption_minus_injected_ms": 763.3583809999982,
+          "unavailable": 1,
+          "max_producer_lateness_ms": 70.30392966666636,
+          "producer_clock_within_40ms_runs": 0
+        }
+      ],
+      "speaker_streams": [
+        {
+          "group_id": "guard-saslaw-ja-spk05-spk06-dialogue007",
+          "speaker_role": "spk05",
+          "reference_characters": 198,
+          "A_character_edits": 20,
+          "B_character_edits": 20,
+          "A_primary_character_edits": 20,
+          "B_primary_character_edits": 20
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk05-spk06-dialogue007",
+          "speaker_role": "spk06",
+          "reference_characters": 135,
+          "A_character_edits": 12,
+          "B_character_edits": 12,
+          "A_primary_character_edits": 12,
+          "B_primary_character_edits": 12
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk05-spk06-dialogue010",
+          "speaker_role": "spk05",
+          "reference_characters": 114,
+          "A_character_edits": 2,
+          "B_character_edits": 2,
+          "A_primary_character_edits": 2,
+          "B_primary_character_edits": 2
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk05-spk06-dialogue010",
+          "speaker_role": "spk06",
+          "reference_characters": 137,
+          "A_character_edits": 4,
+          "B_character_edits": 4,
+          "A_primary_character_edits": 4,
+          "B_primary_character_edits": 4
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk05-spk06-dialogue014",
+          "speaker_role": "spk05",
+          "reference_characters": 182,
+          "A_character_edits": 20,
+          "B_character_edits": 18,
+          "A_primary_character_edits": 18,
+          "B_primary_character_edits": 18
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk05-spk06-dialogue014",
+          "speaker_role": "spk06",
+          "reference_characters": 152,
+          "A_character_edits": 5,
+          "B_character_edits": 5,
+          "A_primary_character_edits": 5,
+          "B_primary_character_edits": 5
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk09-spk10-dialogue004",
+          "speaker_role": "spk09",
+          "reference_characters": 74,
+          "A_character_edits": 4,
+          "B_character_edits": 4,
+          "A_primary_character_edits": 4,
+          "B_primary_character_edits": 4
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk09-spk10-dialogue004",
+          "speaker_role": "spk10",
+          "reference_characters": 118,
+          "A_character_edits": 18,
+          "B_character_edits": 18,
+          "A_primary_character_edits": 18,
+          "B_primary_character_edits": 18
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk09-spk10-dialogue018",
+          "speaker_role": "spk09",
+          "reference_characters": 44,
+          "A_character_edits": 5,
+          "B_character_edits": 5,
+          "A_primary_character_edits": 5,
+          "B_primary_character_edits": 5
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk09-spk10-dialogue018",
+          "speaker_role": "spk10",
+          "reference_characters": 52,
+          "A_character_edits": 4,
+          "B_character_edits": 4,
+          "A_primary_character_edits": 4,
+          "B_primary_character_edits": 4
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk09-spk10-dialogue039",
+          "speaker_role": "spk09",
+          "reference_characters": 143,
+          "A_character_edits": 15,
+          "B_character_edits": 15,
+          "A_primary_character_edits": 15,
+          "B_primary_character_edits": 15
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk09-spk10-dialogue039",
+          "speaker_role": "spk10",
+          "reference_characters": 242,
+          "A_character_edits": 30,
+          "B_character_edits": 30,
+          "A_primary_character_edits": 30,
+          "B_primary_character_edits": 30
+        }
+      ],
+      "evidence_sha256": {
+        "observed-before-gold.json": "f072e4ce4a6f912e83c7b4b1e963398f9a9d91ecd68276995a61fd4da243aece",
+        "scores.json": "fce857a854cc44c272cf3d4f702dcda72ec6192055c00cb952e2f42f6d98c702",
+        "references.json": "8af7b2ce4a495c98206a333bb0f90ba97d7f0d693b187c622b90909954d51151",
+        "cost-reconciliation.json": "786a24cfaf8fc8fd56ab63aa2f0fc07e8a647b40757468f9632d6636cbd0a08b",
+        "bundle/input/manifest.json": "f2362966ad3705c920872ff7dd77a51dcca8fcda718664d2cf32383e998bf73f",
+        "bundle/files.json": "9f40b61ec257934e74f0717839ccf0103f0e89479274cf70b1d34945ddc11c1e",
+        "scheduled-latency-audit.json": "dfee73ddbbfdd4d43569dd339f1e5b10c1b1fbf0483a08dad8911305d99bd0df"
+      },
+      "scheduled_input_latency": [
+        {
+          "language": "ja",
+          "variant": "A",
+          "captions": 56,
+          "translated": 55,
+          "translated_within_2390": 55,
+          "max_caption_minus_scheduled_ms": 741.3472750000001,
+          "max_caption_minus_injected_ms": 740.9209540000011,
+          "unavailable": 1
+        },
+        {
+          "language": "ja",
+          "variant": "B",
+          "captions": 56,
+          "translated": 55,
+          "translated_within_2390": 55,
+          "max_caption_minus_scheduled_ms": 763.4792076666636,
+          "max_caption_minus_injected_ms": 763.3583809999982,
+          "unavailable": 1
+        }
+      ],
+      "input_cohort": "ja"
+    },
+    {
+      "id": "deeply-zipformer-independent-20260920",
+      "language": "ko",
+      "previously_unexamined_references_at_original_run": true,
+      "all_sources_preserved": true,
+      "score": {
+        "streams": 6,
+        "reference_characters": 186,
+        "A_edits": 11,
+        "B_edits": 9,
+        "A_primary_edits": 11,
+        "B_primary_edits": 11,
+        "B_unguarded_counterfactual_edits": 10,
+        "vetoes": 1
+      },
+      "runtime_summary": [
+        {
+          "variant": "A",
+          "runs": 6,
+          "captions": 7,
+          "translated": 7,
+          "translated_within_2390_ms": 7,
+          "max_caption_minus_injected_ms": 542.873028,
+          "unavailable": 0,
+          "max_producer_lateness_ms": 53.571491000000606,
+          "producer_clock_within_40ms_runs": 2
+        },
+        {
+          "variant": "B",
+          "runs": 6,
+          "captions": 7,
+          "translated": 7,
+          "translated_within_2390_ms": 7,
+          "max_caption_minus_injected_ms": 796.770572999998,
+          "unavailable": 0,
+          "max_producer_lateness_ms": 49.26327200000014,
+          "producer_clock_within_40ms_runs": 2
+        }
+      ],
+      "speaker_streams": [
+        {
+          "group_id": "deeply-ko-airbnbstudio-sub100102a00161",
+          "speaker_role": "sub1001a",
+          "reference_characters": 32,
+          "A_character_edits": 2,
+          "B_character_edits": 2,
+          "A_primary_character_edits": 2,
+          "B_primary_character_edits": 2
+        },
+        {
+          "group_id": "deeply-ko-airbnbstudio-sub100101a00206",
+          "speaker_role": "sub1001b",
+          "reference_characters": 30,
+          "A_character_edits": 5,
+          "B_character_edits": 4,
+          "A_primary_character_edits": 5,
+          "B_primary_character_edits": 5
+        },
+        {
+          "group_id": "deeply-ko-anechoicchamber-sub100120a00055",
+          "speaker_role": "sub1001a",
+          "reference_characters": 31,
+          "A_character_edits": 3,
+          "B_character_edits": 3,
+          "A_primary_character_edits": 3,
+          "B_primary_character_edits": 3
+        },
+        {
+          "group_id": "deeply-ko-anechoicchamber-sub100122a00005",
+          "speaker_role": "sub1001b",
+          "reference_characters": 38,
+          "A_character_edits": 0,
+          "B_character_edits": 0,
+          "A_primary_character_edits": 0,
+          "B_primary_character_edits": 0
+        },
+        {
+          "group_id": "deeply-ko-dancestudio-sub100111a00028",
+          "speaker_role": "sub1001a",
+          "reference_characters": 25,
+          "A_character_edits": 1,
+          "B_character_edits": 0,
+          "A_primary_character_edits": 1,
+          "B_primary_character_edits": 1
+        },
+        {
+          "group_id": "deeply-ko-dancestudio-sub100112a00025",
+          "speaker_role": "sub1001b",
+          "reference_characters": 30,
+          "A_character_edits": 0,
+          "B_character_edits": 0,
+          "A_primary_character_edits": 0,
+          "B_primary_character_edits": 0
+        }
+      ],
+      "evidence_sha256": {
+        "observed-before-gold.json": "60476d5c1c55d1804785af310d8f8a63bce8270bc44a877de3ebc6e87440627a",
+        "scores.json": "31818d360b2fe20d59b28ed4d162d0c2203994700ad33d88093a58adfc642710",
+        "references.json": "a2ea3a0e89a347cac3c2751ddc60e3393e624f3a83ca9086d92a653e27f9c09d",
+        "cost-reconciliation.json": "058e9a06b14c30fcaba98ccabba1415e2693250c4561b1de3fdaa85e0d4a1eb8",
+        "bundle/input/manifest.json": "933b350ac11222374f949d0d0fc1f4b803aa1886ffa032f1a1340995beb95158",
+        "bundle/files.json": "0d918928abf86d13f31f084a6c8ff8ae4884833073bb0f18d966821f89549bb8",
+        "scheduled-latency-audit.json": "ca7d84b5d025f43fe214e79ba011bf96c15c2d177ff8e4a10e06bfe41c966dda"
+      },
+      "scheduled_input_latency": [
+        {
+          "language": "ko",
+          "variant": "A",
+          "captions": 7,
+          "translated": 7,
+          "translated_within_2390": 7,
+          "max_caption_minus_scheduled_ms": 542.9873089999992,
+          "max_caption_minus_injected_ms": 542.873028,
+          "unavailable": 0
+        },
+        {
+          "language": "ko",
+          "variant": "B",
+          "captions": 7,
+          "translated": 7,
+          "translated_within_2390": 7,
+          "max_caption_minus_scheduled_ms": 797.532102000001,
+          "max_caption_minus_injected_ms": 796.770572999998,
+          "unavailable": 0
+        }
+      ],
+      "input_cohort": "ko"
+    },
+    {
+      "id": "deeply-timing-confirmation-20260920",
+      "language": "ko",
+      "previously_unexamined_references_at_original_run": false,
+      "all_sources_preserved": true,
+      "score": {
+        "streams": 6,
+        "reference_characters": 186,
+        "A_edits": 11,
+        "B_edits": 9,
+        "A_primary_edits": 11,
+        "B_primary_edits": 11,
+        "B_unguarded_counterfactual_edits": 10,
+        "vetoes": 1
+      },
+      "runtime_summary": [
+        {
+          "variant": "A",
+          "runs": 6,
+          "captions": 7,
+          "translated": 7,
+          "translated_within_2390_ms": 7,
+          "max_caption_minus_injected_ms": 535.0708040000009,
+          "unavailable": 0,
+          "max_producer_lateness_ms": 55.581685999999536,
+          "producer_clock_within_40ms_runs": 1
+        },
+        {
+          "variant": "B",
+          "runs": 6,
+          "captions": 7,
+          "translated": 7,
+          "translated_within_2390_ms": 7,
+          "max_caption_minus_injected_ms": 845.3398970000017,
+          "unavailable": 0,
+          "max_producer_lateness_ms": 37.342178000002605,
+          "producer_clock_within_40ms_runs": 6
+        }
+      ],
+      "speaker_streams": [
+        {
+          "group_id": "deeply-ko-airbnbstudio-sub100102a00161",
+          "speaker_role": "sub1001a",
+          "reference_characters": 32,
+          "A_character_edits": 2,
+          "B_character_edits": 2,
+          "A_primary_character_edits": 2,
+          "B_primary_character_edits": 2
+        },
+        {
+          "group_id": "deeply-ko-airbnbstudio-sub100101a00206",
+          "speaker_role": "sub1001b",
+          "reference_characters": 30,
+          "A_character_edits": 5,
+          "B_character_edits": 4,
+          "A_primary_character_edits": 5,
+          "B_primary_character_edits": 5
+        },
+        {
+          "group_id": "deeply-ko-anechoicchamber-sub100120a00055",
+          "speaker_role": "sub1001a",
+          "reference_characters": 31,
+          "A_character_edits": 3,
+          "B_character_edits": 3,
+          "A_primary_character_edits": 3,
+          "B_primary_character_edits": 3
+        },
+        {
+          "group_id": "deeply-ko-anechoicchamber-sub100122a00005",
+          "speaker_role": "sub1001b",
+          "reference_characters": 38,
+          "A_character_edits": 0,
+          "B_character_edits": 0,
+          "A_primary_character_edits": 0,
+          "B_primary_character_edits": 0
+        },
+        {
+          "group_id": "deeply-ko-dancestudio-sub100111a00028",
+          "speaker_role": "sub1001a",
+          "reference_characters": 25,
+          "A_character_edits": 1,
+          "B_character_edits": 0,
+          "A_primary_character_edits": 1,
+          "B_primary_character_edits": 1
+        },
+        {
+          "group_id": "deeply-ko-dancestudio-sub100112a00025",
+          "speaker_role": "sub1001b",
+          "reference_characters": 30,
+          "A_character_edits": 0,
+          "B_character_edits": 0,
+          "A_primary_character_edits": 0,
+          "B_primary_character_edits": 0
+        }
+      ],
+      "evidence_sha256": {
+        "observed-before-gold.json": "d823c98052c38091ceee6801fe603595799aa18a13e5b0bd4851b3a47c17c8b9",
+        "scores.json": "2882496094762e0c2c84a81da0f57fb0053bb71246b8ff533cb2a0d349b4ef4b",
+        "references.json": "4bdf9dc3ab7028c7f02b289d46fe6aad625d9f53aec6374defd5d51adb45527e",
+        "cost-reconciliation.json": "94aa9d4cc14c8bb90d703d58dce266d1d719760eda52b7e09ed65dbad1829aae",
+        "bundle/input/manifest.json": "933b350ac11222374f949d0d0fc1f4b803aa1886ffa032f1a1340995beb95158",
+        "bundle/files.json": "d2631c28346b384b9b06ebddec4343e1f3bae89c7ad42eb65b7a18675bd5f9cb",
+        "scheduled-latency-audit.json": "a01122aafd71180ba3586c309105eaa75ff62336818c472d8c70b464ca1c51b1"
+      },
+      "scheduled_input_latency": [
+        {
+          "language": "ko",
+          "variant": "A",
+          "captions": 7,
+          "translated": 7,
+          "translated_within_2390": 7,
+          "max_caption_minus_scheduled_ms": 535.6194380000006,
+          "max_caption_minus_injected_ms": 535.0708040000009,
+          "unavailable": 0
+        },
+        {
+          "language": "ko",
+          "variant": "B",
+          "captions": 7,
+          "translated": 7,
+          "translated_within_2390": 7,
+          "max_caption_minus_scheduled_ms": 845.6344549999994,
+          "max_caption_minus_injected_ms": 845.3398970000017,
+          "unavailable": 0
+        }
+      ],
+      "input_cohort": "ko"
+    },
+    {
+      "id": "japanese-current-confirmation-20260920",
+      "language": "ja",
+      "previously_unexamined_references_at_original_run": false,
+      "all_sources_preserved": true,
+      "score": {
+        "streams": 12,
+        "reference_characters": 1591,
+        "A_edits": 140,
+        "B_edits": 137,
+        "A_primary_edits": 138,
+        "B_primary_edits": 137,
+        "B_unguarded_counterfactual_edits": 139,
+        "vetoes": 1
+      },
+      "runtime_summary": [
+        {
+          "variant": "A",
+          "runs": 6,
+          "captions": 56,
+          "translated": 55,
+          "translated_within_2390_ms": 55,
+          "max_caption_minus_injected_ms": 1598.9655990000028,
+          "unavailable": 1,
+          "max_producer_lateness_ms": 48.44455299999936,
+          "producer_clock_within_40ms_runs": 2
+        },
+        {
+          "variant": "B",
+          "runs": 6,
+          "captions": 56,
+          "translated": 55,
+          "translated_within_2390_ms": 55,
+          "max_caption_minus_injected_ms": 621.184027000003,
+          "unavailable": 1,
+          "max_producer_lateness_ms": 40.684435333336296,
+          "producer_clock_within_40ms_runs": 5
+        }
+      ],
+      "speaker_streams": [
+        {
+          "group_id": "guard-saslaw-ja-spk05-spk06-dialogue007",
+          "speaker_role": "spk05",
+          "reference_characters": 198,
+          "A_character_edits": 20,
+          "B_character_edits": 20,
+          "A_primary_character_edits": 20,
+          "B_primary_character_edits": 20
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk05-spk06-dialogue007",
+          "speaker_role": "spk06",
+          "reference_characters": 135,
+          "A_character_edits": 12,
+          "B_character_edits": 12,
+          "A_primary_character_edits": 12,
+          "B_primary_character_edits": 12
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk05-spk06-dialogue010",
+          "speaker_role": "spk05",
+          "reference_characters": 114,
+          "A_character_edits": 2,
+          "B_character_edits": 2,
+          "A_primary_character_edits": 2,
+          "B_primary_character_edits": 2
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk05-spk06-dialogue010",
+          "speaker_role": "spk06",
+          "reference_characters": 137,
+          "A_character_edits": 4,
+          "B_character_edits": 4,
+          "A_primary_character_edits": 4,
+          "B_primary_character_edits": 4
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk05-spk06-dialogue014",
+          "speaker_role": "spk05",
+          "reference_characters": 182,
+          "A_character_edits": 20,
+          "B_character_edits": 18,
+          "A_primary_character_edits": 18,
+          "B_primary_character_edits": 18
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk05-spk06-dialogue014",
+          "speaker_role": "spk06",
+          "reference_characters": 152,
+          "A_character_edits": 5,
+          "B_character_edits": 5,
+          "A_primary_character_edits": 5,
+          "B_primary_character_edits": 5
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk09-spk10-dialogue004",
+          "speaker_role": "spk09",
+          "reference_characters": 74,
+          "A_character_edits": 4,
+          "B_character_edits": 4,
+          "A_primary_character_edits": 4,
+          "B_primary_character_edits": 4
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk09-spk10-dialogue004",
+          "speaker_role": "spk10",
+          "reference_characters": 118,
+          "A_character_edits": 19,
+          "B_character_edits": 18,
+          "A_primary_character_edits": 19,
+          "B_primary_character_edits": 18
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk09-spk10-dialogue018",
+          "speaker_role": "spk09",
+          "reference_characters": 44,
+          "A_character_edits": 5,
+          "B_character_edits": 5,
+          "A_primary_character_edits": 5,
+          "B_primary_character_edits": 5
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk09-spk10-dialogue018",
+          "speaker_role": "spk10",
+          "reference_characters": 52,
+          "A_character_edits": 4,
+          "B_character_edits": 4,
+          "A_primary_character_edits": 4,
+          "B_primary_character_edits": 4
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk09-spk10-dialogue039",
+          "speaker_role": "spk09",
+          "reference_characters": 143,
+          "A_character_edits": 15,
+          "B_character_edits": 15,
+          "A_primary_character_edits": 15,
+          "B_primary_character_edits": 15
+        },
+        {
+          "group_id": "guard-saslaw-ja-spk09-spk10-dialogue039",
+          "speaker_role": "spk10",
+          "reference_characters": 242,
+          "A_character_edits": 30,
+          "B_character_edits": 30,
+          "A_primary_character_edits": 30,
+          "B_primary_character_edits": 30
+        }
+      ],
+      "evidence_sha256": {
+        "observed-before-gold.json": "515f774b7b4be373e2086bbe874260dbfd39345f8b95e7c7d862f13fc25ce061",
+        "scores.json": "96551dfb9dd5abb2d1d6f897b30a2c83d6d7c61f2c34671f5699bd887bd19914",
+        "references.json": "f758235be03ffa87d48ba5dc8f7f238757c4b11972bdefae23a4764ac60cfb84",
+        "cost-reconciliation.json": "0c6ffc0be353845845bec472732fc4d2d200874dee34c6d57a6b09d7f7b1e76d",
+        "bundle/input/manifest.json": "8895a4d7dad08202360fea4ef4c1ab498c9f26cc34df50c9751a35ac06816967",
+        "bundle/files.json": "898e99182a594d8208f154fe42ed81af76756b3b44c6c5c4f8f1ed15de2848f3",
+        "scheduled-latency-audit.json": "3fa7cb430732f539134294be39361071ff04917f157f50313928b14aac9a80f0"
+      },
+      "scheduled_input_latency": [
+        {
+          "language": "ja",
+          "variant": "A",
+          "captions": 56,
+          "translated": 55,
+          "translated_within_2390": 55,
+          "max_caption_minus_scheduled_ms": 1599.181782333333,
+          "max_caption_minus_injected_ms": 1598.9655990000028,
+          "unavailable": 1
+        },
+        {
+          "language": "ja",
+          "variant": "B",
+          "captions": 56,
+          "translated": 55,
+          "translated_within_2390": 55,
+          "max_caption_minus_scheduled_ms": 621.8246050000016,
+          "max_caption_minus_injected_ms": 621.184027000003,
+          "unavailable": 1
+        }
+      ],
+      "input_cohort": "ja"
+    }
+  ],
+  "cost": {
+    "cumulative_soniox_usd": "2.1239620000",
+    "authorized_total_usd": "2.5000000000",
+    "remaining_usd": "0.3760380000",
+    "pending_requests": 0
+  },
+  "packaging": {
+    "build_kind": "validation_overlay",
+    "normal_repository_dockerfile_built": false,
+    "image_id": "sha256:c95a793902ae63324719e48b728d102688cf68b675da18ee5061c6abc46616ff",
+    "architecture": "arm64",
+    "source_commit": "e4c93ee9b12b408366552bef76cfa7a1d92fa412",
+    "source_archive_sha256": "ecc95ba45e99913c1a638b465bd05e511f80b32664440bc4de7c5536dcb4b91e",
+    "all_expected_app_and_model_hashes_match": true,
+    "checked_files": 56,
+    "native_worker_sha256": "9e1f19a3395d725ef4aa1dab7a8514ed36d757eb2984fa83e8a83b4bdf02dfc8",
+    "native_binary_matches_measured": true,
+    "smoke_passed": true,
+    "all_six_prefix_hints_match_paid_candidate": true,
+    "production_unchanged": true,
+    "owned_containers_remaining": 0,
+    "inference_network": "none",
+    "credentials_provided": false,
+    "scope": "Validation overlay image using the measured candidate artifacts, SQLite/Opus, native startup, silent request and six known prefix hints. No full-pipeline timing claim from this packaging check."
+  },
+  "limits": [
+    "Small published cohorts; Korean read speech has two speakers, not general spontaneous-conversation proof.",
+    "Known-cohort confirmation does not create new independent evidence.",
+    "Model training-data overlap unknown.",
+    "The Korean native-model contribution is not isolated from fresh secondary Soniox response variability.",
+    "Previous 40 ms producer-clock failures remain failures; candidate latency is additionally audited from scheduled input.",
+    "Translation content quality, real Discord behavior and microphone-to-display latency remain unmeasured.",
+    "No production deployment or merge."
+  ],
+  "input_cohorts": {
+    "ja": [
+      {
+        "group_id": "guard-saslaw-ja-spk05-spk06-dialogue007",
+        "duration_ms": 54567.0625,
+        "speakers": 2,
+        "sources": [
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue007-spk06-000",
+            "pcm_sha256": "a2c8dc6cde09e572d3e1cfdff05bf21f5147aa1f5fd3134a11224f0e0707cc0e",
+            "source_start_frame": 99015,
+            "source_end_frame": 168285,
+            "scheduled_start_ms": 0.0,
+            "scheduled_end_ms": 1443.125
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue007-spk05-000",
+            "pcm_sha256": "a111b8191f82f2ab0d99603dd362e17b7e5f5e5fb1a6108624968aff93367034",
+            "source_start_frame": 178879,
+            "source_end_frame": 574126,
+            "scheduled_start_ms": 1663.8333333333333,
+            "scheduled_end_ms": 9898.145833333334
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue007-spk05-001",
+            "pcm_sha256": "2ee3f095b950fbe7441aad7d58bee2fb4ad53b3de97fedd35c832a65b218477e",
+            "source_start_frame": 592054,
+            "source_end_frame": 777861,
+            "scheduled_start_ms": 10271.645833333334,
+            "scheduled_end_ms": 14142.625
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue007-spk06-001",
+            "pcm_sha256": "75cccbc9471819c8757b064a0dee45839042876e5e59d1c333d90a1950b83ade",
+            "source_start_frame": 746893,
+            "source_end_frame": 1087538,
+            "scheduled_start_ms": 13497.458333333334,
+            "scheduled_end_ms": 20594.229166666668
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue007-spk05-002",
+            "pcm_sha256": "31534a2316e827f731f31d477192f253ab123e201e9f35b4a068e89e30b0f9bd",
+            "source_start_frame": 1105467,
+            "source_end_frame": 1449372,
+            "scheduled_start_ms": 20967.75,
+            "scheduled_end_ms": 28132.4375
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue007-spk06-002",
+            "pcm_sha256": "c8fff97067f01d8c43f74ba940fcea0b4999b26b21d73029597d008cb84574fb",
+            "source_start_frame": 1439593,
+            "source_end_frame": 1622139,
+            "scheduled_start_ms": 27928.708333333332,
+            "scheduled_end_ms": 31731.75
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue007-spk05-003",
+            "pcm_sha256": "f1d7021c4e4adfdfea767b53be34cea290eb1ca7df5e53c27592e1332a3ee225",
+            "source_start_frame": 1641698,
+            "source_end_frame": 1953820,
+            "scheduled_start_ms": 32139.229166666668,
+            "scheduled_end_ms": 38641.770833333336
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue007-spk06-003",
+            "pcm_sha256": "1bcb286e97636c8019d517edb8b90d22762498aff7683a0bd9878e87c2fa78b9",
+            "source_start_frame": 1891885,
+            "source_end_frame": 2175484,
+            "scheduled_start_ms": 37351.458333333336,
+            "scheduled_end_ms": 43259.770833333336
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue007-spk05-004",
+            "pcm_sha256": "d321a8c88970d7c03dfe17be9da5f8247b87b7a4b9d2a7a56b9631a64ea7853e",
+            "source_start_frame": 2184448,
+            "source_end_frame": 2345806,
+            "scheduled_start_ms": 43446.520833333336,
+            "scheduled_end_ms": 46808.145833333336
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue007-spk06-004",
+            "pcm_sha256": "703fdca08aa7ffee6e7580490f5f6761470418fd2593b44ae9f2608db30d3df6",
+            "source_start_frame": 2336027,
+            "source_end_frame": 2486791,
+            "scheduled_start_ms": 46604.416666666664,
+            "scheduled_end_ms": 49745.333333333336
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue007-spk05-005",
+            "pcm_sha256": "ca2ea4e4b6135bd02b22d6bec3cdb3ffb68a1892bf2ac2571de5a26325f1ca42",
+            "source_start_frame": 2501460,
+            "source_end_frame": 2718234,
+            "scheduled_start_ms": 50050.9375,
+            "scheduled_end_ms": 54567.0625
+          }
+        ]
+      },
+      {
+        "group_id": "guard-saslaw-ja-spk05-spk06-dialogue010",
+        "duration_ms": 38279.729166666664,
+        "speakers": 2,
+        "sources": [
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue010-spk06-000",
+            "pcm_sha256": "6f8b25f57cdaf58d3cb1633b1c3d6bbb591d7c72e45b83b0f74534396a7e3c0e",
+            "source_start_frame": 74567,
+            "source_end_frame": 318234,
+            "scheduled_start_ms": 0.0,
+            "scheduled_end_ms": 5076.395833333333
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue010-spk05-000",
+            "pcm_sha256": "be7a75833333f895c4c3fee14f667c052e4c9d5cf2e823bfa258787ed05b6468",
+            "source_start_frame": 332903,
+            "source_end_frame": 670289,
+            "scheduled_start_ms": 5382.0,
+            "scheduled_end_ms": 12410.875
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue010-spk06-001",
+            "pcm_sha256": "6bd7d44ce3b7669213be3846fd998054f5ad7af5447341e238ae31366a64a808",
+            "source_start_frame": 670289,
+            "source_end_frame": 784380,
+            "scheduled_start_ms": 12410.875,
+            "scheduled_end_ms": 14787.770833333334
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue010-spk05-001",
+            "pcm_sha256": "e9b97e43ab7aab76c5648ed5f7cf0f7cc51f305744aa16b3b9d4c68d001e9f51",
+            "source_start_frame": 789270,
+            "source_end_frame": 979151,
+            "scheduled_start_ms": 14889.645833333334,
+            "scheduled_end_ms": 18845.5
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue010-spk06-002",
+            "pcm_sha256": "c48c7db5244cf1535d0e0c650a026bad0fe6c82f731f63e7afe86f654e877ddd",
+            "source_start_frame": 1029677,
+            "source_end_frame": 1203260,
+            "scheduled_start_ms": 19898.125,
+            "scheduled_end_ms": 23514.4375
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue010-spk05-002",
+            "pcm_sha256": "1cc50c1c94245e83c9756daeeb3231bd53114027402bdc8766e5bd848ea366af",
+            "source_start_frame": 1226078,
+            "source_end_frame": 1310017,
+            "scheduled_start_ms": 23989.8125,
+            "scheduled_end_ms": 25738.541666666668
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue010-spk06-003",
+            "pcm_sha256": "c42c3f0cac49b800ffc4c89ae46b1e2e4c05d206fc49ae1f6da4a9e8f2fffa8c",
+            "source_start_frame": 1319796,
+            "source_end_frame": 1477895,
+            "scheduled_start_ms": 25942.270833333332,
+            "scheduled_end_ms": 29236.0
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue010-spk05-003",
+            "pcm_sha256": "e0adc800a30e8c35dfd35e4f4b101b46c138f36c873ff34389941cbc6ff6e321",
+            "source_start_frame": 1476265,
+            "source_end_frame": 1512122,
+            "scheduled_start_ms": 29202.041666666668,
+            "scheduled_end_ms": 29949.0625
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue010-spk06-004",
+            "pcm_sha256": "97f50313f399e9939eb1e26868a19a37951f8dbc3226c6b20d58996b337fa8da",
+            "source_start_frame": 1539830,
+            "source_end_frame": 1697114,
+            "scheduled_start_ms": 30526.3125,
+            "scheduled_end_ms": 33803.0625
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue010-spk05-004",
+            "pcm_sha256": "394d3ea276f0e1d7d9b3a4d9e6f6d843f9b9afb7089af9f1e032e4df3a7c2b03",
+            "source_start_frame": 1711783,
+            "source_end_frame": 1846248,
+            "scheduled_start_ms": 34108.666666666664,
+            "scheduled_end_ms": 36910.020833333336
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue010-spk06-005",
+            "pcm_sha256": "a725780c1cab731a2edffecb77a8c158eb912c1f8bb8470c166ab790d8b19410",
+            "source_start_frame": 1860102,
+            "source_end_frame": 1911994,
+            "scheduled_start_ms": 37198.645833333336,
+            "scheduled_end_ms": 38279.729166666664
+          }
+        ]
+      },
+      {
+        "group_id": "guard-saslaw-ja-spk05-spk06-dialogue014",
+        "duration_ms": 59524.604166666664,
+        "speakers": 2,
+        "sources": [
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue014-spk06-000",
+            "pcm_sha256": "2158f02c306e9dedb26a2a7f2ce62a98fc411bf93408e718011befa8085786f5",
+            "source_start_frame": 77827,
+            "source_end_frame": 335348,
+            "scheduled_start_ms": 0.0,
+            "scheduled_end_ms": 5365.020833333333
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue014-spk05-000",
+            "pcm_sha256": "88ef13f2437585464e19f8a965ee64ece73e21a8887464de31ccdafde6c7bd48",
+            "source_start_frame": 372020,
+            "source_end_frame": 869134,
+            "scheduled_start_ms": 6129.020833333333,
+            "scheduled_end_ms": 16485.5625
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue014-spk06-001",
+            "pcm_sha256": "cd53eaad17320575a0aafeb78ec7e561edd6fa72f794b28c426914253a94521d",
+            "source_start_frame": 887063,
+            "source_end_frame": 1006044,
+            "scheduled_start_ms": 16859.083333333332,
+            "scheduled_end_ms": 19337.854166666668
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue014-spk05-001",
+            "pcm_sha256": "0988ec69c6a2ea17f06729f17ccb0672a24261e37f715e0fa850f06ed10fd5cc",
+            "source_start_frame": 1028862,
+            "source_end_frame": 1439593,
+            "scheduled_start_ms": 19813.229166666668,
+            "scheduled_end_ms": 28370.125
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue014-spk06-002",
+            "pcm_sha256": "b6ed305c67d7a0b4e74864ff84c1ee02722eb5926884ff250d049afbd7d5c7df",
+            "source_start_frame": 1445297,
+            "source_end_frame": 1517012,
+            "scheduled_start_ms": 28488.958333333332,
+            "scheduled_end_ms": 29983.020833333332
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue014-spk05-002",
+            "pcm_sha256": "4cb2b4e34719bb707bc52c61541c7497554f897ba9b69ad01710bbdffa472a4e",
+            "source_start_frame": 1547165,
+            "source_end_frame": 1710153,
+            "scheduled_start_ms": 30611.208333333332,
+            "scheduled_end_ms": 34006.791666666664
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue014-spk06-003",
+            "pcm_sha256": "a69e45782e20d112d7fb72892a44fd97e7ea3004288575020cac40a895e1d334",
+            "source_start_frame": 1704448,
+            "source_end_frame": 1904109,
+            "scheduled_start_ms": 33887.9375,
+            "scheduled_end_ms": 38047.541666666664
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue014-spk05-003",
+            "pcm_sha256": "0305906a9457261c2c7e386ea24dab045c5c8f3fd425ec178f0de1513430696f",
+            "source_start_frame": 1917148,
+            "source_end_frame": 2054873,
+            "scheduled_start_ms": 38319.1875,
+            "scheduled_end_ms": 41188.458333333336
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue014-spk06-004",
+            "pcm_sha256": "c1cdbb5d341c8b34cbf2042475eb6270269bd3d97f30196811d364386fbb5015",
+            "source_start_frame": 2071986,
+            "source_end_frame": 2415891,
+            "scheduled_start_ms": 41544.979166666664,
+            "scheduled_end_ms": 48709.666666666664
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue014-spk05-004",
+            "pcm_sha256": "b0e2e68569e23f928087a1d4be7de0d3ecd8ae7bbef33ba91f1b473250fa89f2",
+            "source_start_frame": 2458268,
+            "source_end_frame": 2590289,
+            "scheduled_start_ms": 49592.520833333336,
+            "scheduled_end_ms": 52342.958333333336
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue014-spk05-005",
+            "pcm_sha256": "9c5b764f0fa392790406aa4a924465766fbbf62e1984e4ebbeb7bc855d3894dd",
+            "source_start_frame": 2645705,
+            "source_end_frame": 2760611,
+            "scheduled_start_ms": 53497.458333333336,
+            "scheduled_end_ms": 55891.333333333336
+          },
+          {
+            "id": "guard-saslaw-ja-spk05-spk06-dialogue014-spk05-006",
+            "pcm_sha256": "7297a8836df247fd1b59a79f51e2da542820bd5aab12489249e853ed00fa774c",
+            "source_start_frame": 2820917,
+            "source_end_frame": 2935008,
+            "scheduled_start_ms": 57147.708333333336,
+            "scheduled_end_ms": 59524.604166666664
+          }
+        ]
+      },
+      {
+        "group_id": "guard-saslaw-ja-spk09-spk10-dialogue004",
+        "duration_ms": 30560.270833333332,
+        "speakers": 2,
+        "sources": [
+          {
+            "id": "guard-saslaw-ja-spk09-spk10-dialogue004-spk10-000",
+            "pcm_sha256": "ac1dc76844af37dfb1372a8414265aea598bae0707142bd485d6b7e6f56c07b5",
+            "source_start_frame": 30560,
+            "source_end_frame": 352462,
+            "scheduled_start_ms": 0.0,
+            "scheduled_end_ms": 6706.291666666667
+          },
+          {
+            "id": "guard-saslaw-ja-spk09-spk10-dialogue004-spk09-000",
+            "pcm_sha256": "dc34e65939654bd7845afebc29238ae2ba4b4f3910a5bb15b2511ce582464f58",
+            "source_start_frame": 362241,
+            "source_end_frame": 805569,
+            "scheduled_start_ms": 6910.020833333333,
+            "scheduled_end_ms": 16146.020833333334
+          },
+          {
+            "id": "guard-saslaw-ja-spk09-spk10-dialogue004-spk10-001",
+            "pcm_sha256": "893dfd20e47df23341b1018f526d7ef71d99bcf4d0e4e82ca44e1b237ad2505a",
+            "source_start_frame": 824312,
+            "source_end_frame": 1366248,
+            "scheduled_start_ms": 16536.5,
+            "scheduled_end_ms": 27826.833333333332
+          },
+          {
+            "id": "guard-saslaw-ja-spk09-spk10-dialogue004-spk09-001",
+            "pcm_sha256": "16c71723293adf53647ca69940db54192694bea99849658febec751ee303e125",
+            "source_start_frame": 1372767,
+            "source_end_frame": 1497453,
+            "scheduled_start_ms": 27962.645833333332,
+            "scheduled_end_ms": 30560.270833333332
+          }
+        ]
+      },
+      {
+        "group_id": "guard-saslaw-ja-spk09-spk10-dialogue018",
+        "duration_ms": 13854.0,
+        "speakers": 2,
+        "sources": [
+          {
+            "id": "guard-saslaw-ja-spk09-spk10-dialogue018-spk09-000",
+            "pcm_sha256": "e3f8f3e980f4220db6de4e96b56bac2ad07e4984db6f350c7a270c5be055049a",
+            "source_start_frame": 61528,
+            "source_end_frame": 195993,
+            "scheduled_start_ms": 0.0,
+            "scheduled_end_ms": 2801.3541666666665
+          },
+          {
+            "id": "guard-saslaw-ja-spk09-spk10-dialogue018-spk10-000",
+            "pcm_sha256": "eb97f53a77894ccb271a06ada31ad13b9641d2cd21615c508234d7ee31f3983f",
+            "source_start_frame": 196808,
+            "source_end_frame": 490187,
+            "scheduled_start_ms": 2818.3333333333335,
+            "scheduled_end_ms": 8930.395833333334
+          },
+          {
+            "id": "guard-saslaw-ja-spk09-spk10-dialogue018-spk09-001",
+            "pcm_sha256": "a51d17ab3e28194dbe3210817cc7f53e9f03bbbe68c248aa835b6cbc0806f142",
+            "source_start_frame": 484482,
+            "source_end_frame": 645840,
+            "scheduled_start_ms": 8811.541666666666,
+            "scheduled_end_ms": 12173.166666666666
+          },
+          {
+            "id": "guard-saslaw-ja-spk09-spk10-dialogue018-spk10-001",
+            "pcm_sha256": "a7f3d72e24107fd73ce583bb13f35266d57a8bd94b4f293f53d98e7b78f3e5e6",
+            "source_start_frame": 619762,
+            "source_end_frame": 726520,
+            "scheduled_start_ms": 11629.875,
+            "scheduled_end_ms": 13854.0
+          }
+        ]
+      },
+      {
+        "group_id": "guard-saslaw-ja-spk09-spk10-dialogue039",
+        "duration_ms": 57045.854166666664,
+        "speakers": 2,
+        "sources": [
+          {
+            "id": "guard-saslaw-ja-spk09-spk10-dialogue039-spk09-000",
+            "pcm_sha256": "a2693b9503d6a750d07dcda09b415ba2a700740f2013867095e23ca94cf51189",
+            "source_start_frame": 56638,
+            "source_end_frame": 372020,
+            "scheduled_start_ms": 0.0,
+            "scheduled_end_ms": 6570.458333333333
+          },
+          {
+            "id": "guard-saslaw-ja-spk09-spk10-dialogue039-spk10-000",
+            "pcm_sha256": "839330c735ff8c02ad9ff987d1ecf2e7d5557412233f5c7ba4b5fb68403a1e88",
+            "source_start_frame": 393209,
+            "source_end_frame": 1188591,
+            "scheduled_start_ms": 7011.895833333333,
+            "scheduled_end_ms": 23582.354166666668
+          },
+          {
+            "id": "guard-saslaw-ja-spk09-spk10-dialogue039-spk09-001",
+            "pcm_sha256": "c5b9b6f3a72e3406d5bc9acd4edb082c4136bfbfc008cff594ba4f791b8cd164",
+            "source_start_frame": 1206520,
+            "source_end_frame": 1550424,
+            "scheduled_start_ms": 23955.875,
+            "scheduled_end_ms": 31120.541666666668
+          },
+          {
+            "id": "guard-saslaw-ja-spk09-spk10-dialogue039-spk10-001",
+            "pcm_sha256": "110b184282f5a615c9580ada6739fd626fd452e1428643ac3dc540693924fe6b",
+            "source_start_frame": 1522716,
+            "source_end_frame": 2131477,
+            "scheduled_start_ms": 30543.291666666668,
+            "scheduled_end_ms": 43225.8125
+          },
+          {
+            "id": "guard-saslaw-ja-spk09-spk10-dialogue039-spk09-002",
+            "pcm_sha256": "2d2161c001b99828713972653d0cf9ed8488a309e7dbc657a6b80bef176c8c9d",
+            "source_start_frame": 2144516,
+            "source_end_frame": 2220306,
+            "scheduled_start_ms": 43497.458333333336,
+            "scheduled_end_ms": 45076.416666666664
+          },
+          {
+            "id": "guard-saslaw-ja-spk09-spk10-dialogue039-spk10-002",
+            "pcm_sha256": "1e68e2f451305cf80581873469f25355d8cd6f8536fcb78c1813311f632ab3cf",
+            "source_start_frame": 2228455,
+            "source_end_frame": 2497385,
+            "scheduled_start_ms": 45246.1875,
+            "scheduled_end_ms": 50848.895833333336
+          },
+          {
+            "id": "guard-saslaw-ja-spk09-spk10-dialogue039-spk09-003",
+            "pcm_sha256": "1a241d443bd2c9201b294628cb9d2435560d420bea20c2a4b9899eb5641fc95f",
+            "source_start_frame": 2513684,
+            "source_end_frame": 2613922,
+            "scheduled_start_ms": 51188.458333333336,
+            "scheduled_end_ms": 53276.75
+          },
+          {
+            "id": "guard-saslaw-ja-spk09-spk10-dialogue039-spk10-003",
+            "pcm_sha256": "bf44e9dc66537ab07ce114b97f7690b06ffe139951f21fc822a7a61e8d9471fe",
+            "source_start_frame": 2618812,
+            "source_end_frame": 2654669,
+            "scheduled_start_ms": 53378.625,
+            "scheduled_end_ms": 54125.645833333336
+          },
+          {
+            "id": "guard-saslaw-ja-spk09-spk10-dialogue039-spk09-004",
+            "pcm_sha256": "3d51497b9a9b666f587497f41667a149c494dc7f66792715c93b731b0c52a199",
+            "source_start_frame": 2658744,
+            "source_end_frame": 2748387,
+            "scheduled_start_ms": 54210.541666666664,
+            "scheduled_end_ms": 56078.104166666664
+          },
+          {
+            "id": "guard-saslaw-ja-spk09-spk10-dialogue039-spk10-004",
+            "pcm_sha256": "feacd2ac2fb0c856d70e8910ebd787148a06537f8143b711f804a7def4056cef",
+            "source_start_frame": 2739423,
+            "source_end_frame": 2794839,
+            "scheduled_start_ms": 55891.354166666664,
+            "scheduled_end_ms": 57045.854166666664
+          }
+        ]
+      }
+    ],
+    "ko": [
+      {
+        "group_id": "deeply-ko-airbnbstudio-sub100102a00161",
+        "duration_ms": 6404.0625,
+        "speakers": 1,
+        "sources": [
+          {
+            "id": "deeply-ko-airbnbstudio-sub100102a00161",
+            "pcm_sha256": "6de10eafc587f27090658f52d6c5f9e472ef726ed4362bb15fc8a6934caef791",
+            "source_start_frame": 0,
+            "source_end_frame": 307395,
+            "scheduled_start_ms": 0,
+            "scheduled_end_ms": 6404.0625
+          }
+        ]
+      },
+      {
+        "group_id": "deeply-ko-airbnbstudio-sub100101a00206",
+        "duration_ms": 6519.4375,
+        "speakers": 1,
+        "sources": [
+          {
+            "id": "deeply-ko-airbnbstudio-sub100101a00206",
+            "pcm_sha256": "5b03666e8ab39d20135400a4fa5c0e30276ae380c19c2156684774bed7c9fcec",
+            "source_start_frame": 0,
+            "source_end_frame": 312933,
+            "scheduled_start_ms": 0,
+            "scheduled_end_ms": 6519.4375
+          }
+        ]
+      },
+      {
+        "group_id": "deeply-ko-anechoicchamber-sub100120a00055",
+        "duration_ms": 5971.3125,
+        "speakers": 1,
+        "sources": [
+          {
+            "id": "deeply-ko-anechoicchamber-sub100120a00055",
+            "pcm_sha256": "1e855e461a8c24d5f0902db2ea9462cb29756a974472e83a5657adc6d613fdf4",
+            "source_start_frame": 0,
+            "source_end_frame": 286623,
+            "scheduled_start_ms": 0,
+            "scheduled_end_ms": 5971.3125
+          }
+        ]
+      },
+      {
+        "group_id": "deeply-ko-anechoicchamber-sub100122a00005",
+        "duration_ms": 7175.125,
+        "speakers": 1,
+        "sources": [
+          {
+            "id": "deeply-ko-anechoicchamber-sub100122a00005",
+            "pcm_sha256": "2b8050860b743e6adf0eef5e99a9db9c33e0433d6a753ff2a92169f705c2497e",
+            "source_start_frame": 0,
+            "source_end_frame": 344406,
+            "scheduled_start_ms": 0,
+            "scheduled_end_ms": 7175.125
+          }
+        ]
+      },
+      {
+        "group_id": "deeply-ko-dancestudio-sub100111a00028",
+        "duration_ms": 4981.8125,
+        "speakers": 1,
+        "sources": [
+          {
+            "id": "deeply-ko-dancestudio-sub100111a00028",
+            "pcm_sha256": "642e71e91a70a21e8c172fb6e493c239238817fdd51ff68515a7d1a3343b8fbb",
+            "source_start_frame": 0,
+            "source_end_frame": 239127,
+            "scheduled_start_ms": 0,
+            "scheduled_end_ms": 4981.8125
+          }
+        ]
+      },
+      {
+        "group_id": "deeply-ko-dancestudio-sub100112a00025",
+        "duration_ms": 5507.9375,
+        "speakers": 1,
+        "sources": [
+          {
+            "id": "deeply-ko-dancestudio-sub100112a00025",
+            "pcm_sha256": "a38729f87ce2b04d5412321855d462bb04261bd5a0dda54c9591b226dd2eec90",
+            "source_start_frame": 0,
+            "source_end_frame": 264381,
+            "scheduled_start_ms": 0,
+            "scheduled_end_ms": 5507.9375
+          }
+        ]
+      }
+    ]
+  },
+  "followup_20260921": {
+    "goal_completed": false,
+    "application_commit_unchanged": "2bc275a7f4e58b8a0f7274dba07a34782ba04b5e",
+    "production_changed": false,
+    "japanese": {
+      "dataset": "IngCrowd/japanese-themed-dialogue",
+      "revision": "e2eed8769400269f20821deb0e47e68b40012e8b",
+      "recording": "japanese-themed-dialogue01",
+      "window_ms": 60000,
+      "sources": 28,
+      "selection": "First minute, chosen before reading recognition outputs or references; all annotated intervals retained, including 8.75-second source. Participant overlap with other corpora unknown.",
+      "totals": {
+        "streams": 2,
+        "reference_characters": 395,
+        "A_edits": 44,
+        "B_edits": 44,
+        "A_primary_edits": 44,
+        "B_primary_edits": 44,
+        "B_unguarded_counterfactual_edits": 44,
+        "vetoes": 0
+      },
+      "originals_byte_identical": true,
+      "semantic_gain_observed": false,
+      "scheduled_caption_latency": [
+        {
+          "variant": "A",
+          "runtime_sha256": "be55f3c75d0484eeb78ff9b4af496507846410e4b8eb2b3677b0cd405e36ad12",
+          "count": 30,
+          "within_2390": 30,
+          "maximum_ms": 626.5824980000034
+        },
+        {
+          "variant": "B",
+          "runtime_sha256": "82730ea0b4fe004671525797f89b37f871c3031f3e780cf136a97c7dd6120d73",
+          "count": 30,
+          "within_2390": 30,
+          "maximum_ms": 646.0385510000051
+        }
+      ],
+      "maximum_input_lateness_ms": {
+        "A": 65.01400600000488,
+        "B": 75.74112600000808
+      },
+      "passes_40ms_input_diagnostic": false,
+      "ignore_empty_endpoint_counterfactual": {
+        "newly_eligible": 5,
+        "confidence_vetoes": 4,
+        "selected_original_identical": 1,
+        "character_edits": 44
+      }
+    },
+    "korean_full_hint": {
+      "scope": "All 60 previously used development segments. Fresh unhinted and hinted sessions; saved-output guard counterfactual; not integrated end-to-end.",
+      "totals": {
+        "cases": 60,
+        "reference_characters": 1239,
+        "historical_primary": 101,
+        "native": 87,
+        "unhinted": 106,
+        "full_native_hint": 84,
+        "existing_guard": 92
+      },
+      "new_lexical_errors_passing_guard": 2,
+      "native_speaker_listening_review": false,
+      "decision": {
+        "adopt": false,
+        "reason": "Full-text hints repair one lexical error, one verb-form error and part of one referent, but introduce two lexical errors that survive the existing confidence guard; a homophone spelling also regresses. The latency feasibility sum exceeds 2390ms for 49/60 cases. Do not implement or deploy this variant.",
+        "scores_sha256": "16c42b604ff2f6db74ced4740e50efaf4d53347289aae9f4d54829791e4449e6",
+        "semantic_sha256": "62c9224e0eb40c7c4eb51f9781d1887b300e29f600def272ed3e89d209dc49e3",
+        "timing": {
+          "scope": "300ms receiver/manual delay + measured Pi native completion tail + separately measured buffered cloud completion; not actual end-to-end latency",
+          "over_2390ms": 49,
+          "cases": 60,
+          "median_ms": 2705.8635004999896,
+          "maximum_ms": 6664.73536299999
+        },
+        "new_paid_runs_for_this_variant_planned": 0
+      }
+    },
+    "cost": {
+      "authorized_total_usd": "2.5000000000",
+      "korean_full_hint_usd": "0.1953840000",
+      "japanese_new_dialogue_usd": "0.0340200000",
+      "followup_total_usd": "0.2294040000",
+      "cumulative_extra_cost_usd": "2.3533660000",
+      "remaining_authorized_usd": "0.1466340000",
+      "billed_requests": 136,
+      "pending_requests": 0
+    },
+    "evidence_sha256": {
+      "full-hint-cloud/seal.json": "ce3ad9248554a1ef100597617fca18c2a6b919580c1e24880a9192eccb707445",
+      "full-hint-cloud/scores.json": "16c42b604ff2f6db74ced4740e50efaf4d53347289aae9f4d54829791e4449e6",
+      "full-hint-cloud/semantic-adjudication.json": "62c9224e0eb40c7c4eb51f9781d1887b300e29f600def272ed3e89d209dc49e3",
+      "full-hint-cloud/decision.json": "4245891ae419ca5999054dfac65bb47a7babc0ee38a56bbfd3b4ef76713fdaa9",
+      "full-hint-cloud/cost-reconciliation.json": "7b062a4ab2fac474deca3beb8ae37672bf41f7aae98d8ad94bef702c584e8536",
+      "japanese-new-dialogue/seal.json": "9e9080e92fb4c14a2a9df7c2f4ee40f644df7922a7ebfbd60f9bd0e668742714",
+      "japanese-new-dialogue/scoring-before-inference.json": "d39d6e3627c7cf38006951d1d3b25d1bd3a2e66dd873611f325610ce05e1c514",
+      "japanese-new-dialogue/scores.json": "4c5a84a464d5d86c1ba1138d40caec026ebe401061ea47a7496f6e612f32d1a9",
+      "japanese-new-dialogue/timing-audit.json": "15cfcee9b76ae9b673a0887f6b80f229905160516b2998b491b4eaa03092c436",
+      "japanese-new-dialogue/scheduled-latency.json": "cafa983f9520ddbad3b8419c7d7cf18fbcb51c4ec1646be0d3cffa569f6a8713",
+      "japanese-new-dialogue/empty-endpoint-audit.json": "79b9374af29ce5271bbcbf3b1ef45058b9c03f144679c8a6a611020acdb9ba65",
+      "japanese-new-dialogue/cost-reconciliation.json": "ce74ad2d5fa27474414b23402361d23ec6d309c440551dacc46690a07e890b74"
+    },
+    "audio_inputs": [
+      {
+        "file": "japanese-themed-dialogue01_individual_audio1.wav",
+        "sha256": "9ab7c49391960428920b89b4206da6e9281092651d039d2e1ffbbae001448b54",
+        "bytes": 21624910,
+        "url": "https://huggingface.co/datasets/IngCrowd/japanese-themed-dialogue/resolve/e2eed8769400269f20821deb0e47e68b40012e8b/japanese-themed-dialogue01/japanese-themed-dialogue01_individual_audio1.wav"
+      },
+      {
+        "file": "japanese-themed-dialogue01_individual_audio2.wav",
+        "sha256": "686a626dae1572cb32e977a9e60300e9acafacd11a9dfbfaaa373ca21ac80566",
+        "bytes": 21624910,
+        "url": "https://huggingface.co/datasets/IngCrowd/japanese-themed-dialogue/resolve/e2eed8769400269f20821deb0e47e68b40012e8b/japanese-themed-dialogue01/japanese-themed-dialogue01_individual_audio2.wav"
+      }
+    ],
+    "remaining": [
+      "Reproducible content improvement across additional natural conversations and speakers",
+      "Actual Discord microphone/Opus/network/display and translation quality",
+      "40ms input producer diagnostic"
+    ]
+  }
+}

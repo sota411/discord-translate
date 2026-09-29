@@ -10,7 +10,9 @@ export class DolphinWorker {
   private constructor(child: ChildProcessWithoutNullStreams) { this.#child = child; }
 
   public static async start(command = "/opt/dolphin/worker", args = [
-    "/opt/dolphin/model.int8.onnx", "/opt/dolphin/tokens.txt",
+    "/opt/dolphin/encoder-epoch-99-avg-1-chunk-32-left-128.int8.onnx",
+    "/opt/dolphin/decoder-epoch-99-avg-1-chunk-32-left-128.int8.onnx",
+    "/opt/dolphin/joiner-epoch-99-avg-1-chunk-32-left-128.int8.onnx", "/opt/dolphin/tokens.txt",
   ]): Promise<DolphinWorker> {
     const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"],
       env: { PATH: process.env.PATH, LANG: "C.UTF-8" } });
@@ -47,18 +49,51 @@ export class DolphinWorker {
   }
 
   public async transcribe(pcm: Buffer): Promise<string> {
+    const job = this.begin(pcm.length);
+    job.push(pcm);
+    return job.result;
+  }
+
+  public begin(bytes: number): { push: (pcm: Buffer) => void; cancel: () => void; result: Promise<string> } {
     if (this.#failure) throw this.#failure;
     if (this.#closed || this.#reply) throw new Error("補助認識を開始できません");
-    if (!pcm.length || pcm.length > 288_000 || pcm.length % 2) throw new TypeError("補助認識のPCMが不正です");
+    if (!Number.isInteger(bytes) || bytes <= 0 || bytes > 288_000 || bytes % 2) {
+      throw new TypeError("補助認識のPCMが不正です");
+    }
     const header = Buffer.alloc(4);
-    header.writeUInt32LE(pcm.length);
+    header.writeUInt32LE(bytes);
+    let remaining = bytes;
+    let pending = Buffer.alloc(0);
     const timer = setTimeout(() => this.#fail(new Error("補助認識がタイムアウトしました")), 8_000);
-    try {
-      return await new Promise<string>((resolve, reject) => {
-        this.#reply = { resolve, reject };
-        this.#child.stdin.write(Buffer.concat([header, pcm]));
-      });
-    } finally { clearTimeout(timer); }
+    const result = new Promise<string>((resolve, reject) => { this.#reply = { resolve, reject }; })
+      .finally(() => { clearTimeout(timer); });
+    this.#child.stdin.write(header);
+    return {
+      result,
+      push: (pcm) => {
+        if (this.#failure) throw this.#failure;
+        if (this.#closed || !remaining) throw new Error("補助認識への送信は終了しています");
+        if (!pcm.length || pcm.length > remaining || pcm.length % 2) throw new TypeError("補助認識のPCMが不正です");
+        remaining -= pcm.length;
+        // Fixed 20ms frames keep native resampling independent of caller packet sizes.
+        const buffered = Buffer.concat([pending, pcm]);
+        let offset = 0;
+        while (buffered.length - offset >= 1920 || (!remaining && offset < buffered.length)) {
+          const length = Math.min(1920, buffered.length - offset);
+          const frame = Buffer.alloc(4);
+          frame.writeUInt32LE(length);
+          this.#child.stdin.write(Buffer.concat([frame, buffered.subarray(offset, offset + length)]));
+          offset += length;
+        }
+        pending = buffered.subarray(offset);
+      },
+      cancel: () => {
+        if (!remaining || this.#closed || this.#failure) return;
+        remaining = 0;
+        pending = Buffer.alloc(0);
+        this.#child.stdin.write(Buffer.alloc(4));
+      },
+    };
   }
 
   public async close(): Promise<void> {

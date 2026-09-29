@@ -38,7 +38,9 @@ export class SttTurnFinalizer {
   #audioAfterFinalizeRequest = false;
   #transcriptProgressAfterFinalizeRequest = false;
   #emptyEndpointWhileFinalizing = false;
-  #ignoredFinalizedBoundaryCount = 0;
+  readonly #supersededFinalizeAudio: number[] = [];
+  #audioGeneration = 0;
+  #finalizeAudioGeneration = 0;
   #speaking = false;
   #closed = false;
 
@@ -58,6 +60,7 @@ export class SttTurnFinalizer {
 
   public audioReceived(): void {
     if (this.#closed) return;
+    this.#audioGeneration += 1;
     this.#hasPendingAudio = true;
     if (this.#manualFinalizeRequested) this.#audioAfterFinalizeRequest = true;
     if (!this.#speaking) this.#scheduleSpeakingEndFinalize();
@@ -115,10 +118,12 @@ export class SttTurnFinalizer {
     this.#transcriptInactivityTimer.unref();
   }
 
-  public boundaryReceived(kind: SttBoundaryKind, hasUtterance = true): boolean {
-    if (kind === "finalized" && this.#ignoredFinalizedBoundaryCount > 0) {
-      this.#ignoredFinalizedBoundaryCount -= 1;
-      return false;
+  public boundaryReceived(kind: SttBoundaryKind, hasUtterance = true, hasPendingOriginal = false): boolean {
+    if (kind === "finalized" && this.#supersededFinalizeAudio.length > 0) {
+      const generation = this.#supersededFinalizeAudio.shift();
+      // An endpoint may cover only part of the requested audio. Flush its late
+      // final tokens only if no later PCM can belong to a newer utterance.
+      return generation === this.#audioGeneration && hasPendingOriginal;
     }
 
     // An empty natural endpoint has not delivered the pending transcript.
@@ -130,7 +135,7 @@ export class SttTurnFinalizer {
 
     this.#clearTimers();
     if (kind === "endpoint" && this.#manualFinalizeRequested) {
-      this.#ignoredFinalizedBoundaryCount += 1;
+      this.#supersededFinalizeAudio.push(this.#finalizeAudioGeneration);
     }
     const hadAudioAfterFinalizeRequest = this.#audioAfterFinalizeRequest;
     const canFlush = !(kind === "finalized" && this.#emptyEndpointWhileFinalizing &&
@@ -163,6 +168,7 @@ export class SttTurnFinalizer {
       this.#session.sendAudio(this.#silence);
       this.#onTrailingSilenceSent?.(this.#silence);
       this.#session.finalize({ trailing_silence_ms: this.#trailingSilenceMs });
+      this.#finalizeAudioGeneration = this.#audioGeneration;
       this.#manualFinalizeRequested = true;
       this.#onFinalize(reason);
     } catch (error) {

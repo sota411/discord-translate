@@ -4,6 +4,13 @@ import type { OriginalConfidenceSummary } from "../translation/token-assembler.j
 const minimumRepeatedNgramCount = 8;
 const maximumNgramLength = 4;
 
+// Initialize ICU before audio arrives, rather than during the first final caption.
+const segmenters: Record<Language, Intl.Segmenter> = {
+  ja: new Intl.Segmenter("ja", { granularity: "word" }),
+  ko: new Intl.Segmenter("ko", { granularity: "word" }),
+  en: new Intl.Segmenter("en", { granularity: "word" }),
+};
+
 export type RepeatedTranslation = {
   maxRepeatCount: number;
   ngramLength: number;
@@ -44,7 +51,7 @@ function round(value: number, decimalPlaces: number): number {
 
 function words(text: string, language: Language): string[] {
   const normalized = text.normalize("NFKC").toLocaleLowerCase(language);
-  return [...new Intl.Segmenter(language, { granularity: "word" }).segment(normalized)]
+  return [...segmenters[language].segment(normalized)]
     .filter((part) => part.isWordLike)
     .map((part) => part.segment);
 }

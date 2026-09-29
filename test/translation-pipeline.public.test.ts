@@ -397,6 +397,21 @@ void test("Discord Opusの復号直後stereoとSoniox送信前monoを同時に�
   assert.deepEqual(decoded.monoPcm, Buffer.from([0xd0, 0x07, 0x00, 0x00]));
 });
 
+void test("PCMの平均は切り出し位置、符号付きの端値と端数を保持する", () => {
+  const samples = [-32768, -32768, 32767, 32767, -32768, 32767, -2, -1, 1, 2, 0x1234, 0x2345];
+  const storage = Buffer.alloc(samples.length * 2 + 2, 0x7a);
+  const stereo = storage.subarray(1, -1);
+  samples.forEach((sample, index) => stereo.writeInt16LE(sample, index * 2));
+  const before = Buffer.from(storage);
+
+  assert.deepEqual(downmixStereoS16leToMono(stereo), Buffer.from([
+    0x00, 0x80, 0xff, 0x7f, 0x00, 0x00, 0xff, 0xff, 0x01, 0x00, 0xbc, 0x1a,
+  ]));
+  assert.deepEqual(storage, before);
+  assert.deepEqual(downmixStereoS16leToMono(stereo.subarray(0, 0)), Buffer.alloc(0));
+  assert.throws(() => downmixStereoS16leToMono(stereo.subarray(1)), /4バイト境界/);
+});
+
 void test("破損したDiscord Opus packetはそのpacketだけを破棄する", () => {
   const { OpusEncoder } = opus;
   const corrupted = decodeDiscordOpusPacketToMono(
@@ -1855,7 +1870,8 @@ void test("正確さ優先の2.5秒超の待ちを再生開始前にカード更
 
 void test("待機中に会話優先から正確さ優先へ変えても先行音声を追い越さない", {
   timeout: 500,
-}, async () => {
+}, async (context) => {
+  context.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 0 });
   const captions = new RecordingCaptions();
   const playback = new BlockingPlayback();
   const processor = new UtteranceProcessor({
@@ -1885,7 +1901,8 @@ void test("待機中に会話優先から正確さ優先へ変えても先行音
   }
   await new Promise<void>((resolve) => setImmediate(resolve));
   processor.setPlaybackMode("accuracy");
-  await new Promise<void>((resolve) => setTimeout(resolve, 15));
+  context.mock.timers.tick(15);
+  await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(playback.releases.length, 1);
 
   playback.releases.shift()?.();

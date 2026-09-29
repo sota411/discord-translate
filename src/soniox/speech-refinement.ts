@@ -10,6 +10,7 @@ import { StreamingUtterance } from "../translation/streaming-utterance.js";
 import type { FinalizedUtterance } from "../translation/token-assembler.js";
 import type { UsageLedger } from "../usage/usage-ledger.js";
 import type { SonioxSttFactory } from "./control.js";
+import { SonioxContextLimitError } from "./transcription-context.js";
 
 export type RefinementOutcome = "completed" | "unchanged" | "busy" | "deadline" | "ineligible";
 type Options = {
@@ -23,6 +24,7 @@ type Start = {
   userId: string;
   hint: { language: Language; strict: boolean } | undefined;
   priorAudio?: Buffer;
+  priorText?: string;
   terms: readonly TranslationTerm[];
   observe: (outcome: RefinementOutcome) => void;
   onError: (error: unknown) => void;
@@ -38,15 +40,22 @@ export class SpeechRefinement {
 
   public start(input: Start): RefinementWork | undefined {
     if (input.session.pair !== "ja-ko") return undefined;
-    const priorAudio = input.hint?.language === "ja" ? input.priorAudio : undefined;
-    if (!priorAudio && input.hint?.language !== "ko") return undefined;
+    const priorAudio = input.hint?.language === "ja" || input.hint?.language === "ko"
+      ? input.priorAudio : undefined;
+    const priorText = input.hint?.language === "ja" || input.hint?.language === "ko"
+      ? input.priorText : undefined;
+    if (!priorAudio && priorText === undefined && input.hint?.language !== "ko") return undefined;
+    if (priorText !== undefined && (priorAudio || !priorText.trim() ||
+        Array.from(priorText).length > this.#options.maxInputCharacters)) {
+      throw new TypeError("相手原文の文脈が不正です");
+    }
     if (priorAudio && (!priorAudio.length || priorAudio.length % 2 || priorAudio.length > 230_400)) {
       throw new TypeError("音声文脈のPCM長が不正です");
     }
     if (this.#busy) { input.observe("busy"); return undefined; }
     this.#busy = true;
     const { worker, factory, ledger, maxInputCharacters } = this.#options;
-    const prefixBytes = 230_400;
+    const prefixBytes = 115_200;
     let chunks: Buffer[] = [];
     let bytes = 0;
     let sentBytes = 0;
@@ -54,6 +63,7 @@ export class SpeechRefinement {
     let characters = 0;
     let request: { session: RealtimeSttSession; ref: string } | undefined;
     let local: Promise<void> | undefined;
+    let native: ReturnType<DolphinWorker["begin"]> | undefined;
     let finished = false;
     let ready = false;
     let stopped = false;
@@ -89,6 +99,21 @@ export class SpeechRefinement {
       if (!selected || !stopped || disposed) return;
       const current = selected;
       selected = undefined;
+      // 原文を訂正できていない途中ヒントでは、既存の訳を差し替えない。
+      if (!priorAudio && !priorText && result && current.primary.translatedText.trim() &&
+          result.sourceLanguage === current.primary.sourceLanguage &&
+          result.targetLanguage === current.primary.targetLanguage &&
+          result.originalText.trim() === current.primary.originalText.trim()) {
+        result = undefined;
+        outcome = "unchanged";
+      }
+      if (result?.originalConfidence && current.primary.originalConfidence &&
+          result.originalText.trim() !== current.primary.originalText.trim() &&
+          result.originalConfidence.mean < current.primary.originalConfidence.mean &&
+          result.originalConfidence.min < current.primary.originalConfidence.min) {
+        result = undefined;
+        outcome = "unchanged";
+      }
       input.observe(outcome);
       current.deliver(result ?? current.primary);
     };
@@ -97,6 +122,7 @@ export class SpeechRefinement {
       stopped = true;
       clearTimeout(deadline);
       chunks = [];
+      native?.cancel();
       try { closeRequest(status); }
       catch (error) { disposed = true; input.onError(error); }
       finally {
@@ -116,7 +142,7 @@ export class SpeechRefinement {
       finishStarted = true;
       request.session.sendAudio(Buffer.alloc(19_200));
       sentBytes += 19_200;
-      void request.session.finish().then(() => {
+      const complete = (): void => {
         if (isStopped()) return;
         const refined = utterance.takeAtEndpoint();
         if (boundaries === 1 && sourceLanguages.size === 1 && refined?.translatedText.trim()) {
@@ -126,15 +152,23 @@ export class SpeechRefinement {
         settled = true;
         // Wait for the primary fence before choosing a replacement.
         stop();
-      }).catch(fail);
+      };
+      if (priorAudio) void request.session.finish().then(complete).catch(fail);
+      else {
+        request.session.once("finalized", () => {
+          boundaries += 1;
+          try { complete(); } catch (error) { fail(error); }
+        });
+        request.session.finalize();
+      }
     };
     const begin = (): void => {
       if (local || stopped) return;
-      const pcm = Buffer.concat(chunks, bytes).subarray(0, prefixBytes);
       local = (async () => {
-        let text: string | undefined;
-        if (!priorAudio) {
-          const decoded = await worker.transcribe(pcm);
+        let text = priorText;
+        if (!priorAudio && !priorText) {
+          native = worker.begin(prefixBytes);
+          const decoded = await native.result;
           // A prefix can end within a Korean word; exclude its last word from the hint.
           text = decoded.trimEnd().replace(/\s*\S+$/u, "");
           if (isStopped()) return;
@@ -143,7 +177,14 @@ export class SpeechRefinement {
         await ledger.assertCanStart({ guildId: input.session.guildId, userIds: [input.userId], at: new Date() });
         if (isStopped()) return;
         const ref = randomUUID();
-        const created = factory.create(input.session.pair, ref, input.terms, priorAudio ? undefined : input.hint, text);
+        let created: ReturnType<SonioxSttFactory["create"]>;
+        try {
+          created = factory.create(input.session.pair, ref, input.terms, priorAudio ? undefined : input.hint, text);
+        } catch (error) {
+          if (!text || !(error instanceof SonioxContextLimitError)) throw error;
+          stop();
+          return;
+        }
         characters = created.initialTextCharacterCount;
         ledger.openProviderRequest({ requestRef: ref, sessionId: input.session.sessionId,
           userId: input.userId, kind: "stt", startedAt: new Date() });
@@ -181,7 +222,8 @@ export class SpeechRefinement {
             try { sendTarget(); } catch (error) { fail(error); }
           });
           current.session.sendAudio(priorAudio);
-          sentBytes += priorAudio.length;
+          current.session.sendAudio(Buffer.alloc(19_200));
+          sentBytes += priorAudio.length + 19_200;
           current.session.finalize();
         } else sendTarget();
       })().catch(fail);
@@ -190,17 +232,20 @@ export class SpeechRefinement {
       push: (audio) => {
         if (stopped || finished) return;
         if (audio.length % 2) throw new TypeError("補助認識のPCM長が不正です");
+        if (!audio.length) return;
         bytes += audio.length;
         if (bytes > 768_000) { stop(); return; }
         if (ready && request) { request.session.sendAudio(audio); sentBytes += audio.length; }
         else chunks.push(Buffer.from(audio));
-        if (priorAudio || bytes >= prefixBytes) begin();
+        begin();
+        const prefix = audio.subarray(0, Math.max(0, prefixBytes - (bytes - audio.length)));
+        try { if (prefix.length) native?.push(prefix); } catch (error) { fail(error); }
       },
       finish: (lastAudioAt) => {
         if (stopped || finished) return;
         finished = true;
-        // Short Korean turns have no validated local benefit; free the next speaker's slot.
-        if (!local) { stop(); return; }
+        // Cancel short prefixes without adding fabricated audio; await native acknowledgement.
+        if (!local || (!priorAudio && !priorText && bytes < prefixBytes)) { stop(); return; }
         const remaining = lastAudioAt + 2_390 - performance.now();
         if (remaining <= 0) { outcome = "deadline"; stop(); return; }
         deadline = setTimeout(() => {
