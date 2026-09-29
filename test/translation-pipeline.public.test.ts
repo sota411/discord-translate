@@ -1870,7 +1870,8 @@ void test("正確さ優先の2.5秒超の待ちを再生開始前にカード更
 
 void test("待機中に会話優先から正確さ優先へ変えても先行音声を追い越さない", {
   timeout: 500,
-}, async () => {
+}, async (context) => {
+  context.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 0 });
   const captions = new RecordingCaptions();
   const playback = new BlockingPlayback();
   const processor = new UtteranceProcessor({
@@ -1900,7 +1901,8 @@ void test("待機中に会話優先から正確さ優先へ変えても先行音
   }
   await new Promise<void>((resolve) => setImmediate(resolve));
   processor.setPlaybackMode("accuracy");
-  await new Promise<void>((resolve) => setTimeout(resolve, 15));
+  context.mock.timers.tick(15);
+  await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(playback.releases.length, 1);
 
   playback.releases.shift()?.();
