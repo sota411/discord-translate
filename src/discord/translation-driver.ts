@@ -982,7 +982,6 @@ export class DiscordTranslationRuntime implements SessionRuntime {
         // Keep short audio; longer turns can contribute their finalized original text.
         if (context.bytes < 230_400) context.chunks.push(Buffer.from(monoPcm));
         else context.chunks = [];
-        delete context.text;
       }
       speaker.refinement?.push(monoPcm, performance.now());
       if (captureSequence !== undefined) {
